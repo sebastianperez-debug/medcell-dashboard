@@ -75,6 +75,18 @@ def fmt_sem(val):
     except (ValueError, TypeError):
         return str(val)
 
+def fmt_code(val):
+    """Limpia los IDs/SKUs eliminando el .0 de flotantes y espacios extra"""
+    if pd.isna(val) or val == "" or val is None:
+        return "S/N"
+    try:
+        val_f = float(val)
+        if val_f.is_integer():
+            return str(int(val_f))
+        return str(val_f)
+    except (ValueError, TypeError):
+        return str(val).strip()
+
 def formato_moneda(valor):
     try:
         val_int = int(round(valor))
@@ -184,9 +196,9 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
         # PROCESAR HOJAS CON ESTRUCTURA OPERACIONAL (SB Y PU)
         if is_sb or is_pu:
-            # Mapeo adaptable de columnas
+            # Mapeo adaptable de columnas (Priorizando 'id_producto'/'id_prod' para SKU)
             col_semana = next((c for c in df.columns if c.strip().lower() in ['semana', 'sem', 'wk', 'week']), None) or next((c for c in df.columns if 'semana' in c.lower() or 'sem' in c.lower()), None)
-            col_sku = next((c for c in df.columns if c.strip().lower() in ['sku', 'cod_sku', 'codigo_sku', 'codigo', 'cod_prod', 'material']), None) or next((c for c in df.columns if 'sku' in c.lower() or 'cod' in c.lower()), None)
+            col_sku = next((c for c in df.columns if c.strip().lower() in ['id_producto', 'id_product', 'id_prod', 'sku', 'cod_sku', 'codigo_sku', 'codigo', 'cod_prod', 'material']), None) or next((c for c in df.columns if any(k in c.lower() for k in ['id_prod', 'producto_id', 'sku', 'cod_prod'])), None)
             col_oc = next((c for c in df.columns if c.strip().lower() in ['oc', 'orden_compra', 'orden de compra', 'num_oc', 'numero_oc', 'orden']), None) or next((c for c in df.columns if 'oc' in c.lower() or 'orden' in c.lower()), None)
             col_desc = next((c for c in df.columns if c.strip().lower() in ['descripcion', 'desc_producto', 'producto', 'desc', 'nombre']), None) or next((c for c in df.columns if 'desc' in c.lower() or 'nombre' in c.lower() or 'prod' in c.lower()), None)
             col_div = next((c for c in df.columns if c.strip().lower() in ['division', 'categoría', 'categoria', 'linea', 'div', 'cat']), None) or next((c for c in df.columns if 'divis' in c.lower() or 'categ' in c.lower() or 'linea' in c.lower()), None)
@@ -199,16 +211,16 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             col_quiebre = next((c for c in df.columns if 'quiebre' in c.lower() or 'monto_falta' in c.lower()), None)
             col_rechazado = next((c for c in df.columns if 'rechaz' in c.lower() or 'devuel' in c.lower()), None)
 
-            # Normalización de SKU y Descripción
+            # Normalización de SKU/ID y Descripción
             if not col_sku or col_sku not in df.columns:
                 col_sku = df.columns[0]
             if not col_desc or col_desc not in df.columns:
                 col_desc = col_sku
 
-            df[col_sku] = df[col_sku].fillna("S/N").astype(str)
+            df[col_sku] = df[col_sku].apply(fmt_code)
             df[col_desc] = df[col_desc].fillna("Sin Descripción").astype(str)
 
-            # Formatear la columna de semanas para eliminar el .0
+            # Formatear la columna de semanas
             if col_semana and col_semana in df.columns:
                 df[col_semana] = df[col_semana].apply(fmt_sem)
 
@@ -239,7 +251,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 
             df["quiebre_unid_calc"] = (df[col_u_compra] - df[col_u_recib]).clip(lower=0)
 
-            # Función para ordenar semanas numéricamente
+            # Orden de semanas
             def orden_semana_key(s):
                 try:
                     return (0, int(float(s)))
@@ -308,6 +320,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             crit_orden = st.radio("Ordenar Top 15 por:", options=["Monto ($)", "Unidades"], horizontal=True, key=f"crit_top15_{nombre_hoja}_{i}")
             sem_top = semana_sel if semana_sel != "Todas" else (semanas_todas[-1] if semanas_todas else None)
 
+            lista_divs = []
             if sem_top is not None:
                 sem_sig = None
                 try:
@@ -425,69 +438,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
             st.divider()
 
-            # --- TABLAS DINÁMICAS: QUIEBRE POR MARCA ---
-            if sem_top is not None and col_marca:
-                st.subheader("🏷️ Resumen Quiebres por Marca")
-                df_sem_marca = df[df[col_semana] == sem_top].copy()
-
-                if is_pu:
-                    grp_m = df_sem_marca.groupby(col_marca, as_index=False).agg({col_m_compra: 'sum', 'quiebre_monto_calc': 'sum'})
-                    grp_m = grp_m[grp_m['quiebre_monto_calc'] > 0]
-
-                    if not grp_m.empty:
-                        total_quiebre_div = grp_m['quiebre_monto_calc'].sum()
-                        grp_m['pct_quiebre'] = (grp_m['quiebre_monto_calc'] / total_quiebre_div * 100) if total_quiebre_div > 0 else 0.0
-                        grp_m = grp_m.sort_values(by='quiebre_monto_calc', ascending=False)
-
-                        grp_m_disp = pd.DataFrame()
-                        grp_m_disp["Etiquetas de fila"] = grp_m[col_marca].astype(str)
-                        grp_m_disp["TOTAL COMPRA"] = grp_m[col_m_compra].apply(formato_moneda)
-                        grp_m_disp["MONTO QUIEBRE"] = grp_m['quiebre_monto_calc'].apply(lambda x: f"-{formato_moneda(abs(x))}")
-                        grp_m_disp["QUIEBRE %"] = grp_m['pct_quiebre']
-
-                        total_compra_div = grp_m[col_m_compra].sum()
-                        fila_total = pd.DataFrame([{"Etiquetas de fila": "Total general", "TOTAL COMPRA": formato_moneda(total_compra_div), "MONTO QUIEBRE": f"-{formato_moneda(abs(total_quiebre_div))}", "QUIEBRE %": 100.0}])
-                        grp_m_final = pd.concat([grp_m_disp, fila_total], ignore_index=True)
-
-                        styled_df = grp_m_final.style.format({"QUIEBRE %": "{:.2f}%"}).apply(aplicar_criticidad, subset=["QUIEBRE %"])
-                        st.dataframe(styled_df, hide_index=True, use_container_width=True)
-                    else:
-                        st.info(f"No hay quiebres registrados para la semana {fmt_sem(sem_top)} en PU.")
-
-                elif is_sb and col_div:
-                    col_m1, col_m2 = st.columns(2)
-                    cols_marca_ui = [col_m1, col_m2]
-
-                    for idx, div_nombre in enumerate(lista_divs):
-                        if idx >= 2: break
-                        with cols_marca_ui[idx]:
-                            st.markdown(f"#### {str(div_nombre).upper()}")
-                            df_div_m = df_sem_marca[df_sem_marca[col_div] == div_nombre].copy()
-                            grp_m = df_div_m.groupby(col_marca, as_index=False).agg({col_m_compra: 'sum', 'quiebre_monto_calc': 'sum'})
-                            grp_m = grp_m[grp_m['quiebre_monto_calc'] > 0]
-
-                            if not grp_m.empty:
-                                total_quiebre_div = grp_m['quiebre_monto_calc'].sum()
-                                grp_m['pct_quiebre'] = (grp_m['quiebre_monto_calc'] / total_quiebre_div * 100) if total_quiebre_div > 0 else 0.0
-                                grp_m = grp_m.sort_values(by='quiebre_monto_calc', ascending=False)
-
-                                grp_m_disp = pd.DataFrame()
-                                grp_m_disp["Etiquetas de fila"] = grp_m[col_marca].astype(str)
-                                grp_m_disp["TOTAL COMPRA"] = grp_m[col_m_compra].apply(formato_moneda)
-                                grp_m_disp["MONTO QUIEBRE"] = grp_m['quiebre_monto_calc'].apply(lambda x: f"-{formato_moneda(abs(x))}")
-                                grp_m_disp["QUIEBRE %"] = grp_m['pct_quiebre']
-
-                                total_compra_div = grp_m[col_m_compra].sum()
-                                fila_total = pd.DataFrame([{"Etiquetas de fila": "Total general", "TOTAL COMPRA": formato_moneda(total_compra_div), "MONTO QUIEBRE": f"-{formato_moneda(abs(total_quiebre_div))}", "QUIEBRE %": 100.0}])
-                                grp_m_final = pd.concat([grp_m_disp, fila_total], ignore_index=True)
-
-                                styled_df = grp_m_final.style.format({"QUIEBRE %": "{:.2f}%"}).apply(aplicar_criticidad, subset=["QUIEBRE %"])
-                                st.dataframe(styled_df, hide_index=True, use_container_width=True)
-                            else:
-                                st.info(f"No hay quiebres registrados para {div_nombre} en la semana {fmt_sem(sem_top)}.")
-
-                st.divider()
-
             # --- RESUMEN 4 SEMANAS (TABLA Y GRÁFICOS) ---
             if col_semana:
                 df_base_fr = df.copy()
@@ -580,6 +530,69 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                         fig_monto.add_trace(go.Scatter(x=[f"Sem {fmt_sem(s)}" for s in tot_sem[col_semana]], y=tot_sem["Total_FR_Monto"], name="Total Semana", mode="lines+markers+text", text=[f"{v:.1f}%" for v in tot_sem["Total_FR_Monto"]], textposition="top center", line=dict(color="#e2e8f0", width=3)))
                         fig_monto.update_layout(barmode="group", height=360, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#ffffff"), yaxis=dict(range=[0, 115], gridcolor="#222222", ticksuffix="%"), xaxis=dict(gridcolor="#222222"), legend=dict(orientation="h", y=-0.2))
                         st.plotly_chart(fig_monto, use_container_width=True, key=f"plot_monto_sb_{i}")
+
+                st.divider()
+
+            # --- TABLAS DINÁMICAS: QUIEBRE POR MARCA (UBICADO DESPUÉS DE LOS GRÁFICOS) ---
+            if sem_top is not None and col_marca:
+                st.subheader("🏷️ Resumen Quiebres por Marca")
+                df_sem_marca = df[df[col_semana] == sem_top].copy()
+
+                if is_pu:
+                    grp_m = df_sem_marca.groupby(col_marca, as_index=False).agg({col_m_compra: 'sum', 'quiebre_monto_calc': 'sum'})
+                    grp_m = grp_m[grp_m['quiebre_monto_calc'] > 0]
+
+                    if not grp_m.empty:
+                        total_quiebre_div = grp_m['quiebre_monto_calc'].sum()
+                        grp_m['pct_quiebre'] = (grp_m['quiebre_monto_calc'] / total_quiebre_div * 100) if total_quiebre_div > 0 else 0.0
+                        grp_m = grp_m.sort_values(by='quiebre_monto_calc', ascending=False)
+
+                        grp_m_disp = pd.DataFrame()
+                        grp_m_disp["Etiquetas de fila"] = grp_m[col_marca].astype(str)
+                        grp_m_disp["TOTAL COMPRA"] = grp_m[col_m_compra].apply(formato_moneda)
+                        grp_m_disp["MONTO QUIEBRE"] = grp_m['quiebre_monto_calc'].apply(lambda x: f"-{formato_moneda(abs(x))}")
+                        grp_m_disp["QUIEBRE %"] = grp_m['pct_quiebre']
+
+                        total_compra_div = grp_m[col_m_compra].sum()
+                        fila_total = pd.DataFrame([{"Etiquetas de fila": "Total general", "TOTAL COMPRA": formato_moneda(total_compra_div), "MONTO QUIEBRE": f"-{formato_moneda(abs(total_quiebre_div))}", "QUIEBRE %": 100.0}])
+                        grp_m_final = pd.concat([grp_m_disp, fila_total], ignore_index=True)
+
+                        styled_df = grp_m_final.style.format({"QUIEBRE %": "{:.2f}%"}).apply(aplicar_criticidad, subset=["QUIEBRE %"])
+                        st.dataframe(styled_df, hide_index=True, use_container_width=True)
+                    else:
+                        st.info(f"No hay quiebres registrados para la semana {fmt_sem(sem_top)} en PU.")
+
+                elif is_sb and col_div:
+                    col_m1, col_m2 = st.columns(2)
+                    cols_marca_ui = [col_m1, col_m2]
+
+                    for idx, div_nombre in enumerate(lista_divs):
+                        if idx >= 2: break
+                        with cols_marca_ui[idx]:
+                            st.markdown(f"#### {str(div_nombre).upper()}")
+                            df_div_m = df_sem_marca[df_sem_marca[col_div] == div_nombre].copy()
+                            grp_m = df_div_m.groupby(col_marca, as_index=False).agg({col_m_compra: 'sum', 'quiebre_monto_calc': 'sum'})
+                            grp_m = grp_m[grp_m['quiebre_monto_calc'] > 0]
+
+                            if not grp_m.empty:
+                                total_quiebre_div = grp_m['quiebre_monto_calc'].sum()
+                                grp_m['pct_quiebre'] = (grp_m['quiebre_monto_calc'] / total_quiebre_div * 100) if total_quiebre_div > 0 else 0.0
+                                grp_m = grp_m.sort_values(by='quiebre_monto_calc', ascending=False)
+
+                                grp_m_disp = pd.DataFrame()
+                                grp_m_disp["Etiquetas de fila"] = grp_m[col_marca].astype(str)
+                                grp_m_disp["TOTAL COMPRA"] = grp_m[col_m_compra].apply(formato_moneda)
+                                grp_m_disp["MONTO QUIEBRE"] = grp_m['quiebre_monto_calc'].apply(lambda x: f"-{formato_moneda(abs(x))}")
+                                grp_m_disp["QUIEBRE %"] = grp_m['pct_quiebre']
+
+                                total_compra_div = grp_m[col_m_compra].sum()
+                                fila_total = pd.DataFrame([{"Etiquetas de fila": "Total general", "TOTAL COMPRA": formato_moneda(total_compra_div), "MONTO QUIEBRE": f"-{formato_moneda(abs(total_quiebre_div))}", "QUIEBRE %": 100.0}])
+                                grp_m_final = pd.concat([grp_m_disp, fila_total], ignore_index=True)
+
+                                styled_df = grp_m_final.style.format({"QUIEBRE %": "{:.2f}%"}).apply(aplicar_criticidad, subset=["QUIEBRE %"])
+                                st.dataframe(styled_df, hide_index=True, use_container_width=True)
+                            else:
+                                st.info(f"No hay quiebres registrados para {div_nombre} en la semana {fmt_sem(sem_top)}.")
 
                 st.divider()
 
