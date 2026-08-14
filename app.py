@@ -202,6 +202,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             col_sku = next((c for c in df.columns if c.lower() == 'sku'), None)
             col_desc = next((c for c in df.columns if 'descrip' in c.lower() or 'nombre' in c.lower()), None) or col_sku
             col_div = next((c for c in df.columns if 'divis' in c.lower()), None)
+            col_marca = next((c for c in df.columns if 'marca' in c.lower() or 'lab' in c.lower() or 'proveedor' in c.lower()), None)
             
             # Unidades
             col_u_compra = next((c for c in df.columns if 'comp' in c.lower() and 'unid' in c.lower()), None) or \
@@ -308,7 +309,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             # =========================================================
             st.subheader("🔥 TOP 15 Quiebres por División")
             
-            # Selector de ordenamiento
             crit_orden = st.radio(
                 "Ordenar Top 15 por:",
                 options=["Monto ($)", "Unidades"],
@@ -319,7 +319,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             sem_top = semana_sel if semana_sel != "Todas" else (semanas_todas[-1] if semanas_todas else None)
 
             if sem_top and col_div and col_sku:
-                # 1. Determinar semana siguiente para 'OC abierta'
                 sem_sig = None
                 try:
                     idx_curr = semanas_todas.index(sem_top)
@@ -331,16 +330,13 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                     if isinstance(sem_top, (int, float)):
                         sem_sig = sem_top + 1
 
-                # 2. Mapeo de OC abierta (Unidades solicitadas semana siguiente)
                 oc_abierta_map = {}
                 if sem_sig is not None:
                     df_sig = df[df[col_semana] == sem_sig]
                     oc_abierta_map = df_sig.groupby(col_sku)[col_u_compra].sum().to_dict()
 
-                # 3. Datos de la semana de consulta
                 df_sem_top = df[df[col_semana] == sem_top].copy()
 
-                # Obtener divisiones principales
                 divisiones_unicas = [d for d in df_sem_top[col_div].dropna().unique()]
                 div_cons = next((d for d in divisiones_unicas if "CONSUMO" in str(d).upper()), None)
                 div_farm = next((d for d in divisiones_unicas if "FARMA" in str(d).upper()), None)
@@ -359,12 +355,10 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                     with columnas_ui[idx]:
                         df_div = df_sem_top[df_sem_top[col_div] == div_nombre].copy()
                         
-                        # Cálculos generales de la división (Fill Rate superior)
                         tot_compra_m = df_div[col_m_compra].sum()
                         tot_recib_m = df_div[col_m_recib].sum()
                         fr_div_pct = (tot_recib_m / tot_compra_m * 100) if tot_compra_m > 0 else 0.0
 
-                        # Encabezado con Métrica de Fill Rate
                         st.markdown(f"#### 📌 {str(div_nombre).upper()}")
                         st.metric(
                             label=f"Fill Rate {div_nombre} (Sem {sem_top})", 
@@ -372,7 +366,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                             delta=f"{tot_recib_m - tot_compra_m:,.0f} $ (Dif)".replace(",", ".")
                         )
 
-                        # Agrupación por SKU
                         grp_top = df_div.groupby([col_sku, col_desc]).agg({
                             col_u_compra: 'sum',
                             col_m_compra: 'sum',
@@ -380,7 +373,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                             'quiebre_unid_calc': 'sum'
                         }).reset_index()
 
-                        # Agregar RECHAZADO si existe
                         if col_rechazado and col_rechazado in df_div.columns:
                             grp_rech = df_div.groupby([col_sku, col_desc])[col_rechazado].sum().reset_index()
                             grp_top = pd.merge(grp_top, grp_rech, on=[col_sku, col_desc], how='left')
@@ -388,21 +380,17 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                         else:
                             grp_top["Suma de RECHAZADO"] = 0
 
-                        # Asignar OC abierta de la semana posterior
                         grp_top["OC abierta"] = grp_top[col_sku].map(oc_abierta_map).fillna(0)
 
-                        # Ordenamiento según el conmutador seleccionable
                         col_sort = 'quiebre_monto_calc' if crit_orden == "Monto ($)" else 'quiebre_unid_calc'
                         grp_top = grp_top.sort_values(by=col_sort, ascending=False).head(15)
 
-                        # Formatear columnas con NOMBRES LIMPIOS
                         grp_top_disp = pd.DataFrame()
                         grp_top_disp["SKU"] = grp_top[col_sku].astype(str)
                         grp_top_disp["Descripción"] = grp_top[col_desc]
                         grp_top_disp["Unidades Compra"] = grp_top[col_u_compra].apply(formato_unidades)
                         grp_top_disp["Compra Total ($)"] = grp_top[col_m_compra].apply(formato_moneda)
                         
-                        # Quiebre en negativo
                         grp_top_disp["Quiebre ($)"] = grp_top['quiebre_monto_calc'].apply(lambda x: f"-{formato_moneda(abs(x))}" if x > 0 else "$0")
                         
                         col_r_name = col_rechazado if (col_rechazado and col_rechazado in grp_top.columns) else "Suma de RECHAZADO"
@@ -414,6 +402,67 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                         st.dataframe(grp_top_disp, hide_index=True, use_container_width=True)
 
             st.divider()
+
+            # =========================================================
+            # 🏷️ TABLAS DINÁMICAS: QUIEBRE POR MARCA (OMITE VACÍOS / $0)
+            # =========================================================
+            if sem_top and col_div and col_marca:
+                st.subheader("🏷️ Resumen Quiebres por Marca")
+
+                df_sem_marca = df[df[col_semana] == sem_top].copy()
+                
+                col_m1, col_m2 = st.columns(2)
+                cols_marca_ui = [col_m1, col_m2]
+
+                for idx, div_nombre in enumerate(lista_divs):
+                    if idx >= 2:
+                        break
+
+                    with cols_marca_ui[idx]:
+                        st.markdown(f"#### {str(div_nombre).upper()} - Por Marca")
+
+                        df_div_m = df_sem_marca[df_sem_marca[col_div] == div_nombre].copy()
+
+                        # Agrupar por Marca
+                        grp_m = df_div_m.groupby(col_marca).agg({
+                            col_m_compra: 'sum',
+                            'quiebre_monto_calc': 'sum'
+                        }).reset_index()
+
+                        # FILTRO: Omitir registros vacíos / $0 en quiebre
+                        grp_m = grp_m[grp_m['quiebre_monto_calc'] > 0]
+
+                        if not grp_m.empty:
+                            total_quiebre_div = grp_m['quiebre_monto_calc'].sum()
+
+                            # Calcular % de Quiebre
+                            grp_m['pct_quiebre'] = (grp_m['quiebre_monto_calc'] / total_quiebre_div * 100) if total_quiebre_div > 0 else 0.0
+
+                            # Ordenar de mayor a menor quiebre
+                            grp_m = grp_m.sort_values(by='quiebre_monto_calc', ascending=False)
+
+                            # Formatear Tabla
+                            grp_m_disp = pd.DataFrame()
+                            grp_m_disp["Etiqueta de Fila"] = grp_m[col_marca].astype(str)
+                            grp_m_disp["TOTAL COMPRA"] = grp_m[col_m_compra].apply(formato_moneda)
+                            grp_m_disp["MONTO QUIEBRE"] = grp_m['quiebre_monto_calc'].apply(lambda x: f"-{formato_moneda(abs(x))}")
+                            grp_m_disp["QUIEBRE %"] = grp_m['pct_quiebre'].apply(lambda x: f"{x:.2f}%")
+
+                            # Fila Total General
+                            total_compra_div = grp_m[col_m_compra].sum()
+                            fila_total = pd.DataFrame([{
+                                "Etiqueta de Fila": "Total General",
+                                "TOTAL COMPRA": formato_moneda(total_compra_div),
+                                "MONTO QUIEBRE": f"-{formato_moneda(abs(total_quiebre_div))}",
+                                "QUIEBRE %": "100.00%"
+                            }])
+
+                            grp_m_final = pd.concat([grp_m_disp, fila_total], ignore_index=True)
+                            st.dataframe(grp_m_final, hide_index=True, use_container_width=True)
+                        else:
+                            st.info("No hay quiebres registrados para esta división.")
+
+                st.divider()
 
             # --- TABLA RESUMEN FILL RATE (ÚLTIMAS 4 SEMANAS) ---
             if col_semana and col_div:
