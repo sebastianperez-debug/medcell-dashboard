@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 import os
+from datetime import datetime
 
 # 1. Configuración de la página
 st.set_page_config(page_title="Medcell Operaciones", layout="wide")
@@ -64,7 +65,6 @@ st.markdown("""
 
 # --- Funciones auxiliares de formato ---
 def fmt_sem(val):
-    """Convierte números de semana a entero sin decimal (ej: 32.0 -> '32')"""
     if pd.isna(val) or val == "" or val is None:
         return ""
     try:
@@ -76,7 +76,6 @@ def fmt_sem(val):
         return str(val)
 
 def fmt_code(val):
-    """Limpia los IDs/SKUs eliminando el .0 de flotantes y espacios extra"""
     if pd.isna(val) or val == "" or val is None:
         return "S/N"
     try:
@@ -193,9 +192,125 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         
         is_sb = (nombre_clean == "SB")
         is_pu = (nombre_clean == "PU")
+        is_stock = (nombre_clean == "STOCK") # NUEVO: Filtro para la pestaña Stock
 
-        # PROCESAR HOJAS CON ESTRUCTURA OPERACIONAL (SB Y PU)
-        if is_sb or is_pu:
+        # =================================================================
+        # LÓGICA NUEVA PARA PESTAÑA STOCK (DASHBOARD DE CADUCIDAD)
+        # =================================================================
+        if is_stock:
+            st.markdown("### 📦 Dashboard de Fecha de Caducidad")
+            
+            # 1. Identificar columnas clave (tolerante a variaciones de nombre)
+            col_cod = next((c for c in df.columns if c.strip().lower() in ['codigo_articulo', 'id_producto', 'sku']), None)
+            col_estado_sub = next((c for c in df.columns if c.strip().lower() in ['estado_subin', 'sub_inventario', 'estado sub inventario']), None)
+            col_lote = next((c for c in df.columns if c.strip().lower() in ['lote_proveedor', 'lote']), None)
+            col_loc = next((c for c in df.columns if c.strip().lower() in ['localizador', 'ubicacion']), None)
+            col_fecha = next((c for c in df.columns if c.strip().lower() in ['fecha_expiracion_lote', 'vencimiento', 'fecha expiracion']), None)
+            col_cant = next((c for c in df.columns if c.strip().lower() in ['cantidad', 'stock']), None)
+
+            # 2. Calcular alertas de caducidad a 13 meses
+            if col_fecha:
+                df[col_fecha] = pd.to_datetime(df[col_fecha], errors='coerce')
+                hoy = pd.Timestamp.today()
+                limite_13m = hoy + pd.DateOffset(months=13)
+                
+                def calcular_alerta(fecha):
+                    if pd.isna(fecha): return "Sin Fecha"
+                    if fecha < hoy: return "VENCIDO"
+                    elif fecha <= limite_13m: return "Pronto vence"
+                    else: return "Vigente"
+                
+                df["Alerta_Caducidad"] = df[col_fecha].apply(calcular_alerta)
+            else:
+                df["Alerta_Caducidad"] = "Sin Fecha"
+                df[col_fecha] = "N/A"
+
+            # 3. KPIs Generales
+            total_productos = df[col_cod].nunique() if col_cod else 0
+            total_vencidos = len(df[df["Alerta_Caducidad"] == "VENCIDO"])
+            total_pronto = len(df[df["Alerta_Caducidad"] == "Pronto vence"])
+            total_vigentes = len(df[df["Alerta_Caducidad"] == "Vigente"])
+
+            # 4. Diseño del Dashboard (3 Columnas)
+            col_dash1, col_dash2, col_dash3 = st.columns([1, 1.5, 1.5])
+
+            with col_dash1:
+                st.markdown("""
+                <style>
+                .stock-card { border-radius: 5px; padding: 15px; margin-bottom: 10px; text-align: center; color: white; font-weight: bold; }
+                </style>
+                """, unsafe_allow_html=True)
+                
+                st.markdown(f'<div class="stock-card" style="background-color: #333; color: white;">Productos registrados<br><span style="font-size:24px;">{total_productos}</span></div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="stock-card" style="background-color: #e74c3c;">Lotes Vencidos<br><span style="font-size:24px;">{total_vencidos}</span></div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="stock-card" style="background-color: #f1c40f; color: black;">Pronto vence (< 13 meses)<br><span style="font-size:24px;">{total_pronto}</span></div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="stock-card" style="background-color: #2ecc71;">Vigentes (> 13 meses)<br><span style="font-size:24px;">{total_vigentes}</span></div>', unsafe_allow_html=True)
+
+            with col_dash2:
+                st.markdown("#### Estado de caducidad general")
+                labels = ['Pronto vence', 'Vigente', 'Vencido']
+                values = [total_pronto, total_vigentes, total_vencidos]
+                colors = ['#f1c40f', '#2ecc71', '#e74c3c']
+                
+                fig_pie = go.Figure(data=[go.Pie(labels=labels, values=values, hole=.5, marker=dict(colors=colors))])
+                fig_pie.update_layout(height=300, margin=dict(t=0, b=0, l=0, r=0), paper_bgcolor="rgba(0,0,0,0)", font=dict(color="#ffffff"), showlegend=True, legend=dict(orientation="h", y=-0.1))
+                st.plotly_chart(fig_pie, use_container_width=True, key=f"pie_stock_{i}")
+
+            with col_dash3:
+                if col_cod:
+                    lista_prods = sorted([str(x) for x in df[col_cod].dropna().unique()])
+                    prod_sel = st.selectbox("Elija un producto (Código / SKU):", ["Seleccione..."] + lista_prods, key=f"sel_prod_{i}")
+                    
+                    if prod_sel != "Seleccione...":
+                        df_prod = df[df[col_cod].astype(str) == prod_sel]
+                        stock_actual = df_prod[col_cant].sum() if col_cant else 0
+                        
+                        prox_vencer = df_prod[df_prod[col_fecha].notna()][col_fecha].min() if col_fecha else None
+                        dias_vencer = (prox_vencer - hoy).days if pd.notna(prox_vencer) else "N/A"
+                        
+                        st.markdown(f'<div class="stock-card" style="background-color: #7f8c8d;">Stock actual<br><span style="font-size:24px;">{formato_unidades(stock_actual)}</span></div>', unsafe_allow_html=True)
+                        if isinstance(dias_vencer, int):
+                            if dias_vencer < 0:
+                                texto_vence = f"Venció hace {abs(dias_vencer)} días"
+                                color_vence = "#e74c3c"
+                            else:
+                                texto_vence = f"Vence en {dias_vencer} días"
+                                color_vence = "#000000"
+                        else:
+                            texto_vence = "Sin fecha registrada"
+                            color_vence = "#000000"
+                            
+                        st.markdown(f'<div class="stock-card" style="background-color: {color_vence}; border: 1px solid #555;">Plazo de vencimiento<br><span style="font-size:20px;">{texto_vence}</span></div>', unsafe_allow_html=True)
+
+            st.divider()
+            
+            # 5. Vista de Tabla Limpia (Mostrando exactamente las columnas solicitadas)
+            st.subheader("📋 Detalle de Stock y Lotes")
+            
+            # Armar la lista de columnas disponibles
+            cols_mostrar = []
+            nombres_amigables = {}
+            if col_cod: cols_mostrar.append(col_cod); nombres_amigables[col_cod] = "Código Artículo"
+            if col_estado_sub: cols_mostrar.append(col_estado_sub); nombres_amigables[col_estado_sub] = "Estado Sub-Inv"
+            if col_lote: cols_mostrar.append(col_lote); nombres_amigables[col_lote] = "Lote Proveedor"
+            if col_loc: cols_mostrar.append(col_loc); nombres_amigables[col_loc] = "Localizador"
+            if col_cant: cols_mostrar.append(col_cant); nombres_amigables[col_cant] = "Cantidad"
+            if col_fecha: cols_mostrar.append(col_fecha); nombres_amigables[col_fecha] = "Fecha Expiración"
+            cols_mostrar.append("Alerta_Caducidad"); nombres_amigables["Alerta_Caducidad"] = "Estado Lote"
+            
+            df_vista_stock = df[cols_mostrar].copy()
+            df_vista_stock = df_vista_stock.rename(columns=nombres_amigables)
+            
+            # Convertir fechas a string legible sin la hora
+            if "Fecha Expiración" in df_vista_stock.columns:
+                df_vista_stock["Fecha Expiración"] = df_vista_stock["Fecha Expiración"].dt.strftime('%d-%m-%Y')
+            
+            st.dataframe(df_vista_stock, hide_index=True, use_container_width=True)
+
+        # =================================================================
+        # LÓGICA ORIGINAL PARA SB Y PU
+        # =================================================================
+        elif is_sb or is_pu:
             # Mapeo adaptable de columnas (Priorizando 'id_producto'/'id_prod' para SKU)
             col_semana = next((c for c in df.columns if c.strip().lower() in ['semana', 'sem', 'wk', 'week']), None) or next((c for c in df.columns if 'semana' in c.lower() or 'sem' in c.lower()), None)
             col_sku = next((c for c in df.columns if c.strip().lower() in ['id_producto', 'id_product', 'id_prod', 'sku', 'cod_sku', 'codigo_sku', 'codigo', 'cod_prod', 'material']), None) or next((c for c in df.columns if any(k in c.lower() for k in ['id_prod', 'producto_id', 'sku', 'cod_prod'])), None)
