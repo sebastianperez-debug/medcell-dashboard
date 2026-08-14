@@ -139,7 +139,7 @@ st.markdown("""
                 <div class="medcell-author">Desarrollado por Sebastián Alexis Pérez López</div>
             </div>
             <div style="font-size: 28px; font-weight: 800; color: #ffffff; white-space: nowrap; padding-bottom: 2px;">
-                💊 Salcobrand (SB)
+                💊 Cadena Operaciones
             </div>
         </div>
     </div>
@@ -172,38 +172,46 @@ for i, nombre_hoja in enumerate(nombres_hojas):
     with tabs[i]:
         df = hojas[nombre_hoja].copy()
         
-        if nombre_hoja == "SB":
-            # Detección de columnas
+        # PROCESAR HOJAS CON ESTRUCTURA OPERACIONAL (SB Y PU)
+        if nombre_hoja.strip().upper() in ["SB", "PU"]:
+            # Detección flexible de columnas adaptada tanto a SB como a PU
             col_semana = next((c for c in df.columns if c.strip().lower() == 'semana'), None) or next((c for c in df.columns if 'semana' in c.lower()), None)
-            col_sku = next((c for c in df.columns if c.strip().lower() == 'sku'), None)
-            col_oc = next((c for c in df.columns if c.strip().lower() in ['oc', 'orden_compra', 'orden de compra']), None) or next((c for c in df.columns if 'oc' in c.lower()), None)
-            col_desc = next((c for c in df.columns if c.strip().lower() == 'descripcion'), None) or next((c for c in df.columns if 'desc' in c.lower()), col_sku)
-            col_div = next((c for c in df.columns if c.strip().lower() == 'division'), None) or next((c for c in df.columns if 'divis' in c.lower()), None)
+            col_sku = next((c for c in df.columns if c.strip().lower() == 'sku'), None) or next((c for c in df.columns if 'sku' in c.lower() or 'cod' in c.lower()), None)
+            col_oc = next((c for c in df.columns if c.strip().lower() in ['oc', 'orden_compra', 'orden de compra', 'num_oc', 'numero_oc']), None) or next((c for c in df.columns if 'oc' in c.lower()), None)
+            col_desc = next((c for c in df.columns if c.strip().lower() in ['descripcion', 'desc_producto', 'producto']), None) or next((c for c in df.columns if 'desc' in c.lower() or 'nombre' in c.lower()), col_sku)
+            col_div = next((c for c in df.columns if c.strip().lower() in ['division', 'categoría', 'categoria', 'linea']), None) or next((c for c in df.columns if 'divis' in c.lower() or 'categ' in c.lower()), None)
             
-            # Columna Marca
-            col_marca = next((c for c in df.columns if c.strip().lower() == 'marca'), None)
+            # Columna Marca / Proveedor
+            col_marca = next((c for c in df.columns if c.strip().lower() in ['marca', 'brand', 'lab', 'laboratorio', 'proveedor']), None)
             if not col_marca:
                 col_marca = next((c for c in df.columns if any(k in c.lower() for k in ['marca', 'brand', 'lab', 'proveedor'])), None)
 
-            col_u_compra = next((c for c in df.columns if c.strip().lower() == 'unidades_compra'), None) or \
-                           next((c for c in df.columns if 'comp' in c.lower() and 'unid' in c.lower()), "unidades_compra")
-            col_u_recib = next((c for c in df.columns if c.strip().lower() == 'unidades_recibidas'), None) or \
-                          next((c for c in df.columns if 'recib' in c.lower() and 'unid' in c.lower()), "unidades_recibidas")
+            # Columna Unidades Compra / Solicitadas
+            col_u_compra = next((c for c in df.columns if c.strip().lower() in ['unidades_compra', 'unidades_pedidas', 'unid_pedidas', 'cant_pedida']), None) or \
+                           next((c for c in df.columns if ('comp' in c.lower() or 'pedi' in c.lower() or 'solic' in c.lower()) and 'unid' in c.lower()), "unidades_compra")
+            
+            # Columna Unidades Recibidas / Entregadas
+            col_u_recib = next((c for c in df.columns if c.strip().lower() in ['unidades_recibidas', 'unid_recibidas', 'cant_recibida', 'unidades_entregadas']), None) or \
+                          next((c for c in df.columns if ('recib' in c.lower() or 'entre' in c.lower() or 'despa' in c.lower()) and 'unid' in c.lower()), "unidades_recibidas")
 
-            col_m_compra = next((c for c in df.columns if c.lower().strip() in ['compra total', 'monto_compra', 'monto compra', 'total_compra', 'costo_total']), None) or \
-                           next((c for c in df.columns if any(k in c.lower() for k in ['monto', 'val', 'cost', 'total', '$']) and 'comp' in c.lower()), None)
+            # Columna Monto Compra
+            col_m_compra = next((c for c in df.columns if c.lower().strip() in ['compra total', 'monto_compra', 'monto compra', 'total_compra', 'costo_total', 'monto_pedido']), None) or \
+                           next((c for c in df.columns if any(k in c.lower() for k in ['monto', 'val', 'cost', 'total', '$']) and ('comp' in c.lower() or 'pedi' in c.lower())), None)
 
-            col_m_recib = next((c for c in df.columns if c.lower().strip() in ['recibidas', 'monto_recibido', 'monto recibido', 'total_recibido', 'monto_facturado']), None) or \
-                          next((c for c in df.columns if any(k in c.lower() for k in ['recib', 'fact']) and any(k in c.lower() for k in ['monto', 'val', 'cost', 'total', '$'])), None)
+            # Columna Monto Recibido
+            col_m_recib = next((c for c in df.columns if c.lower().strip() in ['recibidas', 'monto_recibido', 'monto recibido', 'total_recibido', 'monto_facturado', 'monto_entregado']), None) or \
+                          next((c for c in df.columns if any(k in c.lower() for k in ['recib', 'fact', 'entre']) and any(k in c.lower() for k in ['monto', 'val', 'cost', 'total', '$'])), None)
 
-            col_precio = next((c for c in df.columns if any(k in c.lower() for k in ['precio', 'costo_unitario', 'p_unitario'])), None)
-            col_quiebre = next((c for c in df.columns if 'quiebre' in c.lower()), None)
-            col_rechazado = next((c for c in df.columns if 'rechaz' in c.lower()), None)
+            col_precio = next((c for c in df.columns if any(k in c.lower() for k in ['precio', 'costo_unitario', 'p_unitario', 'precio_costo'])), None)
+            col_quiebre = next((c for c in df.columns if 'quiebre' in c.lower() or 'monto_falta' in c.lower()), None)
+            col_rechazado = next((c for c in df.columns if 'rechaz' in c.lower() or 'devuel' in c.lower()), None)
 
+            # Conversión numérica de datos
             cols_a_num = [c for c in [col_u_compra, col_u_recib, col_m_compra, col_m_recib, col_precio, col_quiebre, col_rechazado] if c and c in df.columns]
             for c_num in cols_a_num:
                 df[c_num] = pd.to_numeric(df[c_num], errors='coerce').fillna(0)
 
+            # Reconstrucción de montos si faltan
             if (not col_m_compra or col_m_compra not in df.columns) and col_precio:
                 df["monto_compra_calc"] = df[col_u_compra] * df[col_precio]
                 col_m_compra = "monto_compra_calc"
@@ -230,7 +238,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             st.markdown("### 📅 Seleccionar Semana")
             semanas_disp = ["Todas"] + [f"Semana {s}" for s in semanas_todas] if semanas_todas else ["Todas"]
             
-            # Por defecto selecciona la última semana disponible
             idx_defecto = len(semanas_disp) - 1 if semanas_todas else 0
             
             semana_sel_raw = st.radio(
@@ -238,10 +245,9 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 options=semanas_disp,
                 index=idx_defecto,
                 horizontal=True,
-                key=f"sb_semana_{i}"
+                key=f"semana_sel_{nombre_hoja}_{i}"
             )
 
-            # Limpiar valor de la semana seleccionada para usarlo en los dataframes
             if semana_sel_raw == "Todas":
                 semana_sel = "Todas"
             else:
@@ -276,16 +282,16 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                     col_r1, col_r2 = st.columns(2)
                     with col_r1:
                         fig_g_cons = crear_reloj_gauge("CONSUMO MASIVO", fr_consumo_monto, "#f97316")
-                        st.plotly_chart(fig_g_cons, use_container_width=True, key=f"gauge_cons_{i}")
+                        st.plotly_chart(fig_g_cons, use_container_width=True, key=f"gauge_cons_{nombre_hoja}_{i}")
                     with col_r2:
                         fig_g_farma = crear_reloj_gauge("FARMA", fr_farma_monto, "#00adb5")
-                        st.plotly_chart(fig_g_farma, use_container_width=True, key=f"gauge_farma_{i}")
+                        st.plotly_chart(fig_g_farma, use_container_width=True, key=f"gauge_farma_{nombre_hoja}_{i}")
 
                     st.divider()
 
             # --- TOP 15 ---
             st.subheader("🔥 TOP 15 Quiebres por División")
-            crit_orden = st.radio("Ordenar Top 15 por:", options=["Monto ($)", "Unidades"], horizontal=True, key=f"crit_top15_{i}")
+            crit_orden = st.radio("Ordenar Top 15 por:", options=["Monto ($)", "Unidades"], horizontal=True, key=f"crit_top15_{nombre_hoja}_{i}")
             sem_top = semana_sel if semana_sel != "Todas" else (semanas_todas[-1] if semanas_todas else None)
 
             if sem_top and col_div and col_sku:
@@ -483,7 +489,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
                     fig_unds.add_trace(go.Scatter(x=[f"Sem {s}" for s in tot_sem[col_semana]], y=tot_sem["Total_FR_Unds"], name="Total Semana", mode="lines+markers+text", text=[f"{v:.1f}%" for v in tot_sem["Total_FR_Unds"]], textposition="top center", line=dict(color="#e2e8f0", width=3)))
                     fig_unds.update_layout(barmode="group", height=360, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#ffffff"), yaxis=dict(range=[0, 115], gridcolor="#222222", ticksuffix="%"), xaxis=dict(gridcolor="#222222"), legend=dict(orientation="h", y=-0.2))
-                    st.plotly_chart(fig_unds, use_container_width=True, key=f"plot_unds_{i}")
+                    st.plotly_chart(fig_unds, use_container_width=True, key=f"plot_unds_{nombre_hoja}_{i}")
 
                 with col_g2:
                     st.markdown("##### Fill Rate por Monto")
@@ -495,7 +501,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
                     fig_monto.add_trace(go.Scatter(x=[f"Sem {s}" for s in tot_sem[col_semana]], y=tot_sem["Total_FR_Monto"], name="Total Semana", mode="lines+markers+text", text=[f"{v:.1f}%" for v in tot_sem["Total_FR_Monto"]], textposition="top center", line=dict(color="#e2e8f0", width=3)))
                     fig_monto.update_layout(barmode="group", height=360, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#ffffff"), yaxis=dict(range=[0, 115], gridcolor="#222222", ticksuffix="%"), xaxis=dict(gridcolor="#222222"), legend=dict(orientation="h", y=-0.2))
-                    st.plotly_chart(fig_monto, use_container_width=True, key=f"plot_monto_{i}")
+                    st.plotly_chart(fig_monto, use_container_width=True, key=f"plot_monto_{nombre_hoja}_{i}")
 
             st.divider()
 
@@ -505,10 +511,10 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             col_det_f1, col_det_f2 = st.columns(2)
             with col_det_f1:
                 ocs_disponibles = ["Todas"] + sorted([str(x) for x in df_filt[col_oc].dropna().unique()]) if col_oc and col_oc in df_filt.columns else ["Todas"]
-                oc_seleccionada = st.selectbox("Filtrar Detalle por OC:", ocs_disponibles, key=f"det_oc_{i}")
+                oc_seleccionada = st.selectbox("Filtrar Detalle por OC:", ocs_disponibles, key=f"det_oc_{nombre_hoja}_{i}")
             with col_det_f2:
                 skus_det_disponibles = ["Todos"] + sorted([str(x) for x in df_filt[col_sku].dropna().unique()]) if col_sku and col_sku in df_filt.columns else ["Todos"]
-                sku_det_seleccionado = st.selectbox("Filtrar Detalle por SKU:", skus_det_disponibles, key=f"det_sku_{i}")
+                sku_det_seleccionado = st.selectbox("Filtrar Detalle por SKU:", skus_det_disponibles, key=f"det_sku_{nombre_hoja}_{i}")
 
             df_detalle = df_filt.copy()
             if col_oc and oc_seleccionada != "Todas":
@@ -524,6 +530,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
             st.dataframe(df_corte_final, hide_index=True, use_container_width=True)
 
+        # PARA OTRAS PESTAÑAS SECUNDARIAS/AUXILIARES
         else:
             busqueda = st.text_input(f"🔍 Buscar en {nombre_hoja}:", key=f"search_{nombre_hoja}_{i}")
             if busqueda:
