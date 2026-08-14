@@ -197,7 +197,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         # PESTAÑA VENTA SI
         # =================================================================
         if is_si:
-            st.markdown("### 📈 Dashboard Venta SI - Agosto 2026")
+            st.markdown("### 📈 Dashboard Venta SI")
 
             # Detectar columnas dinámicamente
             col_cliente = next((c for c in df.columns if 'cliente' in c.lower()), 'nombre_cliente')
@@ -216,15 +216,13 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                     return 'SB'
                 elif 'PREUNIC' in cliente:
                     return 'PU'
-                elif any(x in cliente for x in ['WALMART', 'DBS', 'FALABELLA', 'CENCOSUD']):
-                    return 'Terceros'
                 else:
                     return 'Terceros'
 
             df['Agrupacion'] = df.apply(clasificar_cliente, axis=1)
             df['Division_Norm'] = df[col_div].astype(str).str.upper() if col_div in df.columns else 'OTRO'
 
-            # Resumen de Facturación desde los datos
+            # Resumen de Facturación en tiempo real desde los datos
             fact_sb_cons = df[(df['Agrupacion'] == 'SB') & (df['Division_Norm'].str.contains('CONSUMO'))][col_monto].sum()
             fact_sb_farm = df[(df['Agrupacion'] == 'SB') & (df['Division_Norm'].str.contains('FARMA'))][col_monto].sum()
             
@@ -235,14 +233,34 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
             fact_consumo_tot = fact_sb_cons + fact_pu_cons
             fact_farma_tot = fact_sb_farm + fact_pu_farm
+            fact_total_real = fact_consumo_tot + fact_farma_tot + fact_terceros
 
-            # Metas Agosto 2026
+            # Metas
             meta_consumo = 2296243451
             meta_farma = 2212039150
             meta_terceros = 41037523
             meta_total = meta_consumo + meta_farma + meta_terceros
 
-            # 1. TABLAS SUPERIORES DE RESUMEN
+            # 1. MÉTRICAS DINÁMICAS DE CIERRE Y CUMPLIMIENTO
+            st.markdown("#### 📊 Resultado de Cierre Facturado")
+
+            resultado_real = fact_total_real - meta_total
+            cumplimiento_real = (fact_total_real / meta_total * 100) if meta_total > 0 else 0.0
+
+            col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+            with col_m1:
+                st.metric("Cierre", formato_moneda(fact_total_real))
+            with col_m2:
+                st.metric("Meta Total", formato_moneda(meta_total))
+            with col_m3:
+                txt_resultado = f"-{formato_moneda(abs(resultado_real))}" if resultado_real < 0 else formato_moneda(resultado_real)
+                st.metric("Resultado", txt_resultado)
+            with col_m4:
+                st.metric("Cumplimiento", f"{cumplimiento_real:.1f}%")
+
+            st.divider()
+
+            # 2. TABLAS SUPERIORES DE RESUMEN POR CANAL
             st.markdown("#### 📊 Facturado y Proyección por Canal")
             col_r1, col_r2 = st.columns([1, 1.8])
 
@@ -279,7 +297,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
             st.divider()
 
-            # 2. DESGLOSE POR CLIENTE
+            # 3. DESGLOSE POR CLIENTE
             st.markdown("#### 🏢 Desglose por Cliente")
             c_pu, c_sb, c_ter = st.columns(3)
 
@@ -311,39 +329,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
             st.divider()
 
-            # 3. TABLA DE ESTADO OC Y CERRADO
-            st.markdown("#### 📋 Estado Órdenes de Compra (OC) y Proyección")
-            
-            data_oc = [
-                {"Grupo": "OC vigente", "Canal": "Consumo SB", "Monto OC": 433720962, "F R": "82%", "Proyección salida": 355651189, "OC extra": 90000000},
-                {"Grupo": "OC vigente", "Canal": "Farma SB", "Monto OC": 391807703, "F R": "87%", "Proyección salida": 340872702, "OC extra": 0},
-                {"Grupo": "OC vigente", "Canal": "PU", "Monto OC": 93238077, "F R": "24%", "Proyección salida": 22756819, "OC extra": 0},
-                {"Grupo": "Proyección Compra", "Canal": "Terceros", "Monto OC": 5137936, "F R": "60%", "Proyección salida": 3082762, "OC extra": 0},
-                {"Grupo": "Proyección Compra", "Canal": "Consumo SB", "Monto OC": 420000000, "F R": "82%", "Proyección salida": 344400000, "OC extra": 0},
-                {"Grupo": "Proyección Compra", "Canal": "Farma SB", "Monto OC": 480000000, "F R": "87%", "Proyección salida": 417600000, "OC extra": 0},
-                {"Grupo": "Proyección Compra", "Canal": "PU", "Monto OC": 105000000, "F R": "70%", "Proyección salida": 73500000, "OC extra": 0},
-            ]
-            
-            df_oc_disp = pd.DataFrame(data_oc)
-            df_oc_disp["Monto OC"] = df_oc_disp["Monto OC"].apply(formato_moneda)
-            df_oc_disp["Proyección salida"] = df_oc_disp["Proyección salida"].apply(formato_moneda)
-            df_oc_disp["OC extra"] = df_oc_disp["OC extra"].apply(lambda x: formato_moneda(x) if x > 0 else "-")
-            
-            st.dataframe(df_oc_disp, hide_index=True, use_container_width=True)
-
-            col_m1, col_m2, col_m3, col_m4 = st.columns(4)
-            with col_m1:
-                st.metric("Cierre Proyectado", formato_moneda(3745258034))
-            with col_m2:
-                st.metric("Meta Total", formato_moneda(4549320124))
-            with col_m3:
-                st.metric("Resultado", f"-{formato_moneda(804062090)}")
-            with col_m4:
-                st.metric("Cumplimiento", "82,3%")
-
-            st.divider()
-
-            # Detalle de Transacciones
+            # 4. DETALLE GENERAL DE TRANSACCIONES
             st.subheader("📋 Detalle de Transacciones SI")
             busqueda_si = st.text_input("🔍 Buscar en registros SI:", key=f"search_si_{i}")
             df_si_det = df.copy()
