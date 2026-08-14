@@ -304,7 +304,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                     st.divider()
 
             # =========================================================
-            # 🔥 NUEVO MÓDULO: TABLAS TOP 15 QUIEBRES EN PARALELO
+            # 🔥 TABLAS TOP 15 QUIEBRES EN PARALELO
             # =========================================================
             st.subheader("🔥 TOP 15 Quiebres por División")
             
@@ -395,20 +395,20 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                         col_sort = 'quiebre_monto_calc' if crit_orden == "Monto ($)" else 'quiebre_unid_calc'
                         grp_top = grp_top.sort_values(by=col_sort, ascending=False).head(15)
 
-                        # Formatear columnas para visualización idéntica a la planilla Excel
+                        # Formatear columnas con NOMBRES LIMPIOS
                         grp_top_disp = pd.DataFrame()
                         grp_top_disp["SKU"] = grp_top[col_sku].astype(str)
-                        grp_top_disp["descripcion"] = grp_top[col_desc]
-                        grp_top_disp["Suma de unidades_compra"] = grp_top[col_u_compra].apply(formato_unidades)
-                        grp_top_disp["Suma de compra_total"] = grp_top[col_m_compra].apply(formato_moneda)
+                        grp_top_disp["Descripción"] = grp_top[col_desc]
+                        grp_top_disp["Unidades Compra"] = grp_top[col_u_compra].apply(formato_unidades)
+                        grp_top_disp["Compra Total ($)"] = grp_top[col_m_compra].apply(formato_moneda)
                         
-                        # El quiebre en negativo según estándar de reporte
-                        grp_top_disp["Suma de Quiebre"] = grp_top['quiebre_monto_calc'].apply(lambda x: f"-{formato_moneda(abs(x))}" if x > 0 else "$0")
+                        # Quiebre en negativo
+                        grp_top_disp["Quiebre ($)"] = grp_top['quiebre_monto_calc'].apply(lambda x: f"-{formato_moneda(abs(x))}" if x > 0 else "$0")
                         
                         col_r_name = col_rechazado if (col_rechazado and col_rechazado in grp_top.columns) else "Suma de RECHAZADO"
-                        grp_top_disp["Suma de RECHAZADO"] = grp_top[col_r_name].apply(formato_unidades)
+                        grp_top_disp["Rechazado (Unds)"] = grp_top[col_r_name].apply(formato_unidades)
                         
-                        lbl_oc = f"OC abierta (Sem {sem_sig})" if sem_sig else "OC abierta"
+                        lbl_oc = f"OC Abierta Sem {sem_sig}" if sem_sig else "OC Abierta"
                         grp_top_disp[lbl_oc] = grp_top["OC abierta"].apply(formato_unidades)
 
                         st.dataframe(grp_top_disp, hide_index=True, use_container_width=True)
@@ -441,8 +441,8 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 df_disp["FR_Monto_pct"] = df_disp["FR_Monto_pct"].apply(lambda x: f"{x:.2f}%")
 
                 df_disp.columns = [
-                    "Semana", "División", "Unid. Compra", "Unid. Recibidas", 
-                    "Monto Compra", "Monto Recibido", "FR.Unds %", "FR.Monto %"
+                    "Semana", "División", "Unidades Compra", "Unidades Recibidas", 
+                    "Monto Compra ($)", "Monto Recibido ($)", "Fill Rate Unidades", "Fill Rate Monto"
                 ]
 
                 st.dataframe(df_disp, hide_index=True, use_container_width=True)
