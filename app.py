@@ -249,18 +249,31 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             semanas_todas = sorted(list(df[col_semana].dropna().unique())) if col_semana else []
             ultimas_4_semanas = semanas_todas[-4:] if semanas_todas else []
 
-            # --- FILTRO POR SEMANA TIPO TARJETAS ---
+      # --- FILTRO POR SEMANA TIPO TARJETAS (CORREGIDO SIN VALUEERROR) ---
             st.markdown("### 📅 Seleccionar Semana")
-            semanas_disp = ["Todas"] + [f"Semana {s}" for s in semanas_todas] if semanas_todas else ["Todas"]
-            idx_defecto = len(semanas_disp) - 1 if semanas_todas else 0
             
-            semana_sel_raw = st.radio(
+            # Crear mapeo de etiqueta visual -> valor real en DataFrame
+            opciones_semanas = {"Todas": "Todas"}
+            for s in semanas_todas:
+                if pd.notna(s):
+                    # Limpiar visualmente si viene como float (ej: 31.0 -> 31)
+                    val_str = str(int(s)) if isinstance(s, (int, float)) and float(s).is_integer() else str(s)
+                    label_sem = f"Semana {val_str}"
+                    opciones_semanas[label_sem] = s
+
+            semanas_disp = list(opciones_semanas.keys())
+            idx_defecto = len(semanas_disp) - 1 if semanas_todas else 0
+
+            semana_sel_label = st.radio(
                 label="Selección de Semana",
                 options=semanas_disp,
                 index=idx_defecto,
                 horizontal=True,
                 key=f"semana_sel_{nombre_hoja}_{i}"
             )
+
+            # Obtener el valor exacto guardado sin necesidad de parsear int()
+            semana_sel = opciones_semanas[semana_sel_label]
 
             semana_sel = "Todas" if semana_sel_raw == "Todas" else int(semana_sel_raw.replace("Semana ", ""))
 
