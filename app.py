@@ -98,9 +98,16 @@ except Exception as e:
 # --- 4. HEADER ---
 st.markdown("""
     <div class="medcell-header">
-        <div class="medcell-brand">MEDCELL <span>OPERACIONES</span></div>
-        <div class="medcell-subtitle">SEGUIMIENTO DE CAMPAÑAS Y CONTROL DE FILL RATE</div>
-        <div class="medcell-author">Desarrollado por Sebastián Alexis Pérez López</div>
+        <div style="display: flex; justify-content: space-between; align-items: flex-end;">
+            <div>
+                <div class="medcell-brand">MEDCELL <span>OPERACIONES</span></div>
+                <div class="medcell-subtitle">SEGUIMIENTO DE CAMPAÑAS Y CONTROL DE FILL RATE</div>
+                <div class="medcell-author">Desarrollado por Sebastián Alexis Pérez López</div>
+            </div>
+            <div style="font-size: 28px; font-weight: 800; color: #ffffff; white-space: nowrap; padding-bottom: 2px;">
+                💊 Salcobrand (SB)
+            </div>
+        </div>
     </div>
 """, unsafe_allow_html=True)
 
@@ -132,11 +139,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         df = hojas[nombre_hoja].copy()
         
         if nombre_hoja == "SB":
-            # --- TITULO "SALCOBRAND (SB)" EN LA ESQUINA DERECHA ---
-            _, c_head_right = st.columns([3, 2])
-            with c_head_right:
-                st.markdown("<h2 style='text-align: right; margin-bottom: 15px;'>💊 Salcobrand (SB)</h2>", unsafe_allow_html=True)
-
             # Detección de columnas
             col_semana = next((c for c in df.columns if c.strip().lower() == 'semana'), None) or next((c for c in df.columns if 'semana' in c.lower()), None)
             col_sku = next((c for c in df.columns if c.strip().lower() == 'sku'), None)
@@ -461,7 +463,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             # --- DETALLE DE REGISTRO CON SUS PROPIOS FILTROS (OC Y SKU) ---
             st.subheader("📋 Detalle de Registro de Compras")
             
-            # Filtros específicos para la tabla de detalle
             col_det_f1, col_det_f2 = st.columns(2)
             with col_det_f1:
                 ocs_disponibles = ["Todas"] + sorted([str(x) for x in df_filt[col_oc].dropna().unique()]) if col_oc and col_oc in df_filt.columns else ["Todas"]
@@ -470,7 +471,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 skus_det_disponibles = ["Todos"] + sorted([str(x) for x in df_filt[col_sku].dropna().unique()]) if col_sku and col_sku in df_filt.columns else ["Todos"]
                 sku_det_seleccionado = st.selectbox("Filtrar Detalle por SKU:", skus_det_disponibles, key=f"det_sku_{i}")
 
-            # Filtrado del detalle
             df_detalle = df_filt.copy()
             if col_oc and oc_seleccionada != "Todas":
                 df_detalle = df_detalle[df_detalle[col_oc].astype(str) == oc_seleccionada]
