@@ -132,9 +132,20 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         df = hojas[nombre_hoja].copy()
         
         if nombre_hoja == "SB":
+            # --- CABECERA PESTAÑA CON LOGO SB A LA DERECHA ---
+            c_head_title, c_head_logo = st.columns([5, 1])
+            with c_head_title:
+                st.markdown("## 💊 Salcobrand (SB)")
+            with c_head_logo:
+                posibles_logos = ["logo_sb.png", "salcobrand.png", "sb.png", "image_19af6c.png"]
+                logo_encontrado = next((p for p in posibles_logos if os.path.exists(p)), None)
+                if logo_encontrado:
+                    st.image(logo_encontrado, width=110)
+
             # Detección de columnas
             col_semana = next((c for c in df.columns if c.strip().lower() == 'semana'), None) or next((c for c in df.columns if 'semana' in c.lower()), None)
             col_sku = next((c for c in df.columns if c.strip().lower() == 'sku'), None)
+            col_oc = next((c for c in df.columns if c.strip().lower() in ['oc', 'orden_compra', 'orden de compra']), None) or next((c for c in df.columns if 'oc' in c.lower()), None)
             col_desc = next((c for c in df.columns if c.strip().lower() == 'descripcion'), None) or next((c for c in df.columns if 'desc' in c.lower()), col_sku)
             col_div = next((c for c in df.columns if c.strip().lower() == 'division'), None) or next((c for c in df.columns if 'divis' in c.lower()), None)
             
@@ -166,7 +177,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 df["monto_compra_calc"] = df[col_u_compra] * df[col_precio]
                 col_m_compra = "monto_compra_calc"
 
-            if (not col_m_recib or col_m_recib not in df.columns) and col_precio:
+            if (not col_m_recib or col_m_recib doubtful in df.columns) and col_precio:
                 df["monto_recibido_calc"] = df[col_u_recib] * df[col_precio]
                 col_m_recib = "monto_recibido_calc"
             elif (not col_m_recib or col_m_recib not in df.columns) and col_m_compra and col_m_compra in df.columns:
@@ -184,14 +195,14 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             semanas_todas = sorted(list(df[col_semana].dropna().unique())) if col_semana else []
             ultimas_4_semanas = semanas_todas[-4:] if semanas_todas else []
 
-            st.subheader("🔍 Filtros de Consulta")
+            st.subheader("🔍 Filtros General de Consulta")
             c_f1, c_f2 = st.columns(2)
             with c_f1:
                 semanas_disp = ["Todas"] + semanas_todas
                 semana_sel = st.selectbox("Filtrar por Semana:", semanas_disp, key=f"sb_semana_{i}")
             with c_f2:
                 skus_disp = ["Todos"] + sorted(list(df[col_sku].dropna().astype(str).unique())) if col_sku else ["Todos"]
-                sku_sel = st.selectbox("Filtrar por SKU:", skus_disp, key=f"sb_sku_{i}")
+                sku_sel = st.selectbox("Filtrar por SKU General:", skus_disp, key=f"sb_sku_{i}")
 
             df_filt = df.copy()
             if semana_sel != "Todas" and col_semana:
@@ -222,7 +233,8 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                         if "CONSUMO" in div_name: fr_consumo_monto = pct
                         elif "FARMA" in div_name: fr_farma_monto = pct
 
-                    st.markdown(f"### ⏱️ Recepción por Monto - Semana {sem_actual}")
+                    # Título Modificado según requerimiento: Fill rate WXX
+                    st.markdown(f"### ⏱️ Fill rate W{sem_actual}")
                     col_r1, col_r2 = st.columns(2)
                     with col_r1:
                         fig_g_cons = crear_reloj_gauge("CONSUMO MASIVO", fr_consumo_monto, "#f97316")
@@ -310,9 +322,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
             st.divider()
 
-            # =========================================================
-            # 🏷️ TABLAS DINÁMICAS: QUIEBRE POR MARCA CON CRITICIDAD DE COLOR
-            # =========================================================
+            # --- TABLAS DINÁMICAS: QUIEBRE POR MARCA CON CRITICIDAD ---
             if sem_top and col_div and col_marca:
                 st.subheader("🏷️ Resumen Quiebres por Marca")
 
@@ -346,9 +356,8 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                             grp_m_disp["Etiquetas de fila"] = grp_m[col_marca].astype(str)
                             grp_m_disp["TOTAL COMPRA"] = grp_m[col_m_compra].apply(formato_moneda)
                             grp_m_disp["MONTO QUIEBRE"] = grp_m['quiebre_monto_calc'].apply(lambda x: f"-{formato_moneda(abs(x))}")
-                            grp_m_disp["QUIEBRE %"] = grp_m['pct_quiebre']  # Se mantiene flotante numérico
+                            grp_m_disp["QUIEBRE %"] = grp_m['pct_quiebre']
 
-                            # Fila Total General
                             total_compra_div = grp_m[col_m_compra].sum()
                             fila_total = pd.DataFrame([{
                                 "Etiquetas de fila": "Total general",
@@ -359,7 +368,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
                             grp_m_final = pd.concat([grp_m_disp, fila_total], ignore_index=True)
 
-                            # Función para semáforo de criticidad por celda
                             def aplicar_criticidad(column):
                                 is_total = grp_m_final["Etiquetas de fila"] == "Total general"
                                 styles = []
@@ -367,18 +375,17 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                                     if total:
                                         styles.append('font-weight: bold; background-color: #1a1a1a;')
                                     elif val >= 15.0:
-                                        styles.append('background-color: #8b0000; color: #ffffff; font-weight: bold;')  # Rojo Crítico
+                                        styles.append('background-color: #8b0000; color: #ffffff; font-weight: bold;')
                                     elif val >= 10.0:
-                                        styles.append('background-color: #b91c1c; color: #ffffff; font-weight: bold;')  # Rojo Alto
+                                        styles.append('background-color: #b91c1c; color: #ffffff; font-weight: bold;')
                                     elif val >= 5.0:
-                                        styles.append('background-color: #c2410c; color: #ffffff;')  # Naranja Medio
+                                        styles.append('background-color: #c2410c; color: #ffffff;')
                                     elif val > 0:
-                                        styles.append('background-color: #27272a; color: #d4d4d8;')  # Gris Neutro
+                                        styles.append('background-color: #27272a; color: #d4d4d8;')
                                     else:
                                         styles.append('')
                                 return styles
 
-                            # Estilizar y formatear
                             styled_df = grp_m_final.style.format({
                                 "QUIEBRE %": "{:.2f}%"
                             }).apply(aplicar_criticidad, subset=["QUIEBRE %"])
@@ -457,13 +464,30 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
             st.divider()
 
-            # --- DETALLE ---
+            # --- DETALLE DE REGISTRO CON SUS PROPIOS FILTROS (OC Y SKU) ---
             st.subheader("📋 Detalle de Registro de Compras")
-            if col_rechazado and col_rechazado in df_filt.columns:
-                idx_corte = list(df_filt.columns).index(col_rechazado) + 1
-                df_corte_final = df_filt.iloc[:, :idx_corte]
+            
+            # Filtros específicos para la tabla de detalle
+            col_det_f1, col_det_f2 = st.columns(2)
+            with col_det_f1:
+                ocs_disponibles = ["Todas"] + sorted([str(x) for x in df_filt[col_oc].dropna().unique()]) if col_oc and col_oc in df_filt.columns else ["Todas"]
+                oc_seleccionada = st.selectbox("Filtrar Detalle por OC:", ocs_disponibles, key=f"det_oc_{i}")
+            with col_det_f2:
+                skus_det_disponibles = ["Todos"] + sorted([str(x) for x in df_filt[col_sku].dropna().unique()]) if col_sku and col_sku in df_filt.columns else ["Todos"]
+                sku_det_seleccionado = st.selectbox("Filtrar Detalle por SKU:", skus_det_disponibles, key=f"det_sku_{i}")
+
+            # Filtrado del detalle
+            df_detalle = df_filt.copy()
+            if col_oc and oc_seleccionada != "Todas":
+                df_detalle = df_detalle[df_detalle[col_oc].astype(str) == oc_seleccionada]
+            if col_sku and sku_det_seleccionado != "Todos":
+                df_detalle = df_detalle[df_detalle[col_sku].astype(str) == sku_det_seleccionado]
+
+            if col_rechazado and col_rechazado in df_detalle.columns:
+                idx_corte = list(df_detalle.columns).index(col_rechazado) + 1
+                df_corte_final = df_detalle.iloc[:, :idx_corte]
             else:
-                df_corte_final = df_filt
+                df_corte_final = df_detalle
 
             st.dataframe(df_corte_final, hide_index=True, use_container_width=True)
 
