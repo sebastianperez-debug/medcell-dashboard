@@ -63,6 +63,18 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- Funciones auxiliares de formato ---
+def fmt_sem(val):
+    """Convierte números de semana a entero sin decimal (ej: 32.0 -> '32')"""
+    if pd.isna(val) or val == "" or val is None:
+        return ""
+    try:
+        val_f = float(val)
+        if val_f.is_integer():
+            return str(int(val_f))
+        return str(val_f)
+    except (ValueError, TypeError):
+        return str(val)
+
 def formato_moneda(valor):
     try:
         val_int = int(round(valor))
@@ -78,7 +90,7 @@ def formato_unidades(valor):
         return "0"
 
 def aplicar_criticidad(column):
-    is_total = column.index == (len(column) - 1)  # La última fila es el total
+    is_total = column.index == (len(column) - 1)
     styles = []
     for i, val in enumerate(column):
         if is_total[i]: styles.append('font-weight: bold; background-color: #1a1a1a;')
@@ -176,7 +188,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             col_semana = next((c for c in df.columns if c.strip().lower() in ['semana', 'sem', 'wk', 'week']), None) or next((c for c in df.columns if 'semana' in c.lower() or 'sem' in c.lower()), None)
             col_sku = next((c for c in df.columns if c.strip().lower() in ['sku', 'cod_sku', 'codigo_sku', 'codigo', 'cod_prod', 'material']), None) or next((c for c in df.columns if 'sku' in c.lower() or 'cod' in c.lower()), None)
             col_oc = next((c for c in df.columns if c.strip().lower() in ['oc', 'orden_compra', 'orden de compra', 'num_oc', 'numero_oc', 'orden']), None) or next((c for c in df.columns if 'oc' in c.lower() or 'orden' in c.lower()), None)
-            col_desc = next((c for c in df.columns if c.strip().lower() in ['descripcion', 'desc_producto', 'producto', 'desc', 'nombre']), None) or next((c for c in df.columns if 'desc' in c.lower() or 'nombre' in c.lower() or 'prod' in c.lower()), col_sku)
+            col_desc = next((c for c in df.columns if c.strip().lower() in ['descripcion', 'desc_producto', 'producto', 'desc', 'nombre']), None) or next((c for c in df.columns if 'desc' in c.lower() or 'nombre' in c.lower() or 'prod' in c.lower()), None)
             col_div = next((c for c in df.columns if c.strip().lower() in ['division', 'categoría', 'categoria', 'linea', 'div', 'cat']), None) or next((c for c in df.columns if 'divis' in c.lower() or 'categ' in c.lower() or 'linea' in c.lower()), None)
             col_marca = next((c for c in df.columns if c.strip().lower() in ['marca', 'brand', 'lab', 'laboratorio', 'proveedor']), None) or next((c for c in df.columns if any(k in c.lower() for k in ['marca', 'brand', 'lab', 'proveedor'])), None)
             col_u_compra = next((c for c in df.columns if c.strip().lower() in ['unidades_compra', 'unidades_pedidas', 'unid_pedidas', 'cant_pedida', 'cantidad_pedida', 'unidades_solicitadas', 'cant_solic', 'cantidad', 'unidades', 'solicitado', 'cant']), None) or next((c for c in df.columns if any(k in c.lower() for k in ['comp', 'pedi', 'solic', 'cant', 'unid'])), None)
@@ -186,6 +198,19 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             col_precio = next((c for c in df.columns if any(k in c.lower() for k in ['precio', 'costo_unitario', 'p_unitario', 'precio_costo', 'puc'])), None)
             col_quiebre = next((c for c in df.columns if 'quiebre' in c.lower() or 'monto_falta' in c.lower()), None)
             col_rechazado = next((c for c in df.columns if 'rechaz' in c.lower() or 'devuel' in c.lower()), None)
+
+            # Normalización de SKU y Descripción
+            if not col_sku or col_sku not in df.columns:
+                col_sku = df.columns[0]
+            if not col_desc or col_desc not in df.columns:
+                col_desc = col_sku
+
+            df[col_sku] = df[col_sku].fillna("S/N").astype(str)
+            df[col_desc] = df[col_desc].fillna("Sin Descripción").astype(str)
+
+            # Formatear la columna de semanas para eliminar el .0
+            if col_semana and col_semana in df.columns:
+                df[col_semana] = df[col_semana].apply(fmt_sem)
 
             # --- PREVENCIÓN DE ERRORES: CREAR COLUMNAS SI NO EXISTEN ---
             if not col_u_compra or col_u_compra not in df.columns: df["unidades_compra_calc"] = 0; col_u_compra = "unidades_compra_calc"
@@ -201,6 +226,8 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 df["monto_compra_calc"] = df[col_u_compra] * df[col_precio]
                 col_m_compra = "monto_compra_calc"
 
+            if not col_m_recib or col_m_recib del df.columns if hasattr(df, 'columns') else False:
+                pass
             if not col_m_recib or col_m_recib not in df.columns:
                 if col_precio in df.columns and (df[col_precio] > 0).any(): df["monto_recibido_calc"] = df[col_u_recib] * df[col_precio]
                 else:
@@ -213,16 +240,22 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 
             df["quiebre_unid_calc"] = (df[col_u_compra] - df[col_u_recib]).clip(lower=0)
 
-            semanas_todas = sorted(list(df[col_semana].dropna().unique())) if col_semana else []
+            # Función para ordenar semanas numéricamente
+            def orden_semana_key(s):
+                try:
+                    return (0, int(float(s)))
+                except (ValueError, TypeError):
+                    return (1, str(s))
+
+            semanas_todas = sorted([s for s in df[col_semana].unique() if str(s).strip() != ""], key=orden_semana_key) if col_semana else []
             ultimas_4_semanas = semanas_todas[-4:] if semanas_todas else []
 
             # --- FILTRO POR SEMANA TIPO TARJETAS ---
             st.markdown("### 📅 Seleccionar Semana")
             opciones_semanas = {"Todas": "Todas"}
             for s in semanas_todas:
-                if pd.notna(s):
-                    val_str = str(int(s)) if isinstance(s, (int, float)) and float(s).is_integer() else str(s)
-                    opciones_semanas[f"Semana {val_str}"] = s
+                val_str = fmt_sem(s)
+                opciones_semanas[f"Semana {val_str}"] = s
 
             semanas_disp = list(opciones_semanas.keys())
             idx_defecto = len(semanas_disp) - 1 if semanas_todas else 0
@@ -237,23 +270,21 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             # --- RELOJES (GAUGES) ---
             if col_semana:
                 sem_actual = semana_sel if semana_sel != "Todas" else (semanas_todas[-1] if semanas_todas else None)
-                if sem_actual:
+                if sem_actual is not None:
                     df_sem_curr = df[df[col_semana] == sem_actual].copy()
                     
                     if is_pu:
-                        # 1 Solo Gauge para PU Global
                         tot_c = df_sem_curr[col_m_compra].sum()
                         tot_r = df_sem_curr[col_m_recib].sum()
                         fr_tot = (tot_r / tot_c * 100) if tot_c > 0 else 0.0
                         
-                        st.markdown(f"### ⏱️ Fill rate W{sem_actual} (PU General)")
+                        st.markdown(f"### ⏱️ Fill rate W{fmt_sem(sem_actual)} (PU General)")
                         col_r1, col_r2, col_r3 = st.columns([1, 2, 1])
                         with col_r2:
                             fig_g = crear_reloj_gauge("FILL RATE GLOBAL", fr_tot, "#0070f3")
                             st.plotly_chart(fig_g, use_container_width=True, key=f"gauge_pu_{nombre_hoja}_{i}")
                             
                     elif is_sb and col_div:
-                        # 2 Gauges para SB (Consumo y Farma)
                         grp_curr = df_sem_curr.groupby(col_div)[[col_m_compra, col_m_recib]].sum().reset_index()
                         fr_consumo_monto, fr_farma_monto = 0.0, 0.0
                         for _, row in grp_curr.iterrows():
@@ -262,7 +293,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                             if "CONSUMO" in div_name: fr_consumo_monto = pct
                             elif "FARMA" in div_name: fr_farma_monto = pct
 
-                        st.markdown(f"### ⏱️ Fill rate W{sem_actual}")
+                        st.markdown(f"### ⏱️ Fill rate W{fmt_sem(sem_actual)}")
                         col_r1, col_r2 = st.columns(2)
                         with col_r1:
                             fig_g_cons = crear_reloj_gauge("CONSUMO MASIVO", fr_consumo_monto, "#f97316")
@@ -278,14 +309,17 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             crit_orden = st.radio("Ordenar Top 15 por:", options=["Monto ($)", "Unidades"], horizontal=True, key=f"crit_top15_{nombre_hoja}_{i}")
             sem_top = semana_sel if semana_sel != "Todas" else (semanas_todas[-1] if semanas_todas else None)
 
-            if sem_top and col_sku:
+            if sem_top is not None:
                 sem_sig = None
                 try:
                     idx_curr = semanas_todas.index(sem_top)
-                    if idx_curr + 1 < len(semanas_todas): sem_sig = semanas_todas[idx_curr + 1]
-                    elif isinstance(sem_top, (int, float)): sem_sig = sem_top + 1
+                    if idx_curr + 1 < len(semanas_todas): 
+                        sem_sig = semanas_todas[idx_curr + 1]
+                    elif str(sem_top).isdigit(): 
+                        sem_sig = str(int(sem_top) + 1)
                 except ValueError:
-                    if isinstance(sem_top, (int, float)): sem_sig = sem_top + 1
+                    if str(sem_top).isdigit(): 
+                        sem_sig = str(int(sem_top) + 1)
 
                 oc_abierta_map = {}
                 if sem_sig is not None:
@@ -294,85 +328,39 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
                 df_sem_top = df[df[col_semana] == sem_top].copy()
 
-                if is_pu:
-                    # 1 SOLO TOP 15 PARA PU
-                    tot_compra_m = df_sem_top[col_m_compra].sum()
-                    tot_recib_m = df_sem_top[col_m_recib].sum()
-                    fr_div_pct = (tot_recib_m / tot_compra_m * 100) if tot_compra_m > 0 else 0.0
+                if df_sem_top.empty:
+                    st.info(f"No se encontraron registros para la semana {fmt_sem(sem_top)}.")
+                else:
+                    if is_pu:
+                        # 1 SOLO TOP 15 PARA PU
+                        tot_compra_m = df_sem_top[col_m_compra].sum()
+                        tot_recib_m = df_sem_top[col_m_recib].sum()
+                        fr_div_pct = (tot_recib_m / tot_compra_m * 100) if tot_compra_m > 0 else 0.0
 
-                    st.markdown(f"#### 📌 RESUMEN GENERAL PU (Sem {sem_top})")
-                    st.metric(
-                        label="Fill Rate General", 
-                        value=f"{fr_div_pct:.1f}%",
-                        delta=f"{tot_recib_m - tot_compra_m:,.0f} $ (Dif)".replace(",", ".")
-                    )
+                        st.markdown(f"#### 📌 RESUMEN GENERAL PU (Sem {fmt_sem(sem_top)})")
+                        st.metric(
+                            label="Fill Rate General", 
+                            value=f"{fr_div_pct:.1f}%",
+                            delta=f"{tot_recib_m - tot_compra_m:,.0f} $ (Dif)".replace(",", ".")
+                        )
 
-                    grp_top = df_sem_top.groupby([col_sku, col_desc]).agg({
-                        col_u_compra: 'sum', col_m_compra: 'sum',
-                        'quiebre_monto_calc': 'sum', 'quiebre_unid_calc': 'sum'
-                    }).reset_index()
+                        grp_top = df_sem_top.groupby([col_sku, col_desc], as_index=False).agg({
+                            col_u_compra: 'sum', col_m_compra: 'sum',
+                            'quiebre_monto_calc': 'sum', 'quiebre_unid_calc': 'sum'
+                        })
 
-                    if col_rechazado and col_rechazado in df_sem_top.columns:
-                        grp_rech = df_sem_top.groupby([col_sku, col_desc])[col_rechazado].sum().reset_index()
-                        grp_top = pd.merge(grp_top, grp_rech, on=[col_sku, col_desc], how='left')
-                        grp_top[col_rechazado] = grp_top[col_rechazado].fillna(0)
-                    else:
-                        grp_top["Suma de RECHAZADO"] = 0
+                        if col_rechazado and col_rechazado in df_sem_top.columns:
+                            grp_rech = df_sem_top.groupby([col_sku, col_desc], as_index=False)[col_rechazado].sum()
+                            grp_top = pd.merge(grp_top, grp_rech, on=[col_sku, col_desc], how='left')
+                            grp_top[col_rechazado] = grp_top[col_rechazado].fillna(0)
+                        else:
+                            grp_top["Suma de RECHAZADO"] = 0
 
-                    grp_top["OC abierta"] = grp_top[col_sku].map(oc_abierta_map).fillna(0)
-                    col_sort = 'quiebre_monto_calc' if crit_orden == "Monto ($)" else 'quiebre_unid_calc'
-                    grp_top = grp_top.sort_values(by=col_sort, ascending=False).head(15)
+                        grp_top["OC abierta"] = grp_top[col_sku].map(oc_abierta_map).fillna(0)
+                        col_sort = 'quiebre_monto_calc' if crit_orden == "Monto ($)" else 'quiebre_unid_calc'
+                        grp_top = grp_top.sort_values(by=col_sort, ascending=False).head(15)
 
-                    grp_top_disp = pd.DataFrame()
-                    grp_top_disp["SKU"] = grp_top[col_sku].astype(str)
-                    grp_top_disp["Descripción"] = grp_top[col_desc]
-                    grp_top_disp["Unidades Compra"] = grp_top[col_u_compra].apply(formato_unidades)
-                    grp_top_disp["Compra Total ($)"] = grp_top[col_m_compra].apply(formato_moneda)
-                    grp_top_disp["Quiebre ($)"] = grp_top['quiebre_monto_calc'].apply(lambda x: f"-{formato_moneda(abs(x))}" if x > 0 else "$0")
-                    col_r_name = col_rechazado if (col_rechazado and col_rechazado in grp_top.columns) else "Suma de RECHAZADO"
-                    grp_top_disp["Rechazado (Unds)"] = grp_top[col_r_name].apply(formato_unidades)
-                    lbl_oc = f"OC Abierta Sem {sem_sig}" if sem_sig else "OC Abierta"
-                    grp_top_disp[lbl_oc] = grp_top["OC abierta"].apply(formato_unidades)
-
-                    st.dataframe(grp_top_disp, hide_index=True, use_container_width=True)
-
-                elif is_sb and col_div:
-                    # SB LOGIC: 2 COLUMNAS POR DIVISIÓN
-                    divisiones_unicas = [d for d in df_sem_top[col_div].dropna().unique()]
-                    div_cons = next((d for d in divisiones_unicas if "CONSUMO" in str(d).upper()), None)
-                    div_farm = next((d for d in divisiones_unicas if "FARMA" in str(d).upper()), None)
-                    
-                    lista_divs = [d for d in [div_cons, div_farm] if d is not None]
-                    if not lista_divs and len(divisiones_unicas) > 0: lista_divs = divisiones_unicas[:2]
-
-                    col_t1, col_t2 = st.columns(2)
-                    columnas_ui = [col_t1, col_t2]
-
-                    for idx, div_nombre in enumerate(lista_divs):
-                        if idx >= 2: break
-                        with columnas_ui[idx]:
-                            df_div = df_sem_top[df_sem_top[col_div] == div_nombre].copy()
-                            tot_compra_m = df_div[col_m_compra].sum()
-                            tot_recib_m = df_div[col_m_recib].sum()
-                            fr_div_pct = (tot_recib_m / tot_compra_m * 100) if tot_compra_m > 0 else 0.0
-
-                            st.markdown(f"#### 📌 {str(div_nombre).upper()}")
-                            st.metric(label=f"Fill Rate (Sem {sem_top})", value=f"{fr_div_pct:.1f}%", delta=f"{tot_recib_m - tot_compra_m:,.0f} $ (Dif)".replace(",", "."))
-
-                            grp_top = df_div.groupby([col_sku, col_desc]).agg({
-                                col_u_compra: 'sum', col_m_compra: 'sum', 'quiebre_monto_calc': 'sum', 'quiebre_unid_calc': 'sum'
-                            }).reset_index()
-
-                            if col_rechazado and col_rechazado in df_div.columns:
-                                grp_rech = df_div.groupby([col_sku, col_desc])[col_rechazado].sum().reset_index()
-                                grp_top = pd.merge(grp_top, grp_rech, on=[col_sku, col_desc], how='left')
-                                grp_top[col_rechazado] = grp_top[col_rechazado].fillna(0)
-                            else: grp_top["Suma de RECHAZADO"] = 0
-
-                            grp_top["OC abierta"] = grp_top[col_sku].map(oc_abierta_map).fillna(0)
-                            col_sort = 'quiebre_monto_calc' if crit_orden == "Monto ($)" else 'quiebre_unid_calc'
-                            grp_top = grp_top.sort_values(by=col_sort, ascending=False).head(15)
-
+                        if not grp_top.empty:
                             grp_top_disp = pd.DataFrame()
                             grp_top_disp["SKU"] = grp_top[col_sku].astype(str)
                             grp_top_disp["Descripción"] = grp_top[col_desc]
@@ -381,21 +369,71 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                             grp_top_disp["Quiebre ($)"] = grp_top['quiebre_monto_calc'].apply(lambda x: f"-{formato_moneda(abs(x))}" if x > 0 else "$0")
                             col_r_name = col_rechazado if (col_rechazado and col_rechazado in grp_top.columns) else "Suma de RECHAZADO"
                             grp_top_disp["Rechazado (Unds)"] = grp_top[col_r_name].apply(formato_unidades)
-                            lbl_oc = f"OC Abierta Sem {sem_sig}" if sem_sig else "OC Abierta"
+                            lbl_oc = f"OC Abierta Sem {fmt_sem(sem_sig)}" if sem_sig else "OC Abierta"
                             grp_top_disp[lbl_oc] = grp_top["OC abierta"].apply(formato_unidades)
 
                             st.dataframe(grp_top_disp, hide_index=True, use_container_width=True)
+                        else:
+                            st.info("No hay datos de quiebres para mostrar en esta vista.")
+
+                    elif is_sb and col_div:
+                        divisiones_unicas = [d for d in df_sem_top[col_div].dropna().unique()]
+                        div_cons = next((d for d in divisiones_unicas if "CONSUMO" in str(d).upper()), None)
+                        div_farm = next((d for d in divisiones_unicas if "FARMA" in str(d).upper()), None)
+                        
+                        lista_divs = [d for d in [div_cons, div_farm] if d is not None]
+                        if not lista_divs and len(divisiones_unicas) > 0: lista_divs = divisiones_unicas[:2]
+
+                        col_t1, col_t2 = st.columns(2)
+                        columnas_ui = [col_t1, col_t2]
+
+                        for idx, div_nombre in enumerate(lista_divs):
+                            if idx >= 2: break
+                            with columnas_ui[idx]:
+                                df_div = df_sem_top[df_sem_top[col_div] == div_nombre].copy()
+                                tot_compra_m = df_div[col_m_compra].sum()
+                                tot_recib_m = df_div[col_m_recib].sum()
+                                fr_div_pct = (tot_recib_m / tot_compra_m * 100) if tot_compra_m > 0 else 0.0
+
+                                st.markdown(f"#### 📌 {str(div_nombre).upper()}")
+                                st.metric(label=f"Fill Rate (Sem {fmt_sem(sem_top)})", value=f"{fr_div_pct:.1f}%", delta=f"{tot_recib_m - tot_compra_m:,.0f} $ (Dif)".replace(",", "."))
+
+                                grp_top = df_div.groupby([col_sku, col_desc], as_index=False).agg({
+                                    col_u_compra: 'sum', col_m_compra: 'sum', 'quiebre_monto_calc': 'sum', 'quiebre_unid_calc': 'sum'
+                                })
+
+                                if col_rechazado and col_rechazado in df_div.columns:
+                                    grp_rech = df_div.groupby([col_sku, col_desc], as_index=False)[col_rechazado].sum()
+                                    grp_top = pd.merge(grp_top, grp_rech, on=[col_sku, col_desc], how='left')
+                                    grp_top[col_rechazado] = grp_top[col_rechazado].fillna(0)
+                                else: grp_top["Suma de RECHAZADO"] = 0
+
+                                grp_top["OC abierta"] = grp_top[col_sku].map(oc_abierta_map).fillna(0)
+                                col_sort = 'quiebre_monto_calc' if crit_orden == "Monto ($)" else 'quiebre_unid_calc'
+                                grp_top = grp_top.sort_values(by=col_sort, ascending=False).head(15)
+
+                                grp_top_disp = pd.DataFrame()
+                                grp_top_disp["SKU"] = grp_top[col_sku].astype(str)
+                                grp_top_disp["Descripción"] = grp_top[col_desc]
+                                grp_top_disp["Unidades Compra"] = grp_top[col_u_compra].apply(formato_unidades)
+                                grp_top_disp["Compra Total ($)"] = grp_top[col_m_compra].apply(formato_moneda)
+                                grp_top_disp["Quiebre ($)"] = grp_top['quiebre_monto_calc'].apply(lambda x: f"-{formato_moneda(abs(x))}" if x > 0 else "$0")
+                                col_r_name = col_rechazado if (col_rechazado and col_rechazado in grp_top.columns) else "Suma de RECHAZADO"
+                                grp_top_disp["Rechazado (Unds)"] = grp_top[col_r_name].apply(formato_unidades)
+                                lbl_oc = f"OC Abierta Sem {fmt_sem(sem_sig)}" if sem_sig else "OC Abierta"
+                                grp_top_disp[lbl_oc] = grp_top["OC abierta"].apply(formato_unidades)
+
+                                st.dataframe(grp_top_disp, hide_index=True, use_container_width=True)
 
             st.divider()
 
             # --- TABLAS DINÁMICAS: QUIEBRE POR MARCA ---
-            if sem_top and col_marca:
+            if sem_top is not None and col_marca:
                 st.subheader("🏷️ Resumen Quiebres por Marca")
                 df_sem_marca = df[df[col_semana] == sem_top].copy()
 
                 if is_pu:
-                    # 1 SOLA TABLA DE MARCAS PARA PU
-                    grp_m = df_sem_marca.groupby(col_marca).agg({col_m_compra: 'sum', 'quiebre_monto_calc': 'sum'}).reset_index()
+                    grp_m = df_sem_marca.groupby(col_marca, as_index=False).agg({col_m_compra: 'sum', 'quiebre_monto_calc': 'sum'})
                     grp_m = grp_m[grp_m['quiebre_monto_calc'] > 0]
 
                     if not grp_m.empty:
@@ -416,10 +454,9 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                         styled_df = grp_m_final.style.format({"QUIEBRE %": "{:.2f}%"}).apply(aplicar_criticidad, subset=["QUIEBRE %"])
                         st.dataframe(styled_df, hide_index=True, use_container_width=True)
                     else:
-                        st.info(f"No hay quiebres registrados para la semana {sem_top} en PU.")
+                        st.info(f"No hay quiebres registrados para la semana {fmt_sem(sem_top)} en PU.")
 
                 elif is_sb and col_div:
-                    # SB LOGIC: 2 TABLAS POR DIVISIÓN
                     col_m1, col_m2 = st.columns(2)
                     cols_marca_ui = [col_m1, col_m2]
 
@@ -428,7 +465,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                         with cols_marca_ui[idx]:
                             st.markdown(f"#### {str(div_nombre).upper()}")
                             df_div_m = df_sem_marca[df_sem_marca[col_div] == div_nombre].copy()
-                            grp_m = df_div_m.groupby(col_marca).agg({col_m_compra: 'sum', 'quiebre_monto_calc': 'sum'}).reset_index()
+                            grp_m = df_div_m.groupby(col_marca, as_index=False).agg({col_m_compra: 'sum', 'quiebre_monto_calc': 'sum'})
                             grp_m = grp_m[grp_m['quiebre_monto_calc'] > 0]
 
                             if not grp_m.empty:
@@ -449,7 +486,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                                 styled_df = grp_m_final.style.format({"QUIEBRE %": "{:.2f}%"}).apply(aplicar_criticidad, subset=["QUIEBRE %"])
                                 st.dataframe(styled_df, hide_index=True, use_container_width=True)
                             else:
-                                st.info(f"No hay quiebres registrados para {div_nombre} en la semana {sem_top}.")
+                                st.info(f"No hay quiebres registrados para {div_nombre} en la semana {fmt_sem(sem_top)}.")
 
                 st.divider()
 
@@ -461,12 +498,12 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 st.subheader("📊 Resumen Fill Rate (Últimas 4 Semanas)")
 
                 if is_pu:
-                    # AGRUPACIÓN GLOBAL PARA PU (SIN DIVISIÓN)
-                    grp = df_4sem.groupby(col_semana)[[col_u_compra, col_u_recib, col_m_compra, col_m_recib]].sum().reset_index()
+                    grp = df_4sem.groupby(col_semana, as_index=False)[[col_u_compra, col_u_recib, col_m_compra, col_m_recib]].sum()
                     grp["FR_Unds_pct"] = (grp[col_u_recib] / grp[col_u_compra] * 100).fillna(0)
                     grp["FR_Monto_pct"] = (grp[col_m_recib] / grp[col_m_compra] * 100).fillna(0)
 
                     df_disp = grp.copy()
+                    df_disp[col_semana] = df_disp[col_semana].apply(fmt_sem)
                     df_disp[col_u_compra] = df_disp[col_u_compra].apply(formato_unidades)
                     df_disp[col_u_recib] = df_disp[col_u_recib].apply(formato_unidades)
                     df_disp[col_m_compra] = df_disp[col_m_compra].apply(formato_moneda)
@@ -481,12 +518,11 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                     st.dataframe(df_disp, hide_index=True, use_container_width=True)
                     st.divider()
 
-                    # GRÁFICOS TOTALES PARA PU
                     col_g1, col_g2 = st.columns(2)
                     with col_g1:
                         st.markdown("##### Fill Rate por Unidades (Evolutivo)")
                         fig_unds = go.Figure(go.Bar(
-                            x=[f"Sem {s}" for s in grp[col_semana]], y=grp["FR_Unds_pct"],
+                            x=[f"Sem {fmt_sem(s)}" for s in grp[col_semana]], y=grp["FR_Unds_pct"],
                             text=[f"{v:.1f}%" for v in grp["FR_Unds_pct"]], textposition="auto", marker_color="#0070f3"
                         ))
                         fig_unds.update_layout(height=360, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#ffffff"), yaxis=dict(range=[0, 115], gridcolor="#222222", ticksuffix="%"), xaxis=dict(gridcolor="#222222"))
@@ -495,19 +531,19 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                     with col_g2:
                         st.markdown("##### Fill Rate por Monto (Evolutivo)")
                         fig_monto = go.Figure(go.Bar(
-                            x=[f"Sem {s}" for s in grp[col_semana]], y=grp["FR_Monto_pct"],
+                            x=[f"Sem {fmt_sem(s)}" for s in grp[col_semana]], y=grp["FR_Monto_pct"],
                             text=[f"{v:.1f}%" for v in grp["FR_Monto_pct"]], textposition="auto", marker_color="#00adb5"
                         ))
                         fig_monto.update_layout(height=360, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#ffffff"), yaxis=dict(range=[0, 115], gridcolor="#222222", ticksuffix="%"), xaxis=dict(gridcolor="#222222"))
                         st.plotly_chart(fig_monto, use_container_width=True, key=f"plot_monto_{nombre_hoja}_{i}")
 
                 elif is_sb and col_div:
-                    # AGRUPACIÓN POR DIVISIÓN PARA SB (CÓDIGO ORIGINAL)
-                    grp = df_4sem.groupby([col_semana, col_div])[[col_u_compra, col_u_recib, col_m_compra, col_m_recib]].sum().reset_index()
+                    grp = df_4sem.groupby([col_semana, col_div], as_index=False)[[col_u_compra, col_u_recib, col_m_compra, col_m_recib]].sum()
                     grp["FR_Unds_pct"] = (grp[col_u_recib] / grp[col_u_compra] * 100).fillna(0)
                     grp["FR_Monto_pct"] = (grp[col_m_recib] / grp[col_m_compra] * 100).fillna(0)
                     
                     df_disp = grp.copy()
+                    df_disp[col_semana] = df_disp[col_semana].apply(fmt_sem)
                     df_disp[col_u_compra] = df_disp[col_u_compra].apply(formato_unidades)
                     df_disp[col_u_recib] = df_disp[col_u_recib].apply(formato_unidades)
                     df_disp[col_m_compra] = df_disp[col_m_compra].apply(formato_moneda)
@@ -523,7 +559,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                     p_unds = grp.pivot(index=col_semana, columns=col_div, values="FR_Unds_pct").reset_index()
                     p_monto = grp.pivot(index=col_semana, columns=col_div, values="FR_Monto_pct").reset_index()
 
-                    tot_sem = df_4sem.groupby(col_semana)[[col_u_compra, col_u_recib, col_m_compra, col_m_recib]].sum().reset_index()
+                    tot_sem = df_4sem.groupby(col_semana, as_index=False)[[col_u_compra, col_u_recib, col_m_compra, col_m_recib]].sum()
                     tot_sem["Total_FR_Unds"] = (tot_sem[col_u_recib] / tot_sem[col_u_compra] * 100).fillna(0)
                     tot_sem["Total_FR_Monto"] = (tot_sem[col_m_recib] / tot_sem[col_m_compra] * 100).fillna(0)
 
@@ -532,8 +568,8 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                         fig_unds = go.Figure()
                         for col_d in [c for c in p_unds.columns if c != col_semana]:
                             color_bar = "#f97316" if "CONSUMO" in str(col_d).upper() else "#00adb5"
-                            fig_unds.add_trace(go.Bar(x=[f"Sem {s}" for s in p_unds[col_semana]], y=p_unds[col_d], name=str(col_d).title(), marker_color=color_bar))
-                        fig_unds.add_trace(go.Scatter(x=[f"Sem {s}" for s in tot_sem[col_semana]], y=tot_sem["Total_FR_Unds"], name="Total Semana", mode="lines+markers+text", text=[f"{v:.1f}%" for v in tot_sem["Total_FR_Unds"]], textposition="top center", line=dict(color="#e2e8f0", width=3)))
+                            fig_unds.add_trace(go.Bar(x=[f"Sem {fmt_sem(s)}" for s in p_unds[col_semana]], y=p_unds[col_d], name=str(col_d).title(), marker_color=color_bar))
+                        fig_unds.add_trace(go.Scatter(x=[f"Sem {fmt_sem(s)}" for s in tot_sem[col_semana]], y=tot_sem["Total_FR_Unds"], name="Total Semana", mode="lines+markers+text", text=[f"{v:.1f}%" for v in tot_sem["Total_FR_Unds"]], textposition="top center", line=dict(color="#e2e8f0", width=3)))
                         fig_unds.update_layout(barmode="group", height=360, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#ffffff"), yaxis=dict(range=[0, 115], gridcolor="#222222", ticksuffix="%"), xaxis=dict(gridcolor="#222222"), legend=dict(orientation="h", y=-0.2))
                         st.plotly_chart(fig_unds, use_container_width=True, key=f"plot_unds_sb_{i}")
 
@@ -542,8 +578,8 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                         fig_monto = go.Figure()
                         for col_d in [c for c in p_monto.columns if c != col_semana]:
                             color_bar = "#f97316" if "CONSUMO" in str(col_d).upper() else "#00adb5"
-                            fig_monto.add_trace(go.Bar(x=[f"Sem {s}" for s in p_monto[col_semana]], y=p_monto[col_d], name=str(col_d).title(), marker_color=color_bar))
-                        fig_monto.add_trace(go.Scatter(x=[f"Sem {s}" for s in tot_sem[col_semana]], y=tot_sem["Total_FR_Monto"], name="Total Semana", mode="lines+markers+text", text=[f"{v:.1f}%" for v in tot_sem["Total_FR_Monto"]], textposition="top center", line=dict(color="#e2e8f0", width=3)))
+                            fig_monto.add_trace(go.Bar(x=[f"Sem {fmt_sem(s)}" for s in p_monto[col_semana]], y=p_monto[col_d], name=str(col_d).title(), marker_color=color_bar))
+                        fig_monto.add_trace(go.Scatter(x=[f"Sem {fmt_sem(s)}" for s in tot_sem[col_semana]], y=tot_sem["Total_FR_Monto"], name="Total Semana", mode="lines+markers+text", text=[f"{v:.1f}%" for v in tot_sem["Total_FR_Monto"]], textposition="top center", line=dict(color="#e2e8f0", width=3)))
                         fig_monto.update_layout(barmode="group", height=360, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#ffffff"), yaxis=dict(range=[0, 115], gridcolor="#222222", ticksuffix="%"), xaxis=dict(gridcolor="#222222"), legend=dict(orientation="h", y=-0.2))
                         st.plotly_chart(fig_monto, use_container_width=True, key=f"plot_monto_sb_{i}")
 
