@@ -132,13 +132,13 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         df = hojas[nombre_hoja].copy()
         
         if nombre_hoja == "SB":
-            # Detección directa de columnas
+            # Detección de columnas
             col_semana = next((c for c in df.columns if c.strip().lower() == 'semana'), None) or next((c for c in df.columns if 'semana' in c.lower()), None)
             col_sku = next((c for c in df.columns if c.strip().lower() == 'sku'), None)
             col_desc = next((c for c in df.columns if c.strip().lower() == 'descripcion'), None) or next((c for c in df.columns if 'desc' in c.lower()), col_sku)
             col_div = next((c for c in df.columns if c.strip().lower() == 'division'), None) or next((c for c in df.columns if 'divis' in c.lower()), None)
             
-            # --- DETECCIÓN PRIORITARIA PARA 'MARCA' ---
+            # Columna Marca
             col_marca = next((c for c in df.columns if c.strip().lower() == 'marca'), None)
             if not col_marca:
                 col_marca = next((c for c in df.columns if any(k in c.lower() for k in ['marca', 'brand', 'lab', 'proveedor'])), None)
@@ -174,7 +174,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 df["monto_recibido_calc"] = df[col_u_recib] * precio_linea
                 col_m_recib = "monto_recibido_calc"
 
-            # Quiebres en monto y unidades
             if col_quiebre and col_quiebre in df.columns:
                 df["quiebre_monto_calc"] = df[col_quiebre].abs()
             else:
@@ -312,7 +311,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             st.divider()
 
             # =========================================================
-            # 🏷️ TABLAS DINÁMICAS: QUIEBRE POR MARCA
+            # 🏷️ TABLAS DINÁMICAS: QUIEBRE POR MARCA CON CRITICIDAD DE COLOR
             # =========================================================
             if sem_top and col_div and col_marca:
                 st.subheader("🏷️ Resumen Quiebres por Marca")
@@ -330,13 +329,11 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
                         df_div_m = df_sem_marca[df_sem_marca[col_div] == div_nombre].copy()
 
-                        # Agrupar estrictamente por la columna 'Marca'
                         grp_m = df_div_m.groupby(col_marca).agg({
                             col_m_compra: 'sum',
                             'quiebre_monto_calc': 'sum'
                         }).reset_index()
 
-                        # Filtrar quiebres mayores a $0 (omite marcas sin quiebre)
                         grp_m = grp_m[grp_m['quiebre_monto_calc'] > 0]
 
                         if not grp_m.empty:
@@ -349,7 +346,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                             grp_m_disp["Etiquetas de fila"] = grp_m[col_marca].astype(str)
                             grp_m_disp["TOTAL COMPRA"] = grp_m[col_m_compra].apply(formato_moneda)
                             grp_m_disp["MONTO QUIEBRE"] = grp_m['quiebre_monto_calc'].apply(lambda x: f"-{formato_moneda(abs(x))}")
-                            grp_m_disp["QUIEBRE %"] = grp_m['pct_quiebre'].apply(lambda x: f"{x:.2f}%")
+                            grp_m_disp["QUIEBRE %"] = grp_m['pct_quiebre']  # Se mantiene flotante numérico
 
                             # Fila Total General
                             total_compra_div = grp_m[col_m_compra].sum()
@@ -357,11 +354,36 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                                 "Etiquetas de fila": "Total general",
                                 "TOTAL COMPRA": formato_moneda(total_compra_div),
                                 "MONTO QUIEBRE": f"-{formato_moneda(abs(total_quiebre_div))}",
-                                "QUIEBRE %": "100,00%"
+                                "QUIEBRE %": 100.0
                             }])
 
                             grp_m_final = pd.concat([grp_m_disp, fila_total], ignore_index=True)
-                            st.dataframe(grp_m_final, hide_index=True, use_container_width=True)
+
+                            # Función para semáforo de criticidad por celda
+                            def aplicar_criticidad(column):
+                                is_total = grp_m_final["Etiquetas de fila"] == "Total general"
+                                styles = []
+                                for val, total in zip(column, is_total):
+                                    if total:
+                                        styles.append('font-weight: bold; background-color: #1a1a1a;')
+                                    elif val >= 15.0:
+                                        styles.append('background-color: #8b0000; color: #ffffff; font-weight: bold;')  # Rojo Crítico
+                                    elif val >= 10.0:
+                                        styles.append('background-color: #b91c1c; color: #ffffff; font-weight: bold;')  # Rojo Alto
+                                    elif val >= 5.0:
+                                        styles.append('background-color: #c2410c; color: #ffffff;')  # Naranja Medio
+                                    elif val > 0:
+                                        styles.append('background-color: #27272a; color: #d4d4d8;')  # Gris Neutro
+                                    else:
+                                        styles.append('')
+                                return styles
+
+                            # Estilizar y formatear
+                            styled_df = grp_m_final.style.format({
+                                "QUIEBRE %": "{:.2f}%"
+                            }).apply(aplicar_criticidad, subset=["QUIEBRE %"])
+
+                            st.dataframe(styled_df, hide_index=True, use_container_width=True)
                         else:
                             st.info(f"No hay quiebres registrados para {div_nombre} en la semana {sem_top}.")
 
