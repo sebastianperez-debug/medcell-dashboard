@@ -200,13 +200,20 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         if is_stock:
             st.markdown("### 📦 Dashboard de Fecha de Caducidad")
             
-            # 1. Identificar columnas clave
+            # 1. Identificar columnas clave (Priorizando 'lote_proveedor' directamente)
             col_cod = next((c for c in df.columns if c.strip().lower() in ['codigo_articulo', 'id_producto', 'sku']), None)
             col_estado_sub = next((c for c in df.columns if c.strip().lower() in ['estado_subin', 'sub_inventario', 'estado sub inventario']), None)
-            col_lote = next((c for c in df.columns if c.strip().lower() in ['lote_proveedor', 'lote']), None)
+            
+            # Prioridad exacta a 'lote_proveedor'
+            col_lote = next((c for c in df.columns if c.strip().lower() == 'lote_proveedor'), None) or next((c for c in df.columns if c.strip().lower() in ['lote', 'lote_prov']), None)
+            
             col_loc = next((c for c in df.columns if c.strip().lower() in ['localizador', 'ubicacion']), None)
             col_fecha = next((c for c in df.columns if c.strip().lower() in ['fecha_expiracion_lote', 'vencimiento', 'fecha expiracion']), None)
-            col_cant = next((c for c in df.columns if c.strip().lower() in ['cantidad', 'stock']), None)
+            col_cant = next((c for c in df.columns if c.strip().lower() in ['cantidad', 'stock', 'unidades']), None)
+
+            # Asegurar numérico en la columna de cantidad
+            if col_cant:
+                df[col_cant] = pd.to_numeric(df[col_cant], errors='coerce').fillna(0)
 
             # 2. Calcular alertas de caducidad a 13 meses
             if col_fecha:
@@ -238,17 +245,23 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 else:
                     prod_sel = "Seleccione..."
 
-            # --- B. Filtrar Dinámicamente el Dataframe segun el SKU ---
+            # --- B. Filtrar Dinámicamente el Dataframe según el SKU ---
             if prod_sel != "Seleccione...":
                 df_dash = df[df[col_cod].astype(str) == prod_sel].copy()
             else:
                 df_dash = df.copy()
 
-            # --- C. Calcular KPIs (reaccionan al filtro global o individual) ---
-            total_productos = df_dash[col_cod].nunique() if col_cod else 0
-            total_vencidos = len(df_dash[df_dash["Alerta_Caducidad"] == "VENCIDO"])
-            total_pronto = len(df_dash[df_dash["Alerta_Caducidad"] == "Pronto vence"])
-            total_vigentes = len(df_dash[df_dash["Alerta_Caducidad"] == "Vigente"])
+            # --- C. Calcular KPIs en SUMA DE UNIDADES (Cantidad) ---
+            if col_cant:
+                total_unidades = df_dash[col_cant].sum()
+                total_vencidos = df_dash[df_dash["Alerta_Caducidad"] == "VENCIDO"][col_cant].sum()
+                total_pronto = df_dash[df_dash["Alerta_Caducidad"] == "Pronto vence"][col_cant].sum()
+                total_vigentes = df_dash[df_dash["Alerta_Caducidad"] == "Vigente"][col_cant].sum()
+            else:
+                total_unidades = len(df_dash)
+                total_vencidos = len(df_dash[df_dash["Alerta_Caducidad"] == "VENCIDO"])
+                total_pronto = len(df_dash[df_dash["Alerta_Caducidad"] == "Pronto vence"])
+                total_vigentes = len(df_dash[df_dash["Alerta_Caducidad"] == "Vigente"])
 
             # --- D. Renderizar Tarjetas en Columna 1 ---
             with col_dash1:
@@ -258,10 +271,10 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 </style>
                 """, unsafe_allow_html=True)
                 
-                st.markdown(f'<div class="stock-card" style="background-color: #333; color: white;">Productos registrados<br><span style="font-size:24px;">{total_productos}</span></div>', unsafe_allow_html=True)
-                st.markdown(f'<div class="stock-card" style="background-color: #e74c3c;">Lotes Vencidos<br><span style="font-size:24px;">{total_vencidos}</span></div>', unsafe_allow_html=True)
-                st.markdown(f'<div class="stock-card" style="background-color: #f1c40f; color: black;">Pronto vence (< 13 meses)<br><span style="font-size:24px;">{total_pronto}</span></div>', unsafe_allow_html=True)
-                st.markdown(f'<div class="stock-card" style="background-color: #2ecc71;">Vigentes (> 13 meses)<br><span style="font-size:24px;">{total_vigentes}</span></div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="stock-card" style="background-color: #333; color: white;">Unidades Registradas<br><span style="font-size:24px;">{formato_unidades(total_unidades)}</span></div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="stock-card" style="background-color: #e74c3c;">Unidades Vencidas<br><span style="font-size:24px;">{formato_unidades(total_vencidos)}</span></div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="stock-card" style="background-color: #f1c40f; color: black;">Pronto vence (< 13 meses)<br><span style="font-size:24px;">{formato_unidades(total_pronto)}</span></div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="stock-card" style="background-color: #2ecc71;">Vigentes (> 13 meses)<br><span style="font-size:24px;">{formato_unidades(total_vigentes)}</span></div>', unsafe_allow_html=True)
 
             # --- E. Renderizar Gráfico de Anillo en Columna 2 ---
             with col_dash2:
