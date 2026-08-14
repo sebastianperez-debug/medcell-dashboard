@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
+import plotly.express as px
 import os
 from datetime import datetime
 
@@ -194,7 +195,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         is_si = (nombre_clean == "SI")
 
         # =================================================================
-        # PESTAÑA VENTA SI (REDISEÑADA Y DINÁMICA)
+        # PESTAÑA VENTA SI (REDISEÑADA, VISUAL Y DINÁMICA)
         # =================================================================
         if is_si:
             st.markdown("### 📈 Dashboard Operativo de Venta SI")
@@ -256,45 +257,122 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
             st.divider()
 
-            # 4. Tablas Agrupadas por División y Cliente
-            c_div_view, c_cli_view = st.columns([1, 1.2])
+            # 4. Componentes Visuales y Tablas (División y Cliente)
+            c_div_view, c_cli_view = st.columns([1, 1.2], gap="large")
 
+            # --- SECCIÓN DIVISIÓN ---
             with c_div_view:
                 st.markdown("#### 🏢 Venta por División")
-                if col_div in df_si_filt.columns:
+                if col_div in df_si_filt.columns and not df_si_filt.empty:
                     grp_div = df_si_filt.groupby(col_div, as_index=False).agg({
                         col_monto: 'sum',
                         col_unid: 'sum'
                     })
-                    grp_div['% Monto'] = (grp_div[col_monto] / monto_total * 100) if monto_total > 0 else 0
+                    grp_div['Participación'] = (grp_div[col_monto] / monto_total) if monto_total > 0 else 0
                     grp_div = grp_div.sort_values(by=col_monto, ascending=False)
 
+                    # Gráfico Donut
+                    fig_donut = px.pie(
+                        grp_div, 
+                        values=col_monto, 
+                        names=col_div,
+                        hole=0.5,
+                        color_discrete_sequence=["#0070f3", "#109618", "#f97316", "#ff9900"]
+                    )
+                    fig_donut.update_traces(
+                        textposition='inside', 
+                        textinfo='percent+label',
+                        marker=dict(line=dict(color='#0b0b0b', width=2))
+                    )
+                    fig_donut.update_layout(
+                        template="plotly_dark",
+                        paper_bgcolor="rgba(0,0,0,0)",
+                        plot_bgcolor="rgba(0,0,0,0)",
+                        margin=dict(t=10, b=10, l=10, r=10),
+                        height=220,
+                        showlegend=False
+                    )
+                    st.plotly_chart(fig_donut, use_container_width=True, key=f"donut_div_{i}")
+
+                    # Tabla con barra de progreso
                     grp_div_disp = pd.DataFrame({
                         "División": grp_div[col_div],
-                        "Monto ($)": grp_div[col_monto].apply(formato_moneda),
-                        "Unidades": grp_div[col_unid].apply(formato_unidades),
-                        "Participación": grp_div['% Monto'].apply(lambda x: f"{x:.1f}%")
+                        "Monto ($)": grp_div[col_monto],
+                        "Unidades": grp_div[col_unid],
+                        "Participación": grp_div['Participación']
                     })
-                    st.dataframe(grp_div_disp, hide_index=True, use_container_width=True)
-                else:
-                    st.info("Columna de división no encontrada.")
 
+                    st.dataframe(
+                        grp_div_disp,
+                        column_config={
+                            "Monto ($)": st.column_config.NumberColumn("Monto ($)", format="$%,d"),
+                            "Unidades": st.column_config.NumberColumn("Unidades", format="%,d"),
+                            "Participación": st.column_config.ProgressColumn(
+                                "Participación",
+                                format="%.1f%%",
+                                min_value=0,
+                                max_value=1
+                            ),
+                        },
+                        hide_index=True,
+                        use_container_width=True
+                    )
+                else:
+                    st.info("No hay datos de división disponibles.")
+
+            # --- SECCIÓN TOP CLIENTES ---
             with c_cli_view:
                 st.markdown("#### 🏆 Top Clientes por Facturación")
-                if col_cliente in df_si_filt.columns:
+                if col_cliente in df_si_filt.columns and not df_si_filt.empty:
                     grp_cli = df_si_filt.groupby(col_cliente, as_index=False).agg({
                         col_monto: 'sum',
                         col_unid: 'sum'
                     }).sort_values(by=col_monto, ascending=False).head(10)
 
+                    # Gráfico de Barras Horizontales
+                    grp_cli_sorted = grp_cli.sort_values(by=col_monto, ascending=True)
+                    fig_bars = px.bar(
+                        grp_cli_sorted,
+                        x=col_monto,
+                        y=col_cliente,
+                        orientation='h',
+                        text_auto='.2s',
+                        color_discrete_sequence=["#00CC96"]
+                    )
+                    fig_bars.update_traces(
+                        textfont_size=11, 
+                        textposition="outside", 
+                        cliponaxis=False
+                    )
+                    fig_bars.update_layout(
+                        template="plotly_dark",
+                        paper_bgcolor="rgba(0,0,0,0)",
+                        plot_bgcolor="rgba(0,0,0,0)",
+                        margin=dict(t=10, b=10, l=10, r=10),
+                        height=220,
+                        xaxis_title="",
+                        yaxis_title=""
+                    )
+                    st.plotly_chart(fig_bars, use_container_width=True, key=f"bars_cli_{i}")
+
+                    # Tabla Detallada
                     grp_cli_disp = pd.DataFrame({
                         "Cliente": grp_cli[col_cliente],
-                        "Monto Total ($)": grp_cli[col_monto].apply(formato_moneda),
-                        "Unidades": grp_cli[col_unid].apply(formato_unidades)
+                        "Monto Total ($)": grp_cli[col_monto],
+                        "Unidades": grp_cli[col_unid]
                     })
-                    st.dataframe(grp_cli_disp, hide_index=True, use_container_width=True)
+
+                    st.dataframe(
+                        grp_cli_disp,
+                        column_config={
+                            "Monto Total ($)": st.column_config.NumberColumn("Monto Total ($)", format="$%,d"),
+                            "Unidades": st.column_config.NumberColumn("Unidades", format="%,d"),
+                        },
+                        hide_index=True,
+                        use_container_width=True
+                    )
                 else:
-                    st.info("Columna de cliente no encontrada.")
+                    st.info("No hay datos de clientes disponibles.")
 
             st.divider()
 
