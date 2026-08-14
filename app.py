@@ -28,7 +28,7 @@ st.markdown("""
     .medcell-subtitle { color: #aaaaaa; font-size: 13px; font-weight: 600; letter-spacing: 1px; margin-top: 2px; }
     .medcell-author { color: #777777; font-size: 11px; margin-top: 4px; font-style: italic; }
 
-    /* Pestanas */
+    /* Pestañas */
     .stTabs [data-baseweb="tab-list"] {
         gap: 8px; background-color: #121212; padding: 8px 12px; border-radius: 10px; border: 1px solid #262626; margin-bottom: 20px;
     }
@@ -44,7 +44,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- Funciones auxiliares ---
+# --- Funciones auxiliares de formato ---
 def formato_moneda(valor):
     try:
         val_int = int(round(valor))
@@ -59,7 +59,7 @@ def formato_unidades(valor):
     except (ValueError, TypeError):
         return "0"
 
-# --- 3. CARGA DE EXCEL ---
+# --- 3. CARGA DEL EXCEL ---
 def buscar_excel():
     posibles_rutas = [
         "SQL Seba.xlsx", "SQL Seba.xls",
@@ -132,25 +132,21 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         df = hojas[nombre_hoja].copy()
         
         if nombre_hoja == "SB":
-            # Detección inteligente de columnas
-            col_semana = next((c for c in df.columns if 'semana' in c.lower()), None)
-            col_sku = next((c for c in df.columns if c.lower() == 'sku'), None)
-            col_desc = next((c for c in df.columns if 'descrip' in c.lower() or 'nombre' in c.lower()), None) or col_sku
-            col_div = next((c for c in df.columns if 'divis' in c.lower()), None)
+            # Detección directa de columnas
+            col_semana = next((c for c in df.columns if c.strip().lower() == 'semana'), None) or next((c for c in df.columns if 'semana' in c.lower()), None)
+            col_sku = next((c for c in df.columns if c.strip().lower() == 'sku'), None)
+            col_desc = next((c for c in df.columns if c.strip().lower() == 'descripcion'), None) or next((c for c in df.columns if 'desc' in c.lower()), col_sku)
+            col_div = next((c for c in df.columns if c.strip().lower() == 'division'), None) or next((c for c in df.columns if 'divis' in c.lower()), None)
             
-            # Detección de Marca amplia
-            col_marca = next((c for c in df.columns if any(k in c.lower() for k in ['marca', 'lab', 'proveedor', 'brand', 'etiqueta'])), None)
+            # --- DETECCIÓN PRIORITARIA PARA 'MARCA' ---
+            col_marca = next((c for c in df.columns if c.strip().lower() == 'marca'), None)
             if not col_marca:
-                # Si no la encuentra por nombre, busca la primera columna de texto que no sea semana/división/sku
-                cols_texto = df.select_dtypes(include=['object']).columns
-                cols_posibles = [c for c in cols_texto if c not in [col_semana, col_sku, col_desc, col_div]]
-                if cols_posibles:
-                    col_marca = cols_posibles[0]
+                col_marca = next((c for c in df.columns if any(k in c.lower() for k in ['marca', 'brand', 'lab', 'proveedor'])), None)
 
-            col_u_compra = next((c for c in df.columns if 'comp' in c.lower() and 'unid' in c.lower()), None) or \
-                           next((c for c in df.columns if 'pedid' in c.lower() and 'unid' in c.lower()), "unidades_compra")
-            col_u_recib = next((c for c in df.columns if 'recib' in c.lower() and 'unid' in c.lower()), None) or \
-                          next((c for c in df.columns if 'fact' in c.lower() and 'unid' in c.lower()), "unidades_recibidas")
+            col_u_compra = next((c for c in df.columns if c.strip().lower() == 'unidades_compra'), None) or \
+                           next((c for c in df.columns if 'comp' in c.lower() and 'unid' in c.lower()), "unidades_compra")
+            col_u_recib = next((c for c in df.columns if c.strip().lower() == 'unidades_recibidas'), None) or \
+                          next((c for c in df.columns if 'recib' in c.lower() and 'unid' in c.lower()), "unidades_recibidas")
 
             col_m_compra = next((c for c in df.columns if c.lower().strip() in ['compra total', 'monto_compra', 'monto compra', 'total_compra', 'costo_total']), None) or \
                            next((c for c in df.columns if any(k in c.lower() for k in ['monto', 'val', 'cost', 'total', '$']) and 'comp' in c.lower()), None)
@@ -178,7 +174,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 df["monto_recibido_calc"] = df[col_u_recib] * precio_linea
                 col_m_recib = "monto_recibido_calc"
 
-            # Quiebre calculado (asegurando valores absolutos correctos)
+            # Quiebres en monto y unidades
             if col_quiebre and col_quiebre in df.columns:
                 df["quiebre_monto_calc"] = df[col_quiebre].abs()
             else:
@@ -206,7 +202,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
             st.divider()
 
-            # --- RELOJES ---
+            # --- RELOJES (GAUGES) ---
             if col_semana and col_div:
                 sem_actual = semana_sel if semana_sel != "Todas" else (semanas_todas[-1] if semanas_todas else None)
                 if sem_actual:
@@ -316,13 +312,11 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             st.divider()
 
             # =========================================================
-            # 🏷️ TABLAS DINÁMICAS: QUIEBRE POR MARCA (Ajuste mejorado)
+            # 🏷️ TABLAS DINÁMICAS: QUIEBRE POR MARCA
             # =========================================================
-            if sem_top and col_div:
+            if sem_top and col_div and col_marca:
                 st.subheader("🏷️ Resumen Quiebres por Marca")
 
-                # Seleccionar la columna para agrupar (Marca o Descripción si no hay Marca explicita)
-                col_marca_usar = col_marca if col_marca else col_desc
                 df_sem_marca = df[df[col_semana] == sem_top].copy()
                 
                 col_m1, col_m2 = st.columns(2)
@@ -336,14 +330,13 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
                         df_div_m = df_sem_marca[df_sem_marca[col_div] == div_nombre].copy()
 
-                        # Agrupar por la columna de Marca
-                        grp_m = df_div_m.groupby(col_marca_usar).agg({
+                        # Agrupar estrictamente por la columna 'Marca'
+                        grp_m = df_div_m.groupby(col_marca).agg({
                             col_m_compra: 'sum',
                             'quiebre_monto_calc': 'sum'
                         }).reset_index()
 
-                        # FILTRADO DE CERO / VACÍOS / POSITIVOS
-                        # Solo dejamos marcas que tengan Quiebre en monto > 0
+                        # Filtrar quiebres mayores a $0 (omite marcas sin quiebre)
                         grp_m = grp_m[grp_m['quiebre_monto_calc'] > 0]
 
                         if not grp_m.empty:
@@ -353,7 +346,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                             grp_m = grp_m.sort_values(by='quiebre_monto_calc', ascending=False)
 
                             grp_m_disp = pd.DataFrame()
-                            grp_m_disp["Etiquetas de fila"] = grp_m[col_marca_usar].astype(str)
+                            grp_m_disp["Etiquetas de fila"] = grp_m[col_marca].astype(str)
                             grp_m_disp["TOTAL COMPRA"] = grp_m[col_m_compra].apply(formato_moneda)
                             grp_m_disp["MONTO QUIEBRE"] = grp_m['quiebre_monto_calc'].apply(lambda x: f"-{formato_moneda(abs(x))}")
                             grp_m_disp["QUIEBRE %"] = grp_m['pct_quiebre'].apply(lambda x: f"{x:.2f}%")
@@ -370,11 +363,11 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                             grp_m_final = pd.concat([grp_m_disp, fila_total], ignore_index=True)
                             st.dataframe(grp_m_final, hide_index=True, use_container_width=True)
                         else:
-                            st.info(f"No hay quiebres > $0 en {div_nombre} para la semana {sem_top}.")
+                            st.info(f"No hay quiebres registrados para {div_nombre} en la semana {sem_top}.")
 
                 st.divider()
 
-            # --- TABLA RESUMEN FILL RATE (ÚLTIMAS 4 SEMANAS) ---
+            # --- RESUMEN 4 SEMANAS ---
             if col_semana and col_div:
                 df_base_fr = df.copy()
                 if sku_sel != "Todos" and col_sku:
