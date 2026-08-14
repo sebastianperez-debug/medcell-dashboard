@@ -76,8 +76,8 @@ def fmt_sem(val):
         return str(val)
 
 def fmt_code(val):
-    """Preserva ceros a la izquierda y formatos especiales como 0007341.7"""
-    if pd.isna(val) or val == "" or val is None:
+    """Preserva ceros a la izquierda y formatos de código de origen como 0007341.7"""
+    if pd.isna(val) or val == "" or val is None or str(val).lower() == 'nan':
         return "S/N"
     val_str = str(val).strip()
     if val_str.endswith('.0'):
@@ -128,7 +128,8 @@ def cargar_libro_excel(ruta):
     xls = pd.ExcelFile(ruta)
     hojas_dict = {}
     for hoja in xls.sheet_names:
-        df_temp = pd.read_excel(xls, hoja)
+        # Cargar con dtype=str para asegurar que ceros a la izquierda no se pierdan
+        df_temp = pd.read_excel(xls, hoja, dtype=str)
         df_temp.columns = [str(c).strip() for c in df_temp.columns]
         df_temp = df_temp.loc[:, ~df_temp.columns.str.startswith('Unnamed')]
         df_temp = df_temp.loc[:, ~df_temp.columns.duplicated()]
@@ -151,7 +152,7 @@ st.markdown("""
         <div style="display: flex; justify-content: space-between; align-items: flex-end;">
             <div>
                 <div class="medcell-brand">MEDCELL <span>OPERACIONES</span></div>
-                <div class="medcell-subtitle">SEGUIMIENTO DE CAMPAÑAS Y CONTROL DE FILL RATE</div>
+                <div class="medcell-subtitle">ANÁLISIS DE OPERACIÓN</div>
                 <div class="medcell-author">Desarrollado por Sebastián Alexis Pérez López</div>
             </div>
             <div style="font-size: 28px; font-weight: 800; color: #ffffff; white-space: nowrap; padding-bottom: 2px;">
@@ -360,7 +361,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             df_vista_stock = df_vista_stock.rename(columns=nombres_amigables)
             
             if "Fecha Expiración" in df_vista_stock.columns:
-                df_vista_stock["Fecha Expiración"] = df_vista_stock["Fecha Expiración"].dt.strftime('%d-%m-%Y')
+                df_vista_stock["Fecha Expiración"] = pd.to_datetime(df_vista_stock["Fecha Expiración"], errors='coerce').dt.strftime('%d-%m-%Y')
             
             st.dataframe(df_vista_stock, hide_index=True, use_container_width=True)
 
