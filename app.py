@@ -249,22 +249,21 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             semanas_todas = sorted(list(df[col_semana].dropna().unique())) if col_semana else []
             ultimas_4_semanas = semanas_todas[-4:] if semanas_todas else []
 
-      # --- FILTRO POR SEMANA TIPO TARJETAS (CORREGIDO SIN VALUEERROR) ---
+            # --- FILTRO POR SEMANA TIPO TARJETAS (CORREGIDO) ---
             st.markdown("### 📅 Seleccionar Semana")
             
-            # Crear mapeo de etiqueta visual -> valor real en DataFrame
+            # Mapeo seguro: Etiqueta visual -> Valor exacto del DataFrame
             opciones_semanas = {"Todas": "Todas"}
             for s in semanas_todas:
                 if pd.notna(s):
-                    # Limpiar visualmente si viene como float (ej: 31.0 -> 31)
                     val_str = str(int(s)) if isinstance(s, (int, float)) and float(s).is_integer() else str(s)
-                    label_sem = f"Semana {val_str}"
-                    opciones_semanas[label_sem] = s
+                    opciones_semanas[f"Semana {val_str}"] = s
 
             semanas_disp = list(opciones_semanas.keys())
             idx_defecto = len(semanas_disp) - 1 if semanas_todas else 0
 
-            semana_sel_label = st.radio(
+            # Se asigna explícitamente semana_sel_raw
+            semana_sel_raw = st.radio(
                 label="Selección de Semana",
                 options=semanas_disp,
                 index=idx_defecto,
@@ -272,10 +271,8 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 key=f"semana_sel_{nombre_hoja}_{i}"
             )
 
-            # Obtener el valor exacto guardado sin necesidad de parsear int()
-            semana_sel = opciones_semanas[semana_sel_label]
-
-            semana_sel = "Todas" if semana_sel_raw == "Todas" else int(semana_sel_raw.replace("Semana ", ""))
+            # Obtiene el valor directamente del diccionario (evita NameError y ValueError)
+            semana_sel = opciones_semanas[semana_sel_raw]
 
             df_filt = df.copy()
             if semana_sel != "Todas" and col_semana:
