@@ -226,10 +226,9 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 df["monto_compra_calc"] = df[col_u_compra] * df[col_precio]
                 col_m_compra = "monto_compra_calc"
 
-            if not col_m_recib or col_m_recib del df.columns if hasattr(df, 'columns') else False:
-                pass
             if not col_m_recib or col_m_recib not in df.columns:
-                if col_precio in df.columns and (df[col_precio] > 0).any(): df["monto_recibido_calc"] = df[col_u_recib] * df[col_precio]
+                if col_precio in df.columns and (df[col_precio] > 0).any(): 
+                    df["monto_recibido_calc"] = df[col_u_recib] * df[col_precio]
                 else:
                     precio_linea = (df[col_m_compra] / df[col_u_compra].replace(0, 1)).fillna(0)
                     df["monto_recibido_calc"] = df[col_u_recib] * precio_linea
@@ -332,7 +331,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                     st.info(f"No se encontraron registros para la semana {fmt_sem(sem_top)}.")
                 else:
                     if is_pu:
-                        # 1 SOLO TOP 15 PARA PU
                         tot_compra_m = df_sem_top[col_m_compra].sum()
                         tot_recib_m = df_sem_top[col_m_recib].sum()
                         fr_div_pct = (tot_recib_m / tot_compra_m * 100) if tot_compra_m > 0 else 0.0
