@@ -230,7 +230,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 df["monto_compra_calc"] = df[col_u_compra] * df[col_precio]
                 col_m_compra = "monto_compra_calc"
 
-            if (not col_m_recib or col_m_recib doubtful in df.columns) and col_precio:
+            if (not col_m_recib or col_m_recib not in df.columns) and col_precio:
                 df["monto_recibido_calc"] = df[col_u_recib] * df[col_precio]
                 col_m_recib = "monto_recibido_calc"
             elif (not col_m_recib or col_m_recib not in df.columns) and col_m_compra and col_m_compra in df.columns:
