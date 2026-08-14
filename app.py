@@ -132,15 +132,10 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         df = hojas[nombre_hoja].copy()
         
         if nombre_hoja == "SB":
-            # --- CABECERA CON LOGO SB A LA DERECHA ---
-            c_head_title, c_head_logo = st.columns([5, 1])
-            with c_head_title:
-                st.markdown("## 💊 Salcobrand (SB)")
-            with c_head_logo:
-                posibles_logos = ["logo_sb.png", "salcobrand.png", "sb.png", "image_19af6c.png"]
-                logo_encontrado = next((p for p in posibles_logos if os.path.exists(p)), None)
-                if logo_encontrado:
-                    st.image(logo_encontrado, width=110)
+            # --- TITULO "SALCOBRAND (SB)" EN LA ESQUINA DERECHA ---
+            _, c_head_right = st.columns([3, 2])
+            with c_head_right:
+                st.markdown("<h2 style='text-align: right; margin-bottom: 15px;'>💊 Salcobrand (SB)</h2>", unsafe_allow_html=True)
 
             # Detección de columnas
             col_semana = next((c for c in df.columns if c.strip().lower() == 'semana'), None) or next((c for c in df.columns if 'semana' in c.lower()), None)
@@ -233,7 +228,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                         if "CONSUMO" in div_name: fr_consumo_monto = pct
                         elif "FARMA" in div_name: fr_farma_monto = pct
 
-                    # Título Modificado: Fill rate WXX
                     st.markdown(f"### ⏱️ Fill rate W{sem_actual}")
                     col_r1, col_r2 = st.columns(2)
                     with col_r1:
