@@ -192,15 +192,15 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         
         is_sb = (nombre_clean == "SB")
         is_pu = (nombre_clean == "PU")
-        is_stock = (nombre_clean == "STOCK") # NUEVO: Filtro para la pestaña Stock
+        is_stock = (nombre_clean == "STOCK")
 
         # =================================================================
-        # LÓGICA NUEVA PARA PESTAÑA STOCK (DASHBOARD DE CADUCIDAD)
+        # LÓGICA COMPLETA Y FILTRABLE PARA PESTAÑA STOCK (DASHBOARD DE CADUCIDAD)
         # =================================================================
         if is_stock:
             st.markdown("### 📦 Dashboard de Fecha de Caducidad")
             
-            # 1. Identificar columnas clave (tolerante a variaciones de nombre)
+            # 1. Identificar columnas clave
             col_cod = next((c for c in df.columns if c.strip().lower() in ['codigo_articulo', 'id_producto', 'sku']), None)
             col_estado_sub = next((c for c in df.columns if c.strip().lower() in ['estado_subin', 'sub_inventario', 'estado sub inventario']), None)
             col_lote = next((c for c in df.columns if c.strip().lower() in ['lote_proveedor', 'lote']), None)
@@ -224,16 +224,33 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             else:
                 df["Alerta_Caducidad"] = "Sin Fecha"
                 df[col_fecha] = "N/A"
+                hoy = pd.Timestamp.today()
+                limite_13m = hoy + pd.DateOffset(months=13)
 
-            # 3. KPIs Generales
-            total_productos = df[col_cod].nunique() if col_cod else 0
-            total_vencidos = len(df[df["Alerta_Caducidad"] == "VENCIDO"])
-            total_pronto = len(df[df["Alerta_Caducidad"] == "Pronto vence"])
-            total_vigentes = len(df[df["Alerta_Caducidad"] == "Vigente"])
-
-            # 4. Diseño del Dashboard (3 Columnas)
+            # 3. Diseño del Dashboard (3 Columnas)
             col_dash1, col_dash2, col_dash3 = st.columns([1, 1.5, 1.5])
 
+            # --- A. Cargar primero el Buscador en la Columna 3 ---
+            with col_dash3:
+                if col_cod:
+                    lista_prods = sorted([str(x) for x in df[col_cod].dropna().unique()])
+                    prod_sel = st.selectbox("Elija un producto (Código / SKU):", ["Seleccione..."] + lista_prods, key=f"sel_prod_{i}")
+                else:
+                    prod_sel = "Seleccione..."
+
+            # --- B. Filtrar Dinámicamente el Dataframe segun el SKU ---
+            if prod_sel != "Seleccione...":
+                df_dash = df[df[col_cod].astype(str) == prod_sel].copy()
+            else:
+                df_dash = df.copy()
+
+            # --- C. Calcular KPIs (reaccionan al filtro global o individual) ---
+            total_productos = df_dash[col_cod].nunique() if col_cod else 0
+            total_vencidos = len(df_dash[df_dash["Alerta_Caducidad"] == "VENCIDO"])
+            total_pronto = len(df_dash[df_dash["Alerta_Caducidad"] == "Pronto vence"])
+            total_vigentes = len(df_dash[df_dash["Alerta_Caducidad"] == "Vigente"])
+
+            # --- D. Renderizar Tarjetas en Columna 1 ---
             with col_dash1:
                 st.markdown("""
                 <style>
@@ -246,48 +263,54 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 st.markdown(f'<div class="stock-card" style="background-color: #f1c40f; color: black;">Pronto vence (< 13 meses)<br><span style="font-size:24px;">{total_pronto}</span></div>', unsafe_allow_html=True)
                 st.markdown(f'<div class="stock-card" style="background-color: #2ecc71;">Vigentes (> 13 meses)<br><span style="font-size:24px;">{total_vigentes}</span></div>', unsafe_allow_html=True)
 
+            # --- E. Renderizar Gráfico de Anillo en Columna 2 ---
             with col_dash2:
-                st.markdown("#### Estado de caducidad general")
+                st.markdown("#### Estado de caducidad")
                 labels = ['Pronto vence', 'Vigente', 'Vencido']
                 values = [total_pronto, total_vigentes, total_vencidos]
                 colors = ['#f1c40f', '#2ecc71', '#e74c3c']
                 
-                fig_pie = go.Figure(data=[go.Pie(labels=labels, values=values, hole=.5, marker=dict(colors=colors))])
-                fig_pie.update_layout(height=300, margin=dict(t=0, b=0, l=0, r=0), paper_bgcolor="rgba(0,0,0,0)", font=dict(color="#ffffff"), showlegend=True, legend=dict(orientation="h", y=-0.1))
-                st.plotly_chart(fig_pie, use_container_width=True, key=f"pie_stock_{i}")
+                if sum(values) > 0:
+                    fig_pie = go.Figure(data=[go.Pie(labels=labels, values=values, hole=.5, marker=dict(colors=colors))])
+                    fig_pie.update_layout(height=300, margin=dict(t=0, b=0, l=0, r=0), paper_bgcolor="rgba(0,0,0,0)", font=dict(color="#ffffff"), showlegend=True, legend=dict(orientation="h", y=-0.1))
+                    st.plotly_chart(fig_pie, use_container_width=True, key=f"pie_stock_{i}")
+                else:
+                    st.info("Sin registros para mostrar.")
 
+            # --- F. Completar Columna 3 (Stock actual y Plazo dinámico) ---
             with col_dash3:
-                if col_cod:
-                    lista_prods = sorted([str(x) for x in df[col_cod].dropna().unique()])
-                    prod_sel = st.selectbox("Elija un producto (Código / SKU):", ["Seleccione..."] + lista_prods, key=f"sel_prod_{i}")
+                if prod_sel != "Seleccione...":
+                    stock_actual = df_dash[col_cant].sum() if col_cant else 0
+                    prox_vencer = df_dash[df_dash[col_fecha].notna()][col_fecha].min() if col_fecha else None
+                    dias_vencer = (prox_vencer - hoy).days if pd.notna(prox_vencer) else "N/A"
                     
-                    if prod_sel != "Seleccione...":
-                        df_prod = df[df[col_cod].astype(str) == prod_sel]
-                        stock_actual = df_prod[col_cant].sum() if col_cant else 0
-                        
-                        prox_vencer = df_prod[df_prod[col_fecha].notna()][col_fecha].min() if col_fecha else None
-                        dias_vencer = (prox_vencer - hoy).days if pd.notna(prox_vencer) else "N/A"
-                        
-                        st.markdown(f'<div class="stock-card" style="background-color: #7f8c8d;">Stock actual<br><span style="font-size:24px;">{formato_unidades(stock_actual)}</span></div>', unsafe_allow_html=True)
-                        if isinstance(dias_vencer, int):
-                            if dias_vencer < 0:
-                                texto_vence = f"Venció hace {abs(dias_vencer)} días"
-                                color_vence = "#e74c3c"
-                            else:
-                                texto_vence = f"Vence en {dias_vencer} días"
-                                color_vence = "#000000"
+                    st.markdown(f'<div class="stock-card" style="background-color: #7f8c8d;">Stock actual<br><span style="font-size:24px;">{formato_unidades(stock_actual)}</span></div>', unsafe_allow_html=True)
+                    
+                    if isinstance(dias_vencer, int):
+                        if prox_vencer < hoy:
+                            texto_vence = f"Venció hace {abs(dias_vencer)} días"
+                            color_vence = "#e74c3c" # Rojo
+                            color_texto = "color: white;"
+                        elif prox_vencer <= limite_13m:
+                            texto_vence = f"Vence en {dias_vencer} días"
+                            color_vence = "#f1c40f" # Amarillo
+                            color_texto = "color: black;"
                         else:
-                            texto_vence = "Sin fecha registrada"
-                            color_vence = "#000000"
-                            
-                        st.markdown(f'<div class="stock-card" style="background-color: {color_vence}; border: 1px solid #555;">Plazo de vencimiento<br><span style="font-size:20px;">{texto_vence}</span></div>', unsafe_allow_html=True)
+                            texto_vence = f"Vence en {dias_vencer} días"
+                            color_vence = "#2ecc71" # Verde
+                            color_texto = "color: white;"
+                    else:
+                        texto_vence = "Sin fecha registrada"
+                        color_vence = "#333333"
+                        color_texto = "color: white;"
+                        
+                    st.markdown(f'<div class="stock-card" style="background-color: {color_vence}; {color_texto} border: 1px solid #555;">Plazo de vencimiento<br><span style="font-size:20px;">{texto_vence}</span></div>', unsafe_allow_html=True)
 
             st.divider()
             
-            # 5. Vista de Tabla Limpia (Mostrando exactamente las columnas solicitadas)
-            st.subheader("📋 Detalle de Stock y Lotes")
+            # --- G. Vista de Tabla Limpia (Reactiva al filtro) ---
+            st.subheader(f"📋 Detalle de Stock y Lotes {f'(SKU: {prod_sel})' if prod_sel != 'Seleccione...' else '(General)'}")
             
-            # Armar la lista de columnas disponibles
             cols_mostrar = []
             nombres_amigables = {}
             if col_cod: cols_mostrar.append(col_cod); nombres_amigables[col_cod] = "Código Artículo"
@@ -298,10 +321,9 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             if col_fecha: cols_mostrar.append(col_fecha); nombres_amigables[col_fecha] = "Fecha Expiración"
             cols_mostrar.append("Alerta_Caducidad"); nombres_amigables["Alerta_Caducidad"] = "Estado Lote"
             
-            df_vista_stock = df[cols_mostrar].copy()
+            df_vista_stock = df_dash[cols_mostrar].copy()
             df_vista_stock = df_vista_stock.rename(columns=nombres_amigables)
             
-            # Convertir fechas a string legible sin la hora
             if "Fecha Expiración" in df_vista_stock.columns:
                 df_vista_stock["Fecha Expiración"] = df_vista_stock["Fecha Expiración"].dt.strftime('%d-%m-%Y')
             
@@ -648,7 +670,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
                 st.divider()
 
-            # --- TABLAS DINÁMICAS: QUIEBRE POR MARCA (UBICADO DESPUÉS DE LOS GRÁFICOS) ---
+            # --- TABLAS DINÁMICAS: QUIEBRE POR MARCA ---
             if sem_top is not None and col_marca:
                 st.subheader("🏷️ Resumen Quiebres por Marca")
                 df_sem_marca = df[df[col_semana] == sem_top].copy()
@@ -731,7 +753,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             else:
                 df_corte_final = df_detalle.copy()
 
-            # --- RENOMBRADO AUTOMÁTICO DE COLUMNAS PARA MSTRAR NOMBRES LIMPIOS ---
+            # --- RENOMBRADO AUTOMÁTICO DE COLUMNAS PARA MOSTRAR NOMBRES LIMPIOS ---
             renombrar_columnas = {
                 "id_producto": "SKU",
                 "id_prod": "SKU",
