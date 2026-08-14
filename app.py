@@ -132,7 +132,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         df = hojas[nombre_hoja].copy()
         
         if nombre_hoja == "SB":
-            # --- CABECERA PESTAÑA CON LOGO SB A LA DERECHA ---
+            # --- CABECERA CON LOGO SB A LA DERECHA ---
             c_head_title, c_head_logo = st.columns([5, 1])
             with c_head_title:
                 st.markdown("## 💊 Salcobrand (SB)")
@@ -177,7 +177,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 df["monto_compra_calc"] = df[col_u_compra] * df[col_precio]
                 col_m_compra = "monto_compra_calc"
 
-            if (not col_m_recib or col_m_recib doubtful in df.columns) and col_precio:
+            if (not col_m_recib or col_m_recib not in df.columns) and col_precio:
                 df["monto_recibido_calc"] = df[col_u_recib] * df[col_precio]
                 col_m_recib = "monto_recibido_calc"
             elif (not col_m_recib or col_m_recib not in df.columns) and col_m_compra and col_m_compra in df.columns:
@@ -233,7 +233,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                         if "CONSUMO" in div_name: fr_consumo_monto = pct
                         elif "FARMA" in div_name: fr_farma_monto = pct
 
-                    # Título Modificado según requerimiento: Fill rate WXX
+                    # Título Modificado: Fill rate WXX
                     st.markdown(f"### ⏱️ Fill rate W{sem_actual}")
                     col_r1, col_r2 = st.columns(2)
                     with col_r1:
