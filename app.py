@@ -6,7 +6,7 @@ import os
 # 1. Configuración de la página
 st.set_page_config(page_title="Medcell Operaciones", layout="wide")
 
-# 2. Estilos personalizados adaptados al logo de Medcell
+# 2. Estilos personalizados adaptados al logo de Medcell y tarjetas de filtro
 st.markdown("""
     <style>
     .stApp { background-color: #0b0b0b; color: #ffffff; }
@@ -28,7 +28,41 @@ st.markdown("""
     .medcell-subtitle { color: #aaaaaa; font-size: 13px; font-weight: 600; letter-spacing: 1px; margin-top: 2px; }
     .medcell-author { color: #777777; font-size: 11px; margin-top: 4px; font-style: italic; }
 
-    /* Pestañas */
+    /* Estilo de Tarjetas de Filtro por Semana */
+    div[data-testid="stRadio"] > label {
+        display: none; /* Oculta la etiqueta por defecto del radio button */
+    }
+    div[data-testid="stRadio"] > div {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: 8px;
+    }
+    div[data-testid="stRadio"] label {
+        background-color: #141414 !important;
+        border: 1px solid #2b2b2b !important;
+        padding: 10px 22px !important;
+        border-radius: 10px !important;
+        cursor: pointer !important;
+        transition: all 0.25s ease-in-out !important;
+        color: #cccccc !important;
+        font-weight: 600 !important;
+        font-size: 14px !important;
+    }
+    div[data-testid="stRadio"] label:hover {
+        border-color: #0070f3 !important;
+        background-color: #1e1e1e !important;
+        color: #ffffff !important;
+        transform: translateY(-2px);
+    }
+    div[data-testid="stRadio"] label[data-checked="true"] {
+        background-color: #0070f3 !important;
+        border-color: #0070f3 !important;
+        color: #ffffff !important;
+        box-shadow: 0px 4px 14px rgba(0, 112, 243, 0.4);
+    }
+
+    /* Pestañas generales */
     .stTabs [data-baseweb="tab-list"] {
         gap: 8px; background-color: #121212; padding: 8px 12px; border-radius: 10px; border: 1px solid #262626; margin-bottom: 20px;
     }
@@ -192,20 +226,30 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             semanas_todas = sorted(list(df[col_semana].dropna().unique())) if col_semana else []
             ultimas_4_semanas = semanas_todas[-4:] if semanas_todas else []
 
-            st.subheader("🔍 Filtros General de Consulta")
-            c_f1, c_f2 = st.columns(2)
-            with c_f1:
-                semanas_disp = ["Todas"] + semanas_todas
-                semana_sel = st.selectbox("Filtrar por Semana:", semanas_disp, key=f"sb_semana_{i}")
-            with c_f2:
-                skus_disp = ["Todos"] + sorted(list(df[col_sku].dropna().astype(str).unique())) if col_sku else ["Todos"]
-                sku_sel = st.selectbox("Filtrar por SKU General:", skus_disp, key=f"sb_sku_{i}")
+            # --- FILTRO POR SEMANA TIPO TARJETAS ---
+            st.markdown("### 📅 Seleccionar Semana")
+            semanas_disp = ["Todas"] + [f"Semana {s}" for s in semanas_todas] if semanas_todas else ["Todas"]
+            
+            # Por defecto selecciona la última semana disponible
+            idx_defecto = len(semanas_disp) - 1 if semanas_todas else 0
+            
+            semana_sel_raw = st.radio(
+                label="Selección de Semana",
+                options=semanas_disp,
+                index=idx_defecto,
+                horizontal=True,
+                key=f"sb_semana_{i}"
+            )
+
+            # Limpiar valor de la semana seleccionada para usarlo en los dataframes
+            if semana_sel_raw == "Todas":
+                semana_sel = "Todas"
+            else:
+                semana_sel = int(semana_sel_raw.replace("Semana ", ""))
 
             df_filt = df.copy()
             if semana_sel != "Todas" and col_semana:
                 df_filt = df_filt[df_filt[col_semana] == semana_sel]
-            if sku_sel != "Todos" and col_sku:
-                df_filt = df_filt[df_filt[col_sku].astype(str) == sku_sel]
 
             st.divider()
 
@@ -214,8 +258,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 sem_actual = semana_sel if semana_sel != "Todas" else (semanas_todas[-1] if semanas_todas else None)
                 if sem_actual:
                     df_sem_curr = df[df[col_semana] == sem_actual].copy()
-                    if sku_sel != "Todos" and col_sku:
-                        df_sem_curr = df_sem_curr[df_sem_curr[col_sku].astype(str) == sku_sel]
 
                     grp_curr = df_sem_curr.groupby(col_div)[[col_m_compra, col_m_recib]].sum().reset_index()
 
@@ -395,9 +437,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             # --- RESUMEN 4 SEMANAS ---
             if col_semana and col_div:
                 df_base_fr = df.copy()
-                if sku_sel != "Todos" and col_sku:
-                    df_base_fr = df_base_fr[df_base_fr[col_sku].astype(str) == sku_sel]
-
                 df_4sem = df_base_fr[df_base_fr[col_semana].isin(ultimas_4_semanas)].copy()
 
                 grp = df_4sem.groupby([col_semana, col_div])[
