@@ -100,11 +100,20 @@ def formato_unidades(valor):
     except (ValueError, TypeError):
         return "0"
 
-# --- 3. RUTA Y CARGA DEL EXCEL ---
-CARPETA = r"C:\Users\sebastianperez\Desktop\QUERY REDSHIFT"
-ruta_xlsx = os.path.join(CARPETA, "SQL Seba.xlsx")
-ruta_xls = os.path.join(CARPETA, "SQL Seba.xls")
-ruta_final = ruta_xlsx if os.path.exists(ruta_xlsx) else (ruta_xls if os.path.exists(ruta_xls) else None)
+# --- 3. BÚSQUEDA Y CARGA DEL EXCEL ---
+def buscar_excel():
+    posibles_rutas = [
+        "SQL Seba.xlsx",
+        "SQL Seba.xls",
+        r"C:\Users\sebastianperez\Desktop\QUERY REDSHIFT\SQL Seba.xlsx",
+        r"C:\Users\sebastianperez\Desktop\QUERY REDSHIFT\SQL Seba.xls"
+    ]
+    for ruta in posibles_rutas:
+        if os.path.exists(ruta):
+            return ruta
+    return None
+
+ruta_final = buscar_excel()
 
 @st.cache_data(ttl=60)
 def cargar_libro_excel(ruta):
@@ -120,7 +129,7 @@ def cargar_libro_excel(ruta):
     return hojas_dict
 
 if not ruta_final:
-    st.error(f"⚠️ No se encontró el archivo 'SQL Seba' en: {CARPETA}")
+    st.error("⚠️ No se encontró el archivo 'SQL Seba.xlsx' en el servidor. Verifica que esté subido en GitHub.")
     st.stop()
 
 try:
@@ -171,7 +180,7 @@ def crear_reloj_gauge(titulo, porcentaje, color_barra):
     )
     return fig
 
-# --- 5. PESTAÑAS DE NAVEGACIÓN (EXCLUYENDO OTRAS HOJAS SOLICITADAS) ---
+# --- 5. PESTAÑAS DE NAVEGACIÓN ---
 HOJAS_A_EXCLUIR = [
     "sku", "maestra", "precio", 
     "nivel de servicio sb", "venta perdida sb", "nivel de servicio pu"
@@ -189,7 +198,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         # ==========================================
         if nombre_hoja == "SB":
             
-            # Identificación dinámica de columnas
             col_semana = next((c for c in df.columns if c.lower() == 'semana'), None)
             col_sku = next((c for c in df.columns if c.lower() == 'sku'), None)
             col_div = next((c for c in df.columns if 'divis' in c.lower()), None)
@@ -227,7 +235,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 df["monto_recibido_calc"] = df[col_u_recib] * precio_linea
                 col_m_recib = "monto_recibido_calc"
 
-            # --- TODAS LAS SEMANAS (INCLUYENDO SEMANA 34 O POSTERIORES) ---
+            # --- TODAS LAS SEMANAS ---
             semanas_todas = sorted(list(df[col_semana].dropna().unique())) if col_semana else []
             ultimas_4_semanas = semanas_todas[-4:] if semanas_todas else []
 
@@ -243,7 +251,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 skus_disp = ["Todos"] + sorted(list(df[col_sku].dropna().astype(str).unique())) if col_sku else ["Todos"]
                 sku_sel = st.selectbox("Filtrar por SKU:", skus_disp, key=f"sb_sku_{i}")
 
-            # Filtrar dataframe base
             df_filt = df.copy()
             if semana_sel != "Todas" and col_semana:
                 df_filt = df_filt[df_filt[col_semana] == semana_sel]
@@ -252,7 +259,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
             st.divider()
 
-            # --- RELOJES (GAUGES) - CALCULADOS POR MONTO ($) ---
+            # --- RELOJES (GAUGES) ---
             if col_semana and col_div:
                 sem_actual = semana_sel if semana_sel != "Todas" else (semanas_todas[-1] if semanas_todas else None)
                 
@@ -261,7 +268,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                     if sku_sel != "Todos" and col_sku:
                         df_sem_curr = df_sem_curr[df_sem_curr[col_sku].astype(str) == sku_sel]
 
-                    # Agrupación por Monto
                     grp_curr = df_sem_curr.groupby(col_div)[[col_m_compra, col_m_recib]].sum().reset_index()
 
                     fr_consumo_monto = 0.0
@@ -291,7 +297,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
                     st.divider()
 
-            # --- TABLA RESUMEN FILL RATE (ÚLTIMAS 4 SEMANAS) ---
+            # --- TABLA RESUMEN FILL RATE ---
             if col_semana and col_div:
                 df_base_fr = df.copy()
                 if sku_sel != "Todos" and col_sku:
@@ -309,8 +315,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 st.subheader("📊 Resumen Fill Rate (Últimas 4 Semanas)")
                 
                 df_disp = grp.copy()
-                
-                # Formateo visual
                 df_disp[col_u_compra] = df_disp[col_u_compra].apply(formato_unidades)
                 df_disp[col_u_recib] = df_disp[col_u_recib].apply(formato_unidades)
                 df_disp[col_m_compra] = df_disp[col_m_compra].apply(formato_moneda)
@@ -323,12 +327,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                     "Monto Compra", "Monto Recibido", "FR.Unds %", "FR.Monto %"
                 ]
 
-                st.dataframe(
-                    df_disp,
-                    hide_index=True,
-                    use_container_width=True
-                )
-
+                st.dataframe(df_disp, hide_index=True, use_container_width=True)
                 st.divider()
 
                 # --- GRÁFICOS COMBINADOS ---
@@ -341,7 +340,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 tot_sem["Total_FR_Unds"] = (tot_sem[col_u_recib] / tot_sem[col_u_compra] * 100).fillna(0)
                 tot_sem["Total_FR_Monto"] = (tot_sem[col_m_recib] / tot_sem[col_m_compra] * 100).fillna(0)
 
-                # GRÁFICO 1: UNIDADES
                 with col_g1:
                     st.markdown("##### Fill Rate por Unidades")
                     fig_unds = go.Figure()
@@ -375,7 +373,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                     )
                     st.plotly_chart(fig_unds, use_container_width=True, key=f"plot_unds_{i}")
 
-                # GRÁFICO 2: MONTO
                 with col_g2:
                     st.markdown("##### Fill Rate por Monto")
                     fig_monto = go.Figure()
@@ -411,9 +408,8 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
             st.divider()
 
-            # --- TABLA DETALLE RECTIFICADA ---
+            # --- TABLA DETALLE ---
             st.subheader("📋 Detalle de Registro de Compras")
-            
             col_rechaz = next((c for c in df_filt.columns if 'rechaz' in c.lower()), None)
             
             if col_rechaz and col_rechaz in df_filt.columns:
