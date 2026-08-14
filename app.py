@@ -128,7 +128,6 @@ def cargar_libro_excel(ruta):
     xls = pd.ExcelFile(ruta)
     hojas_dict = {}
     for hoja in xls.sheet_names:
-        # Cargar con dtype=str para asegurar que ceros a la izquierda no se pierdan
         df_temp = pd.read_excel(xls, hoja, dtype=str)
         df_temp.columns = [str(c).strip() for c in df_temp.columns]
         df_temp = df_temp.loc[:, ~df_temp.columns.str.startswith('Unnamed')]
@@ -192,14 +191,174 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         is_sb = (nombre_clean == "SB")
         is_pu = (nombre_clean == "PU")
         is_stock = (nombre_clean == "STOCK")
+        is_si = (nombre_clean == "SI")
+
+        # =================================================================
+        # PESTAÑA VENTA SI
+        # =================================================================
+        if is_si:
+            st.markdown("### 📈 Dashboard Venta SI - Agosto 2026")
+
+            # Detectar columnas dinámicamente
+            col_cliente = next((c for c in df.columns if 'cliente' in c.lower()), 'nombre_cliente')
+            col_div = next((c for c in df.columns if 'division' in c.lower() or 'división' in c.lower()), 'Division')
+            col_monto = next((c for c in df.columns if 'monto' in c.lower()), 'monto')
+
+            if col_monto in df.columns:
+                df[col_monto] = pd.to_numeric(df[col_monto], errors='coerce').fillna(0)
+            else:
+                df[col_monto] = 0
+
+            # Clasificar Clientes (SB, PU, Terceros u Otros)
+            def clasificar_cliente(row):
+                cliente = str(row[col_cliente]).upper() if col_cliente in df.columns else ""
+                if 'SALCOBRAND' in cliente:
+                    return 'SB'
+                elif 'PREUNIC' in cliente:
+                    return 'PU'
+                elif any(x in cliente for x in ['WALMART', 'DBS', 'FALABELLA', 'CENCOSUD']):
+                    return 'Terceros'
+                else:
+                    return 'Terceros'
+
+            df['Agrupacion'] = df.apply(clasificar_cliente, axis=1)
+            df['Division_Norm'] = df[col_div].astype(str).str.upper() if col_div in df.columns else 'OTRO'
+
+            # Resumen de Facturación desde los datos
+            fact_sb_cons = df[(df['Agrupacion'] == 'SB') & (df['Division_Norm'].str.contains('CONSUMO'))][col_monto].sum()
+            fact_sb_farm = df[(df['Agrupacion'] == 'SB') & (df['Division_Norm'].str.contains('FARMA'))][col_monto].sum()
+            
+            fact_pu_cons = df[(df['Agrupacion'] == 'PU') & (df['Division_Norm'].str.contains('CONSUMO'))][col_monto].sum()
+            fact_pu_farm = df[(df['Agrupacion'] == 'PU') & (df['Division_Norm'].str.contains('FARMA'))][col_monto].sum()
+            
+            fact_terceros = df[df['Agrupacion'] == 'Terceros'][col_monto].sum()
+
+            fact_consumo_tot = fact_sb_cons + fact_pu_cons
+            fact_farma_tot = fact_sb_farm + fact_pu_farm
+
+            # Metas Agosto 2026
+            meta_consumo = 2296243451
+            meta_farma = 2212039150
+            meta_terceros = 41037523
+            meta_total = meta_consumo + meta_farma + meta_terceros
+
+            # 1. TABLAS SUPERIORES DE RESUMEN
+            st.markdown("#### 📊 Facturado y Proyección por Canal")
+            col_r1, col_r2 = st.columns([1, 1.8])
+
+            with col_r1:
+                df_fact_canal = pd.DataFrame({
+                    "Agosto": ["Consumo", "Farma", "Terceros"],
+                    "Facturado x canal": [fact_consumo_tot, fact_farma_tot, fact_terceros]
+                })
+                df_fact_canal["Facturado x canal"] = df_fact_canal["Facturado x canal"].apply(formato_moneda)
+                st.dataframe(df_fact_canal, hide_index=True, use_container_width=True)
+
+            with col_r2:
+                proy_cons = 1931155483
+                proy_farm = 1801719514
+                proy_terc = 12383038
+
+                df_proy_canal = pd.DataFrame({
+                    "Proyección x canal": [proy_cons, proy_farm, proy_terc],
+                    "Meta": [meta_consumo, meta_farma, meta_terceros],
+                    "%": [
+                        f"{(proy_cons/meta_consumo*100):.0f}%" if meta_consumo else "0%",
+                        f"{(proy_farm/meta_farma*100):.0f}%" if meta_farma else "0%",
+                        f"{(proy_terc/meta_terceros*100):.0f}%" if meta_terceros else "0%"
+                    ],
+                    "Facturado actual": [
+                        f"{(fact_consumo_tot/meta_consumo*100):.0f}%" if meta_consumo else "0%",
+                        f"{(fact_farma_tot/meta_farma*100):.0f}%" if meta_farma else "0%",
+                        f"{(fact_terceros/meta_terceros*100):.0f}%" if meta_terceros else "0%"
+                    ]
+                })
+                df_proy_canal["Proyección x canal"] = df_proy_canal["Proyección x canal"].apply(formato_moneda)
+                df_proy_canal["Meta"] = df_proy_canal["Meta"].apply(formato_moneda)
+                st.dataframe(df_proy_canal, hide_index=True, use_container_width=True)
+
+            st.divider()
+
+            # 2. DESGLOSE POR CLIENTE
+            st.markdown("#### 🏢 Desglose por Cliente")
+            c_pu, c_sb, c_ter = st.columns(3)
+
+            with c_pu:
+                st.markdown("**Preunic**")
+                tot_pu = fact_pu_cons + fact_pu_farm
+                df_pu_view = pd.DataFrame({
+                    "División": ["CONSUMO MASIVO", "FARMA", "TOTAL PREUNIC"],
+                    "Facturado": [formato_moneda(fact_pu_cons), formato_moneda(fact_pu_farm), formato_moneda(tot_pu)]
+                })
+                st.dataframe(df_pu_view, hide_index=True, use_container_width=True)
+
+            with c_sb:
+                st.markdown("**SB**")
+                tot_sb = fact_sb_cons + fact_sb_farm
+                df_sb_view = pd.DataFrame({
+                    "División": ["CONSUMO MASIVO", "FARMA", "TOTAL SB"],
+                    "Facturado": [formato_moneda(fact_sb_cons), formato_moneda(fact_sb_farm), formato_moneda(tot_sb)]
+                })
+                st.dataframe(df_sb_view, hide_index=True, use_container_width=True)
+
+            with c_ter:
+                st.markdown("**Terceros**")
+                df_ter_view = pd.DataFrame({
+                    "División": ["TERCEROS", "TOTAL TERCEROS"],
+                    "Facturado": [formato_moneda(fact_terceros), formato_moneda(fact_terceros)]
+                })
+                st.dataframe(df_ter_view, hide_index=True, use_container_width=True)
+
+            st.divider()
+
+            # 3. TABLA DE ESTADO OC Y CERRADO
+            st.markdown("#### 📋 Estado Órdenes de Compra (OC) y Proyección")
+            
+            data_oc = [
+                {"Grupo": "OC vigente", "Canal": "Consumo SB", "Monto OC": 433720962, "F R": "82%", "Proyección salida": 355651189, "OC extra": 90000000},
+                {"Grupo": "OC vigente", "Canal": "Farma SB", "Monto OC": 391807703, "F R": "87%", "Proyección salida": 340872702, "OC extra": 0},
+                {"Grupo": "OC vigente", "Canal": "PU", "Monto OC": 93238077, "F R": "24%", "Proyección salida": 22756819, "OC extra": 0},
+                {"Grupo": "Proyección Compra", "Canal": "Terceros", "Monto OC": 5137936, "F R": "60%", "Proyección salida": 3082762, "OC extra": 0},
+                {"Grupo": "Proyección Compra", "Canal": "Consumo SB", "Monto OC": 420000000, "F R": "82%", "Proyección salida": 344400000, "OC extra": 0},
+                {"Grupo": "Proyección Compra", "Canal": "Farma SB", "Monto OC": 480000000, "F R": "87%", "Proyección salida": 417600000, "OC extra": 0},
+                {"Grupo": "Proyección Compra", "Canal": "PU", "Monto OC": 105000000, "F R": "70%", "Proyección salida": 73500000, "OC extra": 0},
+            ]
+            
+            df_oc_disp = pd.DataFrame(data_oc)
+            df_oc_disp["Monto OC"] = df_oc_disp["Monto OC"].apply(formato_moneda)
+            df_oc_disp["Proyección salida"] = df_oc_disp["Proyección salida"].apply(formato_moneda)
+            df_oc_disp["OC extra"] = df_oc_disp["OC extra"].apply(lambda x: formato_moneda(x) if x > 0 else "-")
+            
+            st.dataframe(df_oc_disp, hide_index=True, use_container_width=True)
+
+            col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+            with col_m1:
+                st.metric("Cierre Proyectado", formato_moneda(3745258034))
+            with col_m2:
+                st.metric("Meta Total", formato_moneda(4549320124))
+            with col_m3:
+                st.metric("Resultado", f"-{formato_moneda(804062090)}")
+            with col_m4:
+                st.metric("Cumplimiento", "82,3%")
+
+            st.divider()
+
+            # Detalle de Transacciones
+            st.subheader("📋 Detalle de Transacciones SI")
+            busqueda_si = st.text_input("🔍 Buscar en registros SI:", key=f"search_si_{i}")
+            df_si_det = df.copy()
+            if busqueda_si:
+                mask_si = df_si_det.astype(str).apply(lambda x: x.str.contains(busqueda_si, case=False)).any(axis=1)
+                df_si_det = df_si_det[mask_si]
+            
+            st.dataframe(df_si_det, hide_index=True, use_container_width=True)
 
         # =================================================================
         # DASHBOARD DE STOCK / CADUCIDAD
         # =================================================================
-        if is_stock:
+        elif is_stock:
             st.markdown("### 📦 Dashboard de Fecha de Caducidad")
             
-            # 1. Identificar columnas clave
             col_cod = next((c for c in df.columns if c.strip().lower() in ['codigo_articulo', 'id_producto', 'sku', 'codigo']), None)
             col_estado_sub = next((c for c in df.columns if c.strip().lower() in ['estado_subin', 'sub_inventario', 'estado sub inventario']), None)
             col_estado_lote = next((c for c in df.columns if c.strip().lower() in ['estado_lote', 'estado lote', 'estado_lote_prov']), None)
@@ -208,14 +367,12 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             col_fecha = next((c for c in df.columns if c.strip().lower() in ['fecha_expiracion_lote', 'vencimiento', 'fecha expiracion', 'fecha_expiracion']), None)
             col_cant = next((c for c in df.columns if c.strip().lower() in ['cantidad', 'stock', 'unidades']), None)
 
-            # Formatear la columna de Código preservando los ceros
             if col_cod and col_cod in df.columns:
                 df[col_cod] = df[col_cod].apply(fmt_code)
 
             if col_cant:
                 df[col_cant] = pd.to_numeric(df[col_cant], errors='coerce').fillna(0)
 
-            # 2. Calcular alertas de caducidad (Tarjeta roja < 6 meses)
             hoy = pd.Timestamp.today()
             limite_6m = hoy + pd.DateOffset(months=6)
             limite_13m = hoy + pd.DateOffset(months=13)
@@ -234,10 +391,8 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 df["Alerta_Caducidad"] = "Sin Fecha"
                 df[col_fecha] = "N/A"
 
-            # 3. Diseño del Dashboard (3 Columnas)
             col_dash1, col_dash2, col_dash3 = st.columns([1, 1.5, 1.5])
 
-            # --- A. Buscador por Producto ---
             with col_dash3:
                 if col_cod:
                     lista_prods = sorted([str(x) for x in df[col_cod].dropna().unique()])
@@ -245,13 +400,11 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 else:
                     prod_sel = "Seleccione..."
 
-            # --- B. Filtrar Dataframe según SKU ---
             if prod_sel != "Seleccione...":
                 df_dash = df[df[col_cod].astype(str) == prod_sel].copy()
             else:
                 df_dash = df.copy()
 
-            # --- C. Calcular KPIs en SUMA DE UNIDADES ---
             if col_cant:
                 total_unidades = df_dash[col_cant].sum()
                 total_menos_6m = df_dash[df_dash["Alerta_Caducidad"] == "Menos de 6 meses"][col_cant].sum()
@@ -263,7 +416,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 total_pronto = len(df_dash[df_dash["Alerta_Caducidad"] == "Pronto vence (6-13m)"])
                 total_vigentes = len(df_dash[df_dash["Alerta_Caducidad"] == "Vigente (> 13m)"])
 
-            # --- D. Tarjetas KPI (Rojo < 6 Meses) ---
             with col_dash1:
                 st.markdown("""
                 <style>
@@ -276,7 +428,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 st.markdown(f'<div class="stock-card" style="background-color: #f1c40f; color: black;">Pronto vence (6 a 13 meses)<br><span style="font-size:24px;">{formato_unidades(total_pronto)}</span></div>', unsafe_allow_html=True)
                 st.markdown(f'<div class="stock-card" style="background-color: #2ecc71;">Vigentes (> 13 meses)<br><span style="font-size:24px;">{formato_unidades(total_vigentes)}</span></div>', unsafe_allow_html=True)
 
-            # --- E. Gráfico de Anillo ---
             with col_dash2:
                 st.markdown("#### Estado de caducidad")
                 labels = ['< 6 meses', '6 a 13 meses', 'Vigente (> 13m)']
@@ -290,7 +441,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 else:
                     st.info("Sin registros para mostrar.")
 
-            # --- F. Detalle Stock actual y plazo ---
             with col_dash3:
                 if prod_sel != "Seleccione...":
                     stock_actual = df_dash[col_cant].sum() if col_cant else 0
@@ -321,7 +471,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
             st.divider()
 
-            # --- G. TARJETAS SECUNDARIAS POR ESTADO DE LOTE ---
             if col_estado_lote and col_estado_lote in df_dash.columns:
                 st.markdown("##### 🏷️ Cantidad de Unidades por Estado de Lote")
                 df_est_grp = df_dash.groupby(col_estado_lote, dropna=False)[col_cant].sum().reset_index() if col_cant else df_dash[col_estado_lote].value_counts().reset_index()
@@ -343,7 +492,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                                 unsafe_allow_html=True
                             )
 
-            # --- H. Tabla Detalle de Stock ---
             st.subheader(f"📋 Detalle de Stock y Lotes {f'(SKU: {prod_sel})' if prod_sel != 'Seleccione...' else '(General)'}")
             
             cols_mostrar = []
@@ -383,10 +531,8 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             col_quiebre = next((c for c in df.columns if 'quiebre' in c.lower() or 'monto_falta' in c.lower()), None)
             col_rechazado = next((c for c in df.columns if 'rechaz' in c.lower() or 'devuel' in c.lower()), None)
 
-            if not col_sku or col_sku not in df.columns:
-                col_sku = df.columns[0]
-            if not col_desc or col_desc not in df.columns:
-                col_desc = col_sku
+            if not col_sku or col_sku not in df.columns: col_sku = df.columns[0]
+            if not col_desc or col_desc not in df.columns: col_desc = col_sku
 
             df[col_sku] = df[col_sku].apply(fmt_code)
             df[col_desc] = df[col_desc].fillna("Sin Descripción").astype(str)
@@ -420,10 +566,8 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             df["quiebre_unid_calc"] = (df[col_u_compra] - df[col_u_recib]).clip(lower=0)
 
             def orden_semana_key(s):
-                try:
-                    return (0, int(float(s)))
-                except (ValueError, TypeError):
-                    return (1, str(s))
+                try: return (0, int(float(s)))
+                except (ValueError, TypeError): return (1, str(s))
 
             semanas_todas = sorted([s for s in df[col_semana].unique() if str(s).strip() != ""], key=orden_semana_key) if col_semana else []
             ultimas_4_semanas = semanas_todas[-4:] if semanas_todas else []
@@ -480,7 +624,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
                     st.divider()
 
-            # --- TOP 15 ---
+            # TOP 15
             st.subheader(f"🔥 TOP 15 Quiebres {'(Global)' if is_pu else '(Por División)'}")
             crit_orden = st.radio("Ordenar Top 15 por:", options=["Monto ($)", "Unidades"], horizontal=True, key=f"crit_top15_{nombre_hoja}_{i}")
             sem_top = semana_sel if semana_sel != "Todas" else (semanas_todas[-1] if semanas_todas else None)
@@ -601,7 +745,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
             st.divider()
 
-            # --- RESUMEN 4 SEMANAS ---
+            # RESUMEN 4 SEMANAS
             if col_semana:
                 df_base_fr = df.copy()
                 df_4sem = df_base_fr[df_base_fr[col_semana].isin(ultimas_4_semanas)].copy()
@@ -696,7 +840,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
                 st.divider()
 
-            # --- TABLAS DINÁMICAS: QUIEBRE POR MARCA ---
+            # TABLAS DINÁMICAS: QUIEBRE POR MARCA
             if sem_top is not None and col_marca:
                 st.subheader("🏷️ Resumen Quiebres por Marca")
                 df_sem_marca = df[df[col_semana] == sem_top].copy()
@@ -759,7 +903,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
                 st.divider()
 
-            # --- DETALLE DE REGISTRO CON FILTROS ---
+            # DETALLE DE REGISTRO CON FILTROS
             st.subheader("📋 Detalle de Registro de Compras")
             col_det_f1, col_det_f2 = st.columns(2)
             with col_det_f1:
@@ -780,19 +924,11 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 df_corte_final = df_detalle.copy()
 
             renombrar_columnas = {
-                "id_producto": "SKU",
-                "id_prod": "SKU",
-                "numero_orden": "OC",
-                "num_oc": "OC",
-                "orden_compra": "OC",
-                "descripcion": "Descripción",
-                "unidades_compra": "Unidades Compra",
-                "unidades_recibidas": "Unidades Recibidas",
-                "unidades_rechazadas": "Unidades Rechazadas",
-                "cantidad": "Unidades Compra",
-                "cantidad_recibida": "Unidades Recibidas",
-                "fecha_hora_despacho_default": "Fecha Despacho",
-                "precio_final": "Precio Final",
+                "id_producto": "SKU", "id_prod": "SKU", "numero_orden": "OC", "num_oc": "OC",
+                "orden_compra": "OC", "descripcion": "Descripción", "unidades_compra": "Unidades Compra",
+                "unidades_recibidas": "Unidades Recibidas", "unidades_rechazadas": "Unidades Rechazadas",
+                "cantidad": "Unidades Compra", "cantidad_recibida": "Unidades Recibidas",
+                "fecha_hora_despacho_default": "Fecha Despacho", "precio_final": "Precio Final",
                 "precio_total": "Precio Total"
             }
 
