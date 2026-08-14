@@ -200,6 +200,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             
             col_semana = next((c for c in df.columns if c.lower() == 'semana'), None)
             col_sku = next((c for c in df.columns if c.lower() == 'sku'), None)
+            col_desc = next((c for c in df.columns if 'descrip' in c.lower() or 'nombre' in c.lower()), None) or col_sku
             col_div = next((c for c in df.columns if 'divis' in c.lower()), None)
             
             # Unidades
@@ -216,18 +217,20 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                           next((c for c in df.columns if any(k in c.lower() for k in ['recib', 'fact']) and any(k in c.lower() for k in ['monto', 'val', 'cost', 'total', '$'])), None)
 
             col_precio = next((c for c in df.columns if any(k in c.lower() for k in ['precio', 'costo_unitario', 'p_unitario', 'precio_unitario'])), None)
+            col_quiebre = next((c for c in df.columns if 'quiebre' in c.lower()), None)
+            col_rechazado = next((c for c in df.columns if 'rechaz' in c.lower()), None)
 
             # Convertir a numérico lo existente
-            cols_a_num = [c for c in [col_u_compra, col_u_recib, col_m_compra, col_m_recib, col_precio] if c and c in df.columns]
+            cols_a_num = [c for c in [col_u_compra, col_u_recib, col_m_compra, col_m_recib, col_precio, col_quiebre, col_rechazado] if c and c in df.columns]
             for c_num in cols_a_num:
                 df[c_num] = pd.to_numeric(df[c_num], errors='coerce').fillna(0)
 
-            # Cálculo de respaldo por fila si falta alguna columna
+            # Cálculos de respaldo
             if (not col_m_compra or col_m_compra not in df.columns) and col_precio:
                 df["monto_compra_calc"] = df[col_u_compra] * df[col_precio]
                 col_m_compra = "monto_compra_calc"
 
-            if (not col_m_recib or col_m_recib not in df.columns) and col_precio:
+            if (not col_m_recib or col_m_recib doubtful in df.columns) and col_precio:
                 df["monto_recibido_calc"] = df[col_u_recib] * df[col_precio]
                 col_m_recib = "monto_recibido_calc"
             elif (not col_m_recib or col_m_recib not in df.columns) and col_m_compra and col_m_compra in df.columns:
@@ -235,11 +238,14 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 df["monto_recibido_calc"] = df[col_u_recib] * precio_linea
                 col_m_recib = "monto_recibido_calc"
 
-            # --- TODAS LAS SEMANAS ---
+            # Columnas calculadas de quiebre
+            df["quiebre_monto_calc"] = df[col_m_compra] - df[col_m_recib]
+            df["quiebre_unid_calc"] = df[col_u_compra] - df[col_u_recib]
+
+            # --- SEMANAS Y FILTROS ---
             semanas_todas = sorted(list(df[col_semana].dropna().unique())) if col_semana else []
             ultimas_4_semanas = semanas_todas[-4:] if semanas_todas else []
 
-            # --- FILTROS DE CABECERA ---
             st.subheader("🔍 Filtros de Consulta")
             c_f1, c_f2 = st.columns(2)
             
@@ -297,7 +303,119 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
                     st.divider()
 
-            # --- TABLA RESUMEN FILL RATE ---
+            # =========================================================
+            # 🔥 NUEVO MÓDULO: TABLAS TOP 15 QUIEBRES EN PARALELO
+            # =========================================================
+            st.subheader("🔥 TOP 15 Quiebres por División")
+            
+            # Selector de ordenamiento
+            crit_orden = st.radio(
+                "Ordenar Top 15 por:",
+                options=["Monto ($)", "Unidades"],
+                horizontal=True,
+                key=f"crit_top15_{i}"
+            )
+
+            sem_top = semana_sel if semana_sel != "Todas" else (semanas_todas[-1] if semanas_todas else None)
+
+            if sem_top and col_div and col_sku:
+                # 1. Determinar semana siguiente para 'OC abierta'
+                sem_sig = None
+                try:
+                    idx_curr = semanas_todas.index(sem_top)
+                    if idx_curr + 1 < len(semanas_todas):
+                        sem_sig = semanas_todas[idx_curr + 1]
+                    elif isinstance(sem_top, (int, float)):
+                        sem_sig = sem_top + 1
+                except ValueError:
+                    if isinstance(sem_top, (int, float)):
+                        sem_sig = sem_top + 1
+
+                # 2. Mapeo de OC abierta (Unidades solicitadas semana siguiente)
+                oc_abierta_map = {}
+                if sem_sig is not None:
+                    df_sig = df[df[col_semana] == sem_sig]
+                    oc_abierta_map = df_sig.groupby(col_sku)[col_u_compra].sum().to_dict()
+
+                # 3. Datos de la semana de consulta
+                df_sem_top = df[df[col_semana] == sem_top].copy()
+
+                # Obtener divisiones principales
+                divisiones_unicas = [d for d in df_sem_top[col_div].dropna().unique()]
+                div_cons = next((d for d in divisiones_unicas if "CONSUMO" in str(d).upper()), None)
+                div_farm = next((d for d in divisiones_unicas if "FARMA" in str(d).upper()), None)
+                
+                lista_divs = [d for d in [div_cons, div_farm] if d is not None]
+                if not lista_divs and len(divisiones_unicas) > 0:
+                    lista_divs = divisiones_unicas[:2]
+
+                col_t1, col_t2 = st.columns(2)
+                columnas_ui = [col_t1, col_t2]
+
+                for idx, div_nombre in enumerate(lista_divs):
+                    if idx >= 2:
+                        break
+                    
+                    with columnas_ui[idx]:
+                        df_div = df_sem_top[df_sem_top[col_div] == div_nombre].copy()
+                        
+                        # Cálculos generales de la división (Fill Rate superior)
+                        tot_compra_m = df_div[col_m_compra].sum()
+                        tot_recib_m = df_div[col_m_recib].sum()
+                        fr_div_pct = (tot_recib_m / tot_compra_m * 100) if tot_compra_m > 0 else 0.0
+
+                        # Encabezado con Métrica de Fill Rate
+                        st.markdown(f"#### 📌 {str(div_nombre).upper()}")
+                        st.metric(
+                            label=f"Fill Rate {div_nombre} (Sem {sem_top})", 
+                            value=f"{fr_div_pct:.1f}%",
+                            delta=f"{tot_recib_m - tot_compra_m:,.0f} $ (Dif)".replace(",", ".")
+                        )
+
+                        # Agrupación por SKU
+                        grp_top = df_div.groupby([col_sku, col_desc]).agg({
+                            col_u_compra: 'sum',
+                            col_m_compra: 'sum',
+                            'quiebre_monto_calc': 'sum',
+                            'quiebre_unid_calc': 'sum'
+                        }).reset_index()
+
+                        # Agregar RECHAZADO si existe
+                        if col_rechazado and col_rechazado in df_div.columns:
+                            grp_rech = df_div.groupby([col_sku, col_desc])[col_rechazado].sum().reset_index()
+                            grp_top = pd.merge(grp_top, grp_rech, on=[col_sku, col_desc], how='left')
+                            grp_top[col_rechazado] = grp_top[col_rechazado].fillna(0)
+                        else:
+                            grp_top["Suma de RECHAZADO"] = 0
+
+                        # Asignar OC abierta de la semana posterior
+                        grp_top["OC abierta"] = grp_top[col_sku].map(oc_abierta_map).fillna(0)
+
+                        # Ordenamiento según el conmutador seleccionable
+                        col_sort = 'quiebre_monto_calc' if crit_orden == "Monto ($)" else 'quiebre_unid_calc'
+                        grp_top = grp_top.sort_values(by=col_sort, ascending=False).head(15)
+
+                        # Formatear columnas para visualización idéntica a la planilla Excel
+                        grp_top_disp = pd.DataFrame()
+                        grp_top_disp["SKU"] = grp_top[col_sku].astype(str)
+                        grp_top_disp["descripcion"] = grp_top[col_desc]
+                        grp_top_disp["Suma de unidades_compra"] = grp_top[col_u_compra].apply(formato_unidades)
+                        grp_top_disp["Suma de compra_total"] = grp_top[col_m_compra].apply(formato_moneda)
+                        
+                        # El quiebre en negativo según estándar de reporte
+                        grp_top_disp["Suma de Quiebre"] = grp_top['quiebre_monto_calc'].apply(lambda x: f"-{formato_moneda(abs(x))}" if x > 0 else "$0")
+                        
+                        col_r_name = col_rechazado if (col_rechazado and col_rechazado in grp_top.columns) else "Suma de RECHAZADO"
+                        grp_top_disp["Suma de RECHAZADO"] = grp_top[col_r_name].apply(formato_unidades)
+                        
+                        lbl_oc = f"OC abierta (Sem {sem_sig})" if sem_sig else "OC abierta"
+                        grp_top_disp[lbl_oc] = grp_top["OC abierta"].apply(formato_unidades)
+
+                        st.dataframe(grp_top_disp, hide_index=True, use_container_width=True)
+
+            st.divider()
+
+            # --- TABLA RESUMEN FILL RATE (ÚLTIMAS 4 SEMANAS) ---
             if col_semana and col_div:
                 df_base_fr = df.copy()
                 if sku_sel != "Todos" and col_sku:
@@ -410,10 +528,8 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
             # --- TABLA DETALLE ---
             st.subheader("📋 Detalle de Registro de Compras")
-            col_rechaz = next((c for c in df_filt.columns if 'rechaz' in c.lower()), None)
-            
-            if col_rechaz and col_rechaz in df_filt.columns:
-                idx_corte = list(df_filt.columns).index(col_rechaz) + 1
+            if col_rechazado and col_rechazado in df_filt.columns:
+                idx_corte = list(df_filt.columns).index(col_rechazado) + 1
                 df_corte_final = df_filt.iloc[:, :idx_corte]
             else:
                 df_corte_final = df_filt
