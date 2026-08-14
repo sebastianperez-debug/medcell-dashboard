@@ -199,15 +199,15 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             # Mapeo adaptable de columnas (Priorizando 'id_producto'/'id_prod' para SKU)
             col_semana = next((c for c in df.columns if c.strip().lower() in ['semana', 'sem', 'wk', 'week']), None) or next((c for c in df.columns if 'semana' in c.lower() or 'sem' in c.lower()), None)
             col_sku = next((c for c in df.columns if c.strip().lower() in ['id_producto', 'id_product', 'id_prod', 'sku', 'cod_sku', 'codigo_sku', 'codigo', 'cod_prod', 'material']), None) or next((c for c in df.columns if any(k in c.lower() for k in ['id_prod', 'producto_id', 'sku', 'cod_prod'])), None)
-            col_oc = next((c for c in df.columns if c.strip().lower() in ['oc', 'orden_compra', 'orden de compra', 'num_oc', 'numero_oc', 'orden']), None) or next((c for c in df.columns if 'oc' in c.lower() or 'orden' in c.lower()), None)
+            col_oc = next((c for c in df.columns if c.strip().lower() in ['oc', 'orden_compra', 'orden de compra', 'num_oc', 'numero_oc', 'orden', 'numero_orden']), None) or next((c for c in df.columns if 'oc' in c.lower() or 'orden' in c.lower()), None)
             col_desc = next((c for c in df.columns if c.strip().lower() in ['descripcion', 'desc_producto', 'producto', 'desc', 'nombre']), None) or next((c for c in df.columns if 'desc' in c.lower() or 'nombre' in c.lower() or 'prod' in c.lower()), None)
             col_div = next((c for c in df.columns if c.strip().lower() in ['division', 'categoría', 'categoria', 'linea', 'div', 'cat']), None) or next((c for c in df.columns if 'divis' in c.lower() or 'categ' in c.lower() or 'linea' in c.lower()), None)
             col_marca = next((c for c in df.columns if c.strip().lower() in ['marca', 'brand', 'lab', 'laboratorio', 'proveedor']), None) or next((c for c in df.columns if any(k in c.lower() for k in ['marca', 'brand', 'lab', 'proveedor'])), None)
             col_u_compra = next((c for c in df.columns if c.strip().lower() in ['unidades_compra', 'unidades_pedidas', 'unid_pedidas', 'cant_pedida', 'cantidad_pedida', 'unidades_solicitadas', 'cant_solic', 'cantidad', 'unidades', 'solicitado', 'cant']), None) or next((c for c in df.columns if any(k in c.lower() for k in ['comp', 'pedi', 'solic', 'cant', 'unid'])), None)
             col_u_recib = next((c for c in df.columns if c.strip().lower() in ['unidades_recibidas', 'unid_recibidas', 'cant_recibida', 'cantidad_recibida', 'unidades_entregadas', 'unid_entregadas', 'cant_entregada', 'recibido', 'entregado']), None) or next((c for c in df.columns if any(k in c.lower() for k in ['recib', 'entre', 'despa'])), None)
-            col_m_compra = next((c for c in df.columns if c.lower().strip() in ['compra total', 'monto_compra', 'monto compra', 'total_compra', 'costo_total', 'monto_pedido', 'val_compra', 'valor_compra', 'monto_solicitado']), None) or next((c for c in df.columns if any(k in c.lower() for k in ['monto', 'val', 'cost', 'total', '$']) and any(k in c.lower() for k in ['comp', 'pedi', 'solic'])), None)
+            col_m_compra = next((c for c in df.columns if c.lower().strip() in ['compra total', 'monto_compra', 'monto compra', 'total_compra', 'costo_total', 'monto_pedido', 'val_compra', 'valor_compra', 'monto_solicitado', 'precio_total']), None) or next((c for c in df.columns if any(k in c.lower() for k in ['monto', 'val', 'cost', 'total', '$']) and any(k in c.lower() for k in ['comp', 'pedi', 'solic', 'total'])), None)
             col_m_recib = next((c for c in df.columns if c.lower().strip() in ['recibidas', 'monto_recibido', 'monto recibido', 'total_recibido', 'monto_facturado', 'monto_entregado', 'val_recibido', 'valor_recibido']), None) or next((c for c in df.columns if any(k in c.lower() for k in ['recib', 'fact', 'entre']) and any(k in c.lower() for k in ['monto', 'val', 'cost', 'total', '$'])), None)
-            col_precio = next((c for c in df.columns if any(k in c.lower() for k in ['precio', 'costo_unitario', 'p_unitario', 'precio_costo', 'puc'])), None)
+            col_precio = next((c for c in df.columns if any(k in c.lower() for k in ['precio', 'costo_unitario', 'p_unitario', 'precio_costo', 'puc', 'precio_final'])), None)
             col_quiebre = next((c for c in df.columns if 'quiebre' in c.lower() or 'monto_falta' in c.lower()), None)
             col_rechazado = next((c for c in df.columns if 'rechaz' in c.lower() or 'devuel' in c.lower()), None)
 
@@ -612,9 +612,37 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
             if col_rechazado and col_rechazado in df_detalle.columns:
                 idx_corte = list(df_detalle.columns).index(col_rechazado) + 1
-                df_corte_final = df_detalle.iloc[:, :idx_corte]
+                df_corte_final = df_detalle.iloc[:, :idx_corte].copy()
             else:
-                df_corte_final = df_detalle
+                df_corte_final = df_detalle.copy()
+
+            # --- RENOMBRADO AUTOMÁTICO DE COLUMNAS PARA MSTRAR NOMBRES LIMPIOS ---
+            renombrar_columnas = {
+                "id_producto": "SKU",
+                "id_prod": "SKU",
+                "numero_orden": "OC",
+                "num_oc": "OC",
+                "orden_compra": "OC",
+                "descripcion": "Descripción",
+                "unidades_compra": "Unidades Compra",
+                "unidades_recibidas": "Unidades Recibidas",
+                "unidades_rechazadas": "Unidades Rechazadas",
+                "cantidad": "Unidades Compra",
+                "cantidad_recibida": "Unidades Recibidas",
+                "fecha_hora_despacho_default": "Fecha Despacho",
+                "precio_final": "Precio Final",
+                "precio_total": "Precio Total"
+            }
+
+            nuevas_columnas = {}
+            for col in df_corte_final.columns:
+                col_lower = str(col).strip().lower()
+                if col_lower in renombrar_columnas:
+                    nuevas_columnas[col] = renombrar_columnas[col_lower]
+                else:
+                    nuevas_columnas[col] = str(col).replace('_', ' ').strip().title()
+
+            df_corte_final = df_corte_final.rename(columns=nuevas_columnas)
 
             st.dataframe(df_corte_final, hide_index=True, use_container_width=True)
 
