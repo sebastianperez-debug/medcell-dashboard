@@ -194,149 +194,120 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         is_si = (nombre_clean == "SI")
 
         # =================================================================
-        # PESTAÑA VENTA SI
+        # PESTAÑA VENTA SI (REDISEÑADA Y DINÁMICA)
         # =================================================================
         if is_si:
-            st.markdown("### 📈 Dashboard Venta SI")
+            st.markdown("### 📈 Dashboard Operativo de Venta SI")
 
-            # Detectar columnas dinámicamente
+            # 1. Detección y conversión de columnas
             col_cliente = next((c for c in df.columns if 'cliente' in c.lower()), 'nombre_cliente')
             col_div = next((c for c in df.columns if 'division' in c.lower() or 'división' in c.lower()), 'Division')
             col_monto = next((c for c in df.columns if 'monto' in c.lower()), 'monto')
+            col_unid = next((c for c in df.columns if 'unidad' in c.lower() or 'cantidad' in c.lower()), 'cantidad_unidades')
+            col_pmp = next((c for c in df.columns if 'pmp' in c.lower()), 'pmp_mes_actual')
+            col_inflamable = next((c for c in df.columns if 'inflamable' in c.lower()), 'es_inflamable')
+            col_factura = next((c for c in df.columns if 'factura' in c.lower() or 'orden' in c.lower()), 'Factura')
 
-            if col_monto in df.columns:
-                df[col_monto] = pd.to_numeric(df[col_monto], errors='coerce').fillna(0)
-            else:
-                df[col_monto] = 0
+            df[col_monto] = pd.to_numeric(df[col_monto], errors='coerce').fillna(0) if col_monto in df.columns else 0
+            df[col_unid] = pd.to_numeric(df[col_unid], errors='coerce').fillna(0) if col_unid in df.columns else 0
+            df[col_pmp] = pd.to_numeric(df[col_pmp], errors='coerce').fillna(0) if col_pmp in df.columns else 0
 
-            # Clasificar Clientes (SB, PU, Terceros u Otros)
-            def clasificar_cliente(row):
-                cliente = str(row[col_cliente]).upper() if col_cliente in df.columns else ""
-                if 'SALCOBRAND' in cliente:
-                    return 'SB'
-                elif 'PREUNIC' in cliente:
-                    return 'PU'
+            # 2. Panel de filtros interactivos
+            st.markdown("#### 🎛️ Filtros de Control")
+            f_col1, f_col2, f_col3 = st.columns(3)
+            
+            with f_col1:
+                divs_unicas = ["Todas"] + sorted([str(x) for x in df[col_div].dropna().unique()]) if col_div in df.columns else ["Todas"]
+                div_sel = st.selectbox("Filtrar por División:", divs_unicas, key=f"f_div_{i}")
+
+            with f_col2:
+                clientes_unicos = ["Todos"] + sorted([str(x) for x in df[col_cliente].dropna().unique()]) if col_cliente in df.columns else ["Todos"]
+                cliente_sel = st.selectbox("Filtrar por Cliente:", clientes_unicos, key=f"f_cli_{i}")
+
+            with f_col3:
+                inflamable_opts = ["Todos"] + sorted([str(x) for x in df[col_inflamable].dropna().unique()]) if col_inflamable in df.columns else ["Todos"]
+                inflamable_sel = st.selectbox("Producto Inflamable:", inflamable_opts, key=f"f_inf_{i}")
+
+            # Aplicar filtros
+            df_si_filt = df.copy()
+            if div_sel != "Todas" and col_div in df_si_filt.columns:
+                df_si_filt = df_si_filt[df_si_filt[col_div].astype(str) == div_sel]
+            if cliente_sel != "Todos" and col_cliente in df_si_filt.columns:
+                df_si_filt = df_si_filt[df_si_filt[col_cliente].astype(str) == cliente_sel]
+            if inflamable_sel != "Todos" and col_inflamable in df_si_filt.columns:
+                df_si_filt = df_si_filt[df_si_filt[col_inflamable].astype(str) == inflamable_sel]
+
+            st.divider()
+
+            # 3. Métricas Principales (KPIs)
+            st.markdown("#### 📊 KPIs Generales")
+            monto_total = df_si_filt[col_monto].sum()
+            unidades_totales = df_si_filt[col_unid].sum()
+            costo_pmp_total = (df_si_filt[col_unid] * df_si_filt[col_pmp]).sum()
+            ticket_promedio = (monto_total / unidades_totales) if unidades_totales > 0 else 0
+            num_facturas = df_si_filt[col_factura].nunique() if col_factura in df_si_filt.columns else len(df_si_filt)
+
+            k1, k2, k3, k4, k5 = st.columns(5)
+            k1.metric("Monto Total Facturado", formato_moneda(monto_total))
+            k2.metric("Unidades Vendidas", formato_unidades(unidades_totales))
+            k3.metric("Ticket Promedio / Unid", formato_moneda(ticket_promedio))
+            k4.metric("Costo PMP Total", formato_moneda(costo_pmp_total))
+            k5.metric("N° Transacciones/Facturas", formato_unidades(num_facturas))
+
+            st.divider()
+
+            # 4. Tablas Agrupadas por División y Cliente
+            c_div_view, c_cli_view = st.columns([1, 1.2])
+
+            with c_div_view:
+                st.markdown("#### 🏢 Venta por División")
+                if col_div in df_si_filt.columns:
+                    grp_div = df_si_filt.groupby(col_div, as_index=False).agg({
+                        col_monto: 'sum',
+                        col_unid: 'sum'
+                    })
+                    grp_div['% Monto'] = (grp_div[col_monto] / monto_total * 100) if monto_total > 0 else 0
+                    grp_div = grp_div.sort_values(by=col_monto, ascending=False)
+
+                    grp_div_disp = pd.DataFrame({
+                        "División": grp_div[col_div],
+                        "Monto ($)": grp_div[col_monto].apply(formato_moneda),
+                        "Unidades": grp_div[col_unid].apply(formato_unidades),
+                        "Participación": grp_div['% Monto'].apply(lambda x: f"{x:.1f}%")
+                    })
+                    st.dataframe(grp_div_disp, hide_index=True, use_container_width=True)
                 else:
-                    return 'Terceros'
+                    st.info("Columna de división no encontrada.")
 
-            df['Agrupacion'] = df.apply(clasificar_cliente, axis=1)
-            df['Division_Norm'] = df[col_div].astype(str).str.upper() if col_div in df.columns else 'OTRO'
+            with c_cli_view:
+                st.markdown("#### 🏆 Top Clientes por Facturación")
+                if col_cliente in df_si_filt.columns:
+                    grp_cli = df_si_filt.groupby(col_cliente, as_index=False).agg({
+                        col_monto: 'sum',
+                        col_unid: 'sum'
+                    }).sort_values(by=col_monto, ascending=False).head(10)
 
-            # Resumen de Facturación en tiempo real desde los datos
-            fact_sb_cons = df[(df['Agrupacion'] == 'SB') & (df['Division_Norm'].str.contains('CONSUMO'))][col_monto].sum()
-            fact_sb_farm = df[(df['Agrupacion'] == 'SB') & (df['Division_Norm'].str.contains('FARMA'))][col_monto].sum()
+                    grp_cli_disp = pd.DataFrame({
+                        "Cliente": grp_cli[col_cliente],
+                        "Monto Total ($)": grp_cli[col_monto].apply(formato_moneda),
+                        "Unidades": grp_cli[col_unid].apply(formato_unidades)
+                    })
+                    st.dataframe(grp_cli_disp, hide_index=True, use_container_width=True)
+                else:
+                    st.info("Columna de cliente no encontrada.")
+
+            st.divider()
+
+            # 5. Registro completo de transacciones
+            st.subheader("📋 Registro Completo de Ventas SI")
+            busqueda_si = st.text_input("🔍 Buscar en registros SI (Descripción, SKU, Factura, etc.):", key=f"search_si_{i}")
             
-            fact_pu_cons = df[(df['Agrupacion'] == 'PU') & (df['Division_Norm'].str.contains('CONSUMO'))][col_monto].sum()
-            fact_pu_farm = df[(df['Agrupacion'] == 'PU') & (df['Division_Norm'].str.contains('FARMA'))][col_monto].sum()
-            
-            fact_terceros = df[df['Agrupacion'] == 'Terceros'][col_monto].sum()
-
-            fact_consumo_tot = fact_sb_cons + fact_pu_cons
-            fact_farma_tot = fact_sb_farm + fact_pu_farm
-            fact_total_real = fact_consumo_tot + fact_farma_tot + fact_terceros
-
-            # Metas
-            meta_consumo = 2296243451
-            meta_farma = 2212039150
-            meta_terceros = 41037523
-            meta_total = meta_consumo + meta_farma + meta_terceros
-
-            # 1. MÉTRICAS DINÁMICAS DE CIERRE Y CUMPLIMIENTO
-            st.markdown("#### 📊 Resultado de Cierre Facturado")
-
-            resultado_real = fact_total_real - meta_total
-            cumplimiento_real = (fact_total_real / meta_total * 100) if meta_total > 0 else 0.0
-
-            col_m1, col_m2, col_m3, col_m4 = st.columns(4)
-            with col_m1:
-                st.metric("Cierre", formato_moneda(fact_total_real))
-            with col_m2:
-                st.metric("Meta Total", formato_moneda(meta_total))
-            with col_m3:
-                txt_resultado = f"-{formato_moneda(abs(resultado_real))}" if resultado_real < 0 else formato_moneda(resultado_real)
-                st.metric("Resultado", txt_resultado)
-            with col_m4:
-                st.metric("Cumplimiento", f"{cumplimiento_real:.1f}%")
-
-            st.divider()
-
-            # 2. TABLAS SUPERIORES DE RESUMEN POR CANAL
-            st.markdown("#### 📊 Facturado y Proyección por Canal")
-            col_r1, col_r2 = st.columns([1, 1.8])
-
-            with col_r1:
-                df_fact_canal = pd.DataFrame({
-                    "Agosto": ["Consumo", "Farma", "Terceros"],
-                    "Facturado x canal": [fact_consumo_tot, fact_farma_tot, fact_terceros]
-                })
-                df_fact_canal["Facturado x canal"] = df_fact_canal["Facturado x canal"].apply(formato_moneda)
-                st.dataframe(df_fact_canal, hide_index=True, use_container_width=True)
-
-            with col_r2:
-                proy_cons = 1931155483
-                proy_farm = 1801719514
-                proy_terc = 12383038
-
-                df_proy_canal = pd.DataFrame({
-                    "Proyección x canal": [proy_cons, proy_farm, proy_terc],
-                    "Meta": [meta_consumo, meta_farma, meta_terceros],
-                    "%": [
-                        f"{(proy_cons/meta_consumo*100):.0f}%" if meta_consumo else "0%",
-                        f"{(proy_farm/meta_farma*100):.0f}%" if meta_farma else "0%",
-                        f"{(proy_terc/meta_terceros*100):.0f}%" if meta_terceros else "0%"
-                    ],
-                    "Facturado actual": [
-                        f"{(fact_consumo_tot/meta_consumo*100):.0f}%" if meta_consumo else "0%",
-                        f"{(fact_farma_tot/meta_farma*100):.0f}%" if meta_farma else "0%",
-                        f"{(fact_terceros/meta_terceros*100):.0f}%" if meta_terceros else "0%"
-                    ]
-                })
-                df_proy_canal["Proyección x canal"] = df_proy_canal["Proyección x canal"].apply(formato_moneda)
-                df_proy_canal["Meta"] = df_proy_canal["Meta"].apply(formato_moneda)
-                st.dataframe(df_proy_canal, hide_index=True, use_container_width=True)
-
-            st.divider()
-
-            # 3. DESGLOSE POR CLIENTE
-            st.markdown("#### 🏢 Desglose por Cliente")
-            c_pu, c_sb, c_ter = st.columns(3)
-
-            with c_pu:
-                st.markdown("**Preunic**")
-                tot_pu = fact_pu_cons + fact_pu_farm
-                df_pu_view = pd.DataFrame({
-                    "División": ["CONSUMO MASIVO", "FARMA", "TOTAL PREUNIC"],
-                    "Facturado": [formato_moneda(fact_pu_cons), formato_moneda(fact_pu_farm), formato_moneda(tot_pu)]
-                })
-                st.dataframe(df_pu_view, hide_index=True, use_container_width=True)
-
-            with c_sb:
-                st.markdown("**SB**")
-                tot_sb = fact_sb_cons + fact_sb_farm
-                df_sb_view = pd.DataFrame({
-                    "División": ["CONSUMO MASIVO", "FARMA", "TOTAL SB"],
-                    "Facturado": [formato_moneda(fact_sb_cons), formato_moneda(fact_sb_farm), formato_moneda(tot_sb)]
-                })
-                st.dataframe(df_sb_view, hide_index=True, use_container_width=True)
-
-            with c_ter:
-                st.markdown("**Terceros**")
-                df_ter_view = pd.DataFrame({
-                    "División": ["TERCEROS", "TOTAL TERCEROS"],
-                    "Facturado": [formato_moneda(fact_terceros), formato_moneda(fact_terceros)]
-                })
-                st.dataframe(df_ter_view, hide_index=True, use_container_width=True)
-
-            st.divider()
-
-            # 4. DETALLE GENERAL DE TRANSACCIONES
-            st.subheader("📋 Detalle de Transacciones SI")
-            busqueda_si = st.text_input("🔍 Buscar en registros SI:", key=f"search_si_{i}")
-            df_si_det = df.copy()
+            df_si_det = df_si_filt.copy()
             if busqueda_si:
                 mask_si = df_si_det.astype(str).apply(lambda x: x.str.contains(busqueda_si, case=False)).any(axis=1)
                 df_si_det = df_si_det[mask_si]
             
+            st.caption(f"Mostrando {len(df_si_det)} registros.")
             st.dataframe(df_si_det, hide_index=True, use_container_width=True)
 
         # =================================================================
