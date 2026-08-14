@@ -76,15 +76,13 @@ def fmt_sem(val):
         return str(val)
 
 def fmt_code(val):
+    """Preserva ceros a la izquierda y formatos especiales como 0007341.7"""
     if pd.isna(val) or val == "" or val is None:
         return "S/N"
-    try:
-        val_f = float(val)
-        if val_f.is_integer():
-            return str(int(val_f))
-        return str(val_f)
-    except (ValueError, TypeError):
-        return str(val).strip()
+    val_str = str(val).strip()
+    if val_str.endswith('.0'):
+        val_str = val_str[:-2]
+    return val_str
 
 def formato_moneda(valor):
     try:
@@ -195,49 +193,50 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         is_stock = (nombre_clean == "STOCK")
 
         # =================================================================
-        # LÓGICA COMPLETA Y FILTRABLE PARA PESTAÑA STOCK (DASHBOARD DE CADUCIDAD)
+        # DASHBOARD DE STOCK / CADUCIDAD
         # =================================================================
         if is_stock:
             st.markdown("### 📦 Dashboard de Fecha de Caducidad")
             
-            # 1. Identificar columnas clave (Priorizando 'lote_proveedor' directamente)
-            col_cod = next((c for c in df.columns if c.strip().lower() in ['codigo_articulo', 'id_producto', 'sku']), None)
+            # 1. Identificar columnas clave
+            col_cod = next((c for c in df.columns if c.strip().lower() in ['codigo_articulo', 'id_producto', 'sku', 'codigo']), None)
             col_estado_sub = next((c for c in df.columns if c.strip().lower() in ['estado_subin', 'sub_inventario', 'estado sub inventario']), None)
-            
-            # Prioridad exacta a 'lote_proveedor'
+            col_estado_lote = next((c for c in df.columns if c.strip().lower() in ['estado_lote', 'estado lote', 'estado_lote_prov']), None)
             col_lote = next((c for c in df.columns if c.strip().lower() == 'lote_proveedor'), None) or next((c for c in df.columns if c.strip().lower() in ['lote', 'lote_prov']), None)
-            
             col_loc = next((c for c in df.columns if c.strip().lower() in ['localizador', 'ubicacion']), None)
-            col_fecha = next((c for c in df.columns if c.strip().lower() in ['fecha_expiracion_lote', 'vencimiento', 'fecha expiracion']), None)
+            col_fecha = next((c for c in df.columns if c.strip().lower() in ['fecha_expiracion_lote', 'vencimiento', 'fecha expiracion', 'fecha_expiracion']), None)
             col_cant = next((c for c in df.columns if c.strip().lower() in ['cantidad', 'stock', 'unidades']), None)
 
-            # Asegurar numérico en la columna de cantidad
+            # Formatear la columna de Código preservando los ceros
+            if col_cod and col_cod in df.columns:
+                df[col_cod] = df[col_cod].apply(fmt_code)
+
             if col_cant:
                 df[col_cant] = pd.to_numeric(df[col_cant], errors='coerce').fillna(0)
 
-            # 2. Calcular alertas de caducidad a 13 meses
+            # 2. Calcular alertas de caducidad (Tarjeta roja < 6 meses)
+            hoy = pd.Timestamp.today()
+            limite_6m = hoy + pd.DateOffset(months=6)
+            limite_13m = hoy + pd.DateOffset(months=13)
+
             if col_fecha:
                 df[col_fecha] = pd.to_datetime(df[col_fecha], errors='coerce')
-                hoy = pd.Timestamp.today()
-                limite_13m = hoy + pd.DateOffset(months=13)
                 
                 def calcular_alerta(fecha):
                     if pd.isna(fecha): return "Sin Fecha"
-                    if fecha < hoy: return "VENCIDO"
-                    elif fecha <= limite_13m: return "Pronto vence"
-                    else: return "Vigente"
+                    if fecha < limite_6m: return "Menos de 6 meses"
+                    elif fecha <= limite_13m: return "Pronto vence (6-13m)"
+                    else: return "Vigente (> 13m)"
                 
                 df["Alerta_Caducidad"] = df[col_fecha].apply(calcular_alerta)
             else:
                 df["Alerta_Caducidad"] = "Sin Fecha"
                 df[col_fecha] = "N/A"
-                hoy = pd.Timestamp.today()
-                limite_13m = hoy + pd.DateOffset(months=13)
 
             # 3. Diseño del Dashboard (3 Columnas)
             col_dash1, col_dash2, col_dash3 = st.columns([1, 1.5, 1.5])
 
-            # --- A. Cargar primero el Buscador en la Columna 3 ---
+            # --- A. Buscador por Producto ---
             with col_dash3:
                 if col_cod:
                     lista_prods = sorted([str(x) for x in df[col_cod].dropna().unique()])
@@ -245,25 +244,25 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 else:
                     prod_sel = "Seleccione..."
 
-            # --- B. Filtrar Dinámicamente el Dataframe según el SKU ---
+            # --- B. Filtrar Dataframe según SKU ---
             if prod_sel != "Seleccione...":
                 df_dash = df[df[col_cod].astype(str) == prod_sel].copy()
             else:
                 df_dash = df.copy()
 
-            # --- C. Calcular KPIs en SUMA DE UNIDADES (Cantidad) ---
+            # --- C. Calcular KPIs en SUMA DE UNIDADES ---
             if col_cant:
                 total_unidades = df_dash[col_cant].sum()
-                total_vencidos = df_dash[df_dash["Alerta_Caducidad"] == "VENCIDO"][col_cant].sum()
-                total_pronto = df_dash[df_dash["Alerta_Caducidad"] == "Pronto vence"][col_cant].sum()
-                total_vigentes = df_dash[df_dash["Alerta_Caducidad"] == "Vigente"][col_cant].sum()
+                total_menos_6m = df_dash[df_dash["Alerta_Caducidad"] == "Menos de 6 meses"][col_cant].sum()
+                total_pronto = df_dash[df_dash["Alerta_Caducidad"] == "Pronto vence (6-13m)"][col_cant].sum()
+                total_vigentes = df_dash[df_dash["Alerta_Caducidad"] == "Vigente (> 13m)"][col_cant].sum()
             else:
                 total_unidades = len(df_dash)
-                total_vencidos = len(df_dash[df_dash["Alerta_Caducidad"] == "VENCIDO"])
-                total_pronto = len(df_dash[df_dash["Alerta_Caducidad"] == "Pronto vence"])
-                total_vigentes = len(df_dash[df_dash["Alerta_Caducidad"] == "Vigente"])
+                total_menos_6m = len(df_dash[df_dash["Alerta_Caducidad"] == "Menos de 6 meses"])
+                total_pronto = len(df_dash[df_dash["Alerta_Caducidad"] == "Pronto vence (6-13m)"])
+                total_vigentes = len(df_dash[df_dash["Alerta_Caducidad"] == "Vigente (> 13m)"])
 
-            # --- D. Renderizar Tarjetas en Columna 1 ---
+            # --- D. Tarjetas KPI (Rojo < 6 Meses) ---
             with col_dash1:
                 st.markdown("""
                 <style>
@@ -272,16 +271,16 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 """, unsafe_allow_html=True)
                 
                 st.markdown(f'<div class="stock-card" style="background-color: #333; color: white;">Unidades Registradas<br><span style="font-size:24px;">{formato_unidades(total_unidades)}</span></div>', unsafe_allow_html=True)
-                st.markdown(f'<div class="stock-card" style="background-color: #e74c3c;">Unidades Vencidas<br><span style="font-size:24px;">{formato_unidades(total_vencidos)}</span></div>', unsafe_allow_html=True)
-                st.markdown(f'<div class="stock-card" style="background-color: #f1c40f; color: black;">Pronto vence (< 13 meses)<br><span style="font-size:24px;">{formato_unidades(total_pronto)}</span></div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="stock-card" style="background-color: #e74c3c;">Unidades < 6 meses<br><span style="font-size:24px;">{formato_unidades(total_menos_6m)}</span></div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="stock-card" style="background-color: #f1c40f; color: black;">Pronto vence (6 a 13 meses)<br><span style="font-size:24px;">{formato_unidades(total_pronto)}</span></div>', unsafe_allow_html=True)
                 st.markdown(f'<div class="stock-card" style="background-color: #2ecc71;">Vigentes (> 13 meses)<br><span style="font-size:24px;">{formato_unidades(total_vigentes)}</span></div>', unsafe_allow_html=True)
 
-            # --- E. Renderizar Gráfico de Anillo en Columna 2 ---
+            # --- E. Gráfico de Anillo ---
             with col_dash2:
                 st.markdown("#### Estado de caducidad")
-                labels = ['Pronto vence', 'Vigente', 'Vencido']
-                values = [total_pronto, total_vigentes, total_vencidos]
-                colors = ['#f1c40f', '#2ecc71', '#e74c3c']
+                labels = ['< 6 meses', '6 a 13 meses', 'Vigente (> 13m)']
+                values = [total_menos_6m, total_pronto, total_vigentes]
+                colors = ['#e74c3c', '#f1c40f', '#2ecc71']
                 
                 if sum(values) > 0:
                     fig_pie = go.Figure(data=[go.Pie(labels=labels, values=values, hole=.5, marker=dict(colors=colors))])
@@ -290,7 +289,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 else:
                     st.info("Sin registros para mostrar.")
 
-            # --- F. Completar Columna 3 (Stock actual y Plazo dinámico) ---
+            # --- F. Detalle Stock actual y plazo ---
             with col_dash3:
                 if prod_sel != "Seleccione...":
                     stock_actual = df_dash[col_cant].sum() if col_cant else 0
@@ -300,17 +299,17 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                     st.markdown(f'<div class="stock-card" style="background-color: #7f8c8d;">Stock actual<br><span style="font-size:24px;">{formato_unidades(stock_actual)}</span></div>', unsafe_allow_html=True)
                     
                     if isinstance(dias_vencer, int):
-                        if prox_vencer < hoy:
-                            texto_vence = f"Venció hace {abs(dias_vencer)} días"
-                            color_vence = "#e74c3c" # Rojo
+                        if prox_vencer < limite_6m:
+                            texto_vence = f"Vence en {dias_vencer} días" if dias_vencer >= 0 else f"Venció hace {abs(dias_vencer)} días"
+                            color_vence = "#e74c3c"
                             color_texto = "color: white;"
                         elif prox_vencer <= limite_13m:
                             texto_vence = f"Vence en {dias_vencer} días"
-                            color_vence = "#f1c40f" # Amarillo
+                            color_vence = "#f1c40f"
                             color_texto = "color: black;"
                         else:
                             texto_vence = f"Vence en {dias_vencer} días"
-                            color_vence = "#2ecc71" # Verde
+                            color_vence = "#2ecc71"
                             color_texto = "color: white;"
                     else:
                         texto_vence = "Sin fecha registrada"
@@ -320,19 +319,42 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                     st.markdown(f'<div class="stock-card" style="background-color: {color_vence}; {color_texto} border: 1px solid #555;">Plazo de vencimiento<br><span style="font-size:20px;">{texto_vence}</span></div>', unsafe_allow_html=True)
 
             st.divider()
-            
-            # --- G. Vista de Tabla Limpia (Reactiva al filtro) ---
+
+            # --- G. TARJETAS SECUNDARIAS POR ESTADO DE LOTE ---
+            if col_estado_lote and col_estado_lote in df_dash.columns:
+                st.markdown("##### 🏷️ Cantidad de Unidades por Estado de Lote")
+                df_est_grp = df_dash.groupby(col_estado_lote, dropna=False)[col_cant].sum().reset_index() if col_cant else df_dash[col_estado_lote].value_counts().reset_index()
+                
+                if not df_est_grp.empty:
+                    c_e, c_q = df_est_grp.columns[0], df_est_grp.columns[1]
+                    num_items = len(df_est_grp)
+                    cols_est = st.columns(min(num_items, 6))
+                    for idx_e, row_e in df_est_grp.iterrows():
+                        nombre_est = str(row_e[c_e]) if pd.notna(row_e[c_e]) else "Sin Estado"
+                        cant_est = row_e[c_q]
+                        
+                        with cols_est[idx_e % min(num_items, 6)]:
+                            st.markdown(
+                                f'''<div style="background-color: #141414; border: 1px solid #0070f3; border-radius: 8px; padding: 10px; text-align: center; margin-bottom: 15px;">
+                                    <div style="font-size: 12px; color: #aaaaaa; font-weight: 600; text-transform: uppercase;">{nombre_est}</div>
+                                    <div style="font-size: 20px; font-weight: bold; color: #ffffff; margin-top: 3px;">{formato_unidades(cant_est)}</div>
+                                </div>''', 
+                                unsafe_allow_html=True
+                            )
+
+            # --- H. Tabla Detalle de Stock ---
             st.subheader(f"📋 Detalle de Stock y Lotes {f'(SKU: {prod_sel})' if prod_sel != 'Seleccione...' else '(General)'}")
             
             cols_mostrar = []
             nombres_amigables = {}
             if col_cod: cols_mostrar.append(col_cod); nombres_amigables[col_cod] = "Código Artículo"
             if col_estado_sub: cols_mostrar.append(col_estado_sub); nombres_amigables[col_estado_sub] = "Estado Sub-Inv"
+            if col_estado_lote: cols_mostrar.append(col_estado_lote); nombres_amigables[col_estado_lote] = "Estado Lote"
             if col_lote: cols_mostrar.append(col_lote); nombres_amigables[col_lote] = "Lote Proveedor"
             if col_loc: cols_mostrar.append(col_loc); nombres_amigables[col_loc] = "Localizador"
             if col_cant: cols_mostrar.append(col_cant); nombres_amigables[col_cant] = "Cantidad"
             if col_fecha: cols_mostrar.append(col_fecha); nombres_amigables[col_fecha] = "Fecha Expiración"
-            cols_mostrar.append("Alerta_Caducidad"); nombres_amigables["Alerta_Caducidad"] = "Estado Lote"
+            cols_mostrar.append("Alerta_Caducidad"); nombres_amigables["Alerta_Caducidad"] = "Rango Caducidad"
             
             df_vista_stock = df_dash[cols_mostrar].copy()
             df_vista_stock = df_vista_stock.rename(columns=nombres_amigables)
@@ -346,7 +368,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         # LÓGICA ORIGINAL PARA SB Y PU
         # =================================================================
         elif is_sb or is_pu:
-            # Mapeo adaptable de columnas (Priorizando 'id_producto'/'id_prod' para SKU)
             col_semana = next((c for c in df.columns if c.strip().lower() in ['semana', 'sem', 'wk', 'week']), None) or next((c for c in df.columns if 'semana' in c.lower() or 'sem' in c.lower()), None)
             col_sku = next((c for c in df.columns if c.strip().lower() in ['id_producto', 'id_product', 'id_prod', 'sku', 'cod_sku', 'codigo_sku', 'codigo', 'cod_prod', 'material']), None) or next((c for c in df.columns if any(k in c.lower() for k in ['id_prod', 'producto_id', 'sku', 'cod_prod'])), None)
             col_oc = next((c for c in df.columns if c.strip().lower() in ['oc', 'orden_compra', 'orden de compra', 'num_oc', 'numero_oc', 'orden', 'numero_orden']), None) or next((c for c in df.columns if 'oc' in c.lower() or 'orden' in c.lower()), None)
@@ -361,7 +382,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             col_quiebre = next((c for c in df.columns if 'quiebre' in c.lower() or 'monto_falta' in c.lower()), None)
             col_rechazado = next((c for c in df.columns if 'rechaz' in c.lower() or 'devuel' in c.lower()), None)
 
-            # Normalización de SKU/ID y Descripción
             if not col_sku or col_sku not in df.columns:
                 col_sku = df.columns[0]
             if not col_desc or col_desc not in df.columns:
@@ -370,11 +390,9 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             df[col_sku] = df[col_sku].apply(fmt_code)
             df[col_desc] = df[col_desc].fillna("Sin Descripción").astype(str)
 
-            # Formatear la columna de semanas
             if col_semana and col_semana in df.columns:
                 df[col_semana] = df[col_semana].apply(fmt_sem)
 
-            # --- PREVENCIÓN DE ERRORES: CREAR COLUMNAS SI NO EXISTEN ---
             if not col_u_compra or col_u_compra not in df.columns: df["unidades_compra_calc"] = 0; col_u_compra = "unidades_compra_calc"
             if not col_u_recib or col_u_recib not in df.columns: df["unidades_recibidas_calc"] = 0; col_u_recib = "unidades_recibidas_calc"
             if not col_precio or col_precio not in df.columns: df["precio_calc"] = 0; col_precio = "precio_calc"
@@ -383,7 +401,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             for c_num in cols_a_num:
                 df[c_num] = pd.to_numeric(df[c_num], errors='coerce').fillna(0)
 
-            # Reconstrucción de montos si faltan
             if not col_m_compra or col_m_compra not in df.columns:
                 df["monto_compra_calc"] = df[col_u_compra] * df[col_precio]
                 col_m_compra = "monto_compra_calc"
@@ -401,7 +418,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 
             df["quiebre_unid_calc"] = (df[col_u_compra] - df[col_u_recib]).clip(lower=0)
 
-            # Orden de semanas
             def orden_semana_key(s):
                 try:
                     return (0, int(float(s)))
@@ -411,7 +427,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             semanas_todas = sorted([s for s in df[col_semana].unique() if str(s).strip() != ""], key=orden_semana_key) if col_semana else []
             ultimas_4_semanas = semanas_todas[-4:] if semanas_todas else []
 
-            # --- FILTRO POR SEMANA TIPO TARJETAS ---
             st.markdown("### 📅 Seleccionar Semana")
             opciones_semanas = {"Todas": "Todas"}
             for s in semanas_todas:
@@ -428,7 +443,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             if semana_sel != "Todas" and col_semana: df_filt = df_filt[df_filt[col_semana] == semana_sel]
             st.divider()
 
-            # --- RELOJES (GAUGES) ---
             if col_semana:
                 sem_actual = semana_sel if semana_sel != "Todas" else (semanas_todas[-1] if semanas_todas else None)
                 if sem_actual is not None:
@@ -534,8 +548,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                             grp_top_disp[lbl_oc] = grp_top["OC abierta"].apply(formato_unidades)
 
                             st.dataframe(grp_top_disp, hide_index=True, use_container_width=True)
-                        else:
-                            st.info("No hay datos de quiebres para mostrar en esta vista.")
 
                     elif is_sb and col_div:
                         divisiones_unicas = [d for d in df_sem_top[col_div].dropna().unique()]
@@ -588,7 +600,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
             st.divider()
 
-            # --- RESUMEN 4 SEMANAS (TABLA Y GRÁFICOS) ---
+            # --- RESUMEN 4 SEMANAS ---
             if col_semana:
                 df_base_fr = df.copy()
                 df_4sem = df_base_fr[df_base_fr[col_semana].isin(ultimas_4_semanas)].copy()
@@ -746,7 +758,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
                 st.divider()
 
-            # --- DETALLE DE REGISTRO CON SUS PROPIOS FILTROS (OC Y SKU) ---
+            # --- DETALLE DE REGISTRO CON FILTROS ---
             st.subheader("📋 Detalle de Registro de Compras")
             col_det_f1, col_det_f2 = st.columns(2)
             with col_det_f1:
@@ -766,7 +778,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             else:
                 df_corte_final = df_detalle.copy()
 
-            # --- RENOMBRADO AUTOMÁTICO DE COLUMNAS PARA MOSTRAR NOMBRES LIMPIOS ---
             renombrar_columnas = {
                 "id_producto": "SKU",
                 "id_prod": "SKU",
@@ -796,7 +807,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
             st.dataframe(df_corte_final, hide_index=True, use_container_width=True)
 
-        # PARA OTRAS PESTAÑAS SECUNDARIAS/AUXILIARES
+        # PARA OTRAS PESTAÑAS AUXILIARES
         else:
             busqueda = st.text_input(f"🔍 Buscar en {nombre_hoja}:", key=f"search_{nombre_hoja}_{i}")
             if busqueda:
