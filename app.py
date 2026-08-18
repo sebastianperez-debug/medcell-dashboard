@@ -1,15 +1,16 @@
-import streamlit as st
-import pandas as pd
-import plotly.graph_objects as go
-import plotly.express as px
 import os
 from datetime import datetime
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
+import streamlit as st
 
 # 1. Configuración de la página
 st.set_page_config(page_title="Medcell Operaciones", layout="wide")
 
 # 2. Estilos personalizados
-st.markdown("""
+st.markdown(
+    """
     <style>
     .stApp { background-color: #0b0b0b; color: #ffffff; }
     
@@ -62,92 +63,118 @@ st.markdown("""
     div[data-testid="stMetricLabel"] { color: #888888 !important; }
     div[data-testid="stDataFrame"] { background-color: #121212; border-radius: 8px; }
     </style>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
+
 
 # --- Funciones auxiliares de formato ---
 def fmt_sem(val):
-    if pd.isna(val) or val == "" or val is None:
-        return ""
-    try:
-        val_f = float(val)
-        if val_f.is_integer():
-            return str(int(val_f))
-        return str(val_f)
-    except (ValueError, TypeError):
-        return str(val)
+  if pd.isna(val) or val == "" or val is None:
+    return ""
+  try:
+    val_f = float(val)
+    if val_f.is_integer():
+      return str(int(val_f))
+    return str(val_f)
+  except (ValueError, TypeError):
+    return str(val)
+
 
 def fmt_code(val):
-    """Preserva ceros a la izquierda y formatos de código de origen como 0007341.7"""
-    if pd.isna(val) or val == "" or val is None or str(val).lower() == 'nan':
-        return "S/N"
-    val_str = str(val).strip()
-    if val_str.endswith('.0'):
-        val_str = val_str[:-2]
-    return val_str
+  """Preserva ceros a la izquierda y formatos de código de origen como 0007341.7"""
+  if pd.isna(val) or val == "" or val is None or str(val).lower() == "nan":
+    return "S/N"
+  val_str = str(val).strip()
+  if val_str.endswith(".0"):
+    val_str = val_str[:-2]
+  return val_str
+
 
 def formato_moneda(valor):
-    try:
-        val_int = int(round(valor))
-        return f"${val_int:,}".replace(",", ".")
-    except (ValueError, TypeError):
-        return "$0"
+  try:
+    val_int = int(round(valor))
+    return f"${val_int:,}".replace(",", ".")
+  except (ValueError, TypeError):
+    return "$0"
+
 
 def formato_unidades(valor):
-    try:
-        val_int = int(round(valor))
-        return f"{val_int:,}".replace(",", ".")
-    except (ValueError, TypeError):
-        return "0"
+  try:
+    val_int = int(round(valor))
+    return f"{val_int:,}".replace(",", ".")
+  except (ValueError, TypeError):
+    return "0"
+
 
 def aplicar_criticidad(column):
-    is_total = column.index == (len(column) - 1)
-    styles = []
-    for i, val in enumerate(column):
-        if is_total[i]: styles.append('font-weight: bold; background-color: #1a1a1a;')
-        elif val >= 15.0: styles.append('background-color: #8b0000; color: #ffffff; font-weight: bold;')
-        elif val >= 10.0: styles.append('background-color: #b91c1c; color: #ffffff; font-weight: bold;')
-        elif val >= 5.0: styles.append('background-color: #c2410c; color: #ffffff;')
-        elif val > 0: styles.append('background-color: #27272a; color: #d4d4d8;')
-        else: styles.append('')
-    return styles
+  is_total = column.index == (len(column) - 1)
+  styles = []
+  for i, val in enumerate(column):
+    if is_total[i]:
+      styles.append("font-weight: bold; background-color: #1a1a1a;")
+    elif val >= 15.0:
+      styles.append(
+          "background-color: #8b0000; color: #ffffff; font-weight: bold;"
+      )
+    elif val >= 10.0:
+      styles.append(
+          "background-color: #b91c1c; color: #ffffff; font-weight: bold;"
+      )
+    elif val >= 5.0:
+      styles.append("background-color: #c2410c; color: #ffffff;")
+    elif val > 0:
+      styles.append("background-color: #27272a; color: #d4d4d8;")
+    else:
+      styles.append("")
+  return styles
+
 
 # --- 3. CARGA DEL EXCEL ---
 def buscar_excel():
-    posibles_rutas = [
-        "SQL Seba.xlsx", "SQL Seba.xls",
-        r"C:\Users\sebastianperez\Desktop\QUERY REDSHIFT\SQL Seba.xlsx",
-        r"C:\Users\sebastianperez\Desktop\QUERY REDSHIFT\SQL Seba.xls"
-    ]
-    for ruta in posibles_rutas:
-        if os.path.exists(ruta): return ruta
-    return None
+  posibles_rutas = [
+      "SQL Seba.xlsx",
+      "SQL Seba.xls",
+      r"C:\Users\sebastianperez\Desktop\QUERY REDSHIFT\SQL Seba.xlsx",
+      r"C:\Users\sebastianperez\Desktop\QUERY REDSHIFT\SQL Seba.xls",
+  ]
+  for ruta in posibles_rutas:
+    if os.path.exists(ruta):
+      return ruta
+  return None
+
 
 ruta_final = buscar_excel()
 
+
 @st.cache_data(ttl=60)
 def cargar_libro_excel(ruta):
-    xls = pd.ExcelFile(ruta)
-    hojas_dict = {}
-    for hoja in xls.sheet_names:
-        df_temp = pd.read_excel(xls, hoja, dtype=str)
-        df_temp.columns = [str(c).strip() for c in df_temp.columns]
-        df_temp = df_temp.loc[:, ~df_temp.columns.str.startswith('Unnamed')]
-        df_temp = df_temp.loc[:, ~df_temp.columns.duplicated()]
-        hojas_dict[hoja] = df_temp
-    return hojas_dict
+  xls = pd.ExcelFile(ruta)
+  hojas_dict = {}
+  for hoja in xls.sheet_names:
+    df_temp = pd.read_excel(xls, hoja, dtype=str)
+    df_temp.columns = [str(c).strip() for c in df_temp.columns]
+    df_temp = df_temp.loc[:, ~df_temp.columns.str.startswith("Unnamed")]
+    df_temp = df_temp.loc[:, ~df_temp.columns.duplicated()]
+    hojas_dict[hoja] = df_temp
+  return hojas_dict
+
 
 if not ruta_final:
-    st.error("⚠️ No se encontró el archivo 'SQL Seba.xlsx' en la ruta especificada.")
-    st.stop()
+  st.error(
+      "⚠️ No se encontró el archivo 'SQL Seba.xlsx' en la ruta especificada."
+  )
+  st.stop()
 
 try:
-    hojas = cargar_libro_excel(ruta_final)
+  hojas = cargar_libro_excel(ruta_final)
 except Exception as e:
-    st.error(f"Error al leer Excel: {e}")
-    st.stop()
+  st.error(f"Error al leer Excel: {e}")
+  st.stop()
 
 # --- 4. HEADER ---
-st.markdown("""
+st.markdown(
+    """
     <div class="medcell-header">
         <div style="display: flex; justify-content: space-between; align-items: flex-end;">
             <div>
@@ -160,830 +187,1194 @@ st.markdown("""
             </div>
         </div>
     </div>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
+
 
 def crear_reloj_gauge(titulo, porcentaje, color_barra):
-    fig = go.Figure(go.Indicator(
-        mode="gauge+number", value=porcentaje,
-        number={'suffix': "%", 'font': {'size': 28, 'color': '#ffffff'}},
-        title={'text': f"<b>{titulo}</b>", 'font': {'size': 16, 'color': '#cccccc'}},
-        gauge={
-            'axis': {'range': [0, 100], 'ticksuffix': '%'},
-            'bar': {'color': color_barra, 'thickness': 0.4},
-            'bgcolor': "#1a1a1a", 'borderwidth': 1, 'bordercolor': "#333333",
-            'steps': [{'range': [0, 50], 'color': '#281a1a'}, {'range': [50, 80], 'color': '#28241a'}, {'range': [80, 100], 'color': '#1a281f'}],
-            'threshold': {'line': {'color': "#ffffff", 'width': 3}, 'thickness': 0.8, 'value': porcentaje}
-        }
-    ))
-    fig.update_layout(height=210, margin=dict(l=25, r=25, t=35, b=15), paper_bgcolor="rgba(0,0,0,0)", font=dict(color="#ffffff"))
-    return fig
+  fig = go.Figure(
+      go.Indicator(
+          mode="gauge+number",
+          value=porcentaje,
+          number={"suffix": "%", "font": {"size": 28, "color": "#ffffff"}},
+          title={
+              "text": f"<b>{titulo}</b>",
+              "font": {"size": 16, "color": "#cccccc"},
+          },
+          gauge={
+              "axis": {"range": [0, 100], "ticksuffix": "%"},
+              "bar": {"color": color_barra, "thickness": 0.4},
+              "bgcolor": "#1a1a1a",
+              "borderwidth": 1,
+              "bordercolor": "#333333",
+              "steps": [
+                  {"range": [0, 50], "color": "#281a1a"},
+                  {"range": [50, 80], "color": "#28241a"},
+                  {"range": [80, 100], "color": "#1a281f"},
+              ],
+              "threshold": {
+                  "line": {"color": "#ffffff", "width": 3},
+                  "thickness": 0.8,
+                  "value": porcentaje,
+              },
+          },
+      )
+  )
+  fig.update_layout(
+      height=210,
+      margin=dict(l=25, r=25, t=35, b=15),
+      paper_bgcolor="rgba(0,0,0,0)",
+      font=dict(color="#ffffff"),
+  )
+  return fig
+
 
 # --- 5. PESTAÑAS ---
-HOJAS_A_EXCLUIR = ["sku", "maestra", "precio", "nivel de servicio sb", "venta perdida sb", "nivel de servicio pu"]
-nombres_hojas = [h for h in hojas.keys() if h.strip().lower() not in HOJAS_A_EXCLUIR]
+HOJAS_A_EXCLUIR = [
+    "sku",
+    "maestra",
+    "precio",
+    "nivel de servicio sb",
+    "venta perdida sb",
+    "nivel de servicio pu",
+]
+nombres_hojas = [
+    h for h in hojas.keys() if h.strip().lower() not in HOJAS_A_EXCLUIR
+]
 
 tabs = st.tabs([f"📊 {h}" for h in nombres_hojas])
 
 for i, nombre_hoja in enumerate(nombres_hojas):
-    with tabs[i]:
-        df = hojas[nombre_hoja].copy()
-        nombre_clean = nombre_hoja.strip().upper()
-        
-        is_sb = (nombre_clean == "SB")
-        is_pu = (nombre_clean == "PU")
-        is_stock = (nombre_clean == "STOCK")
-        is_si = (nombre_clean == "SI")
+  with tabs[i]:
+    df = hojas[nombre_hoja].copy()
+    nombre_clean = nombre_hoja.strip().upper()
 
-        # =================================================================
-        # PESTAÑA VENTA SI (REDISEÑADA, VISUAL Y DINÁMICA)
-        # =================================================================
-        if is_si:
-            st.markdown("### 📈 Dashboard Operativo de Venta SI")
+    is_sb = nombre_clean == "SB"
+    is_pu = nombre_clean == "PU"
+    is_stock = nombre_clean == "STOCK"
+    is_si = nombre_clean == "SI"
 
-            # 1. Detección y conversión de columnas
-            col_cliente = next((c for c in df.columns if 'cliente' in c.lower()), 'nombre_cliente')
-            col_div = next((c for c in df.columns if 'division' in c.lower() or 'división' in c.lower()), 'Division')
-            col_monto = next((c for c in df.columns if 'monto' in c.lower()), 'monto')
-            col_unid = next((c for c in df.columns if 'unidad' in c.lower() or 'cantidad' in c.lower()), 'cantidad_unidades')
-            col_pmp = next((c for c in df.columns if 'pmp' in c.lower()), 'pmp_mes_actual')
-            col_inflamable = next((c for c in df.columns if 'inflamable' in c.lower()), 'es_inflamable')
-            col_factura = next((c for c in df.columns if 'factura' in c.lower() or 'orden' in c.lower()), 'Factura')
+    # =================================================================
+    # PESTAÑA VENTA SI
+    # =================================================================
+    if is_si:
+      st.markdown("### 📈 Dashboard Operativo de Venta SI")
 
-            df[col_monto] = pd.to_numeric(df[col_monto], errors='coerce').fillna(0) if col_monto in df.columns else 0
-            df[col_unid] = pd.to_numeric(df[col_unid], errors='coerce').fillna(0) if col_unid in df.columns else 0
-            df[col_pmp] = pd.to_numeric(df[col_pmp], errors='coerce').fillna(0) if col_pmp in df.columns else 0
+      col_cliente = next(
+          (c for c in df.columns if "cliente" in c.lower()), "nombre_cliente"
+      )
+      col_div = next(
+          (
+              c
+              for c in df.columns
+              if "division" in c.lower() or "división" in c.lower()
+          ),
+          "Division",
+      )
+      col_monto = next(
+          (c for c in df.columns if "monto" in c.lower()), "monto"
+      )
+      col_unid = next(
+          (
+              c
+              for c in df.columns
+              if "unidad" in c.lower() or "cantidad" in c.lower()
+          ),
+          "cantidad_unidades",
+      )
+      col_pmp = next(
+          (c for c in df.columns if "pmp" in c.lower()), "pmp_mes_actual"
+      )
+      col_inflamable = next(
+          (c for c in df.columns if "inflamable" in c.lower()), "es_inflamable"
+      )
+      col_factura = next(
+          (
+              c
+              for c in df.columns
+              if "factura" in c.lower() or "orden" in c.lower()
+          ),
+          "Factura",
+      )
 
-            # 2. Panel de filtros interactivos
-            st.markdown("#### 🎛️ Filtros de Control")
-            f_col1, f_col2, f_col3 = st.columns(3)
-            
-            with f_col1:
-                divs_unicas = ["Todas"] + sorted([str(x) for x in df[col_div].dropna().unique()]) if col_div in df.columns else ["Todas"]
-                div_sel = st.selectbox("Filtrar por División:", divs_unicas, key=f"f_div_{i}")
+      df[col_monto] = (
+          pd.to_numeric(df[col_monto], errors="coerce").fillna(0)
+          if col_monto in df.columns
+          else 0
+      )
+      df[col_unid] = (
+          pd.to_numeric(df[col_unid], errors="coerce").fillna(0)
+          if col_unid in df.columns
+          else 0
+      )
+      df[col_pmp] = (
+          pd.to_numeric(df[col_pmp], errors="coerce").fillna(0)
+          if col_pmp in df.columns
+          else 0
+      )
 
-            with f_col2:
-                clientes_unicos = ["Todos"] + sorted([str(x) for x in df[col_cliente].dropna().unique()]) if col_cliente in df.columns else ["Todos"]
-                cliente_sel = st.selectbox("Filtrar por Cliente:", clientes_unicos, key=f"f_cli_{i}")
+      st.markdown("#### 🎛️ Filtros de Control")
+      f_col1, f_col2, f_col3 = st.columns(3)
 
-            with f_col3:
-                inflamable_opts = ["Todos"] + sorted([str(x) for x in df[col_inflamable].dropna().unique()]) if col_inflamable in df.columns else ["Todos"]
-                inflamable_sel = st.selectbox("Producto Inflamable:", inflamable_opts, key=f"f_inf_{i}")
+      with f_col1:
+        divs_unicas = (
+            ["Todas"] + sorted([str(x) for x in df[col_div].dropna().unique()])
+            if col_div in df.columns
+            else ["Todas"]
+        )
+        div_sel = st.selectbox(
+            "Filtrar por División:", divs_unicas, key=f"f_div_{i}"
+        )
 
-            # Aplicar filtros
-            df_si_filt = df.copy()
-            if div_sel != "Todas" and col_div in df_si_filt.columns:
-                df_si_filt = df_si_filt[df_si_filt[col_div].astype(str) == div_sel]
-            if cliente_sel != "Todos" and col_cliente in df_si_filt.columns:
-                df_si_filt = df_si_filt[df_si_filt[col_cliente].astype(str) == cliente_sel]
-            if inflamable_sel != "Todos" and col_inflamable in df_si_filt.columns:
-                df_si_filt = df_si_filt[df_si_filt[col_inflamable].astype(str) == inflamable_sel]
+      with f_col2:
+        clientes_unicos = (
+            ["Todos"]
+            + sorted([str(x) for x in df[col_cliente].dropna().unique()])
+            if col_cliente in df.columns
+            else ["Todos"]
+        )
+        cliente_sel = st.selectbox(
+            "Filtrar por Cliente:", clientes_unicos, key=f"f_cli_{i}"
+        )
 
-            st.divider()
+      with f_col3:
+        inflamable_opts = (
+            ["Todos"]
+            + sorted([str(x) for x in df[col_inflamable].dropna().unique()])
+            if col_inflamable in df.columns
+            else ["Todos"]
+        )
+        inflamable_sel = st.selectbox(
+            "Producto Inflamable:", inflamable_opts, key=f"f_inf_{i}"
+        )
 
-            # 3. Métricas Principales (KPIs)
-            st.markdown("#### 📊 KPIs Generales")
-            monto_total = df_si_filt[col_monto].sum()
-            unidades_totales = df_si_filt[col_unid].sum()
-            costo_pmp_total = (df_si_filt[col_unid] * df_si_filt[col_pmp]).sum()
-            ticket_promedio = (monto_total / unidades_totales) if unidades_totales > 0 else 0
-            num_facturas = df_si_filt[col_factura].nunique() if col_factura in df_si_filt.columns else len(df_si_filt)
+      df_si_filt = df.copy()
+      if div_sel != "Todas" and col_div in df_si_filt.columns:
+        df_si_filt = df_si_filt[df_si_filt[col_div].astype(str) == div_sel]
+      if cliente_sel != "Todos" and col_cliente in df_si_filt.columns:
+        df_si_filt = df_si_filt[
+            df_si_filt[col_cliente].astype(str) == cliente_sel
+        ]
+      if inflamable_sel != "Todos" and col_inflamable in df_si_filt.columns:
+        df_si_filt = df_si_filt[
+            df_si_filt[col_inflamable].astype(str) == inflamable_sel
+        ]
 
-            k1, k2, k3, k4, k5 = st.columns(5)
-            k1.metric("Monto Total Facturado", formato_moneda(monto_total))
-            k2.metric("Unidades Vendidas", formato_unidades(unidades_totales))
-            k3.metric("Ticket Promedio / Unid", formato_moneda(ticket_promedio))
-            k4.metric("Costo PMP Total", formato_moneda(costo_pmp_total))
-            k5.metric("N° Transacciones/Facturas", formato_unidades(num_facturas))
+      st.divider()
 
-            st.divider()
+      st.markdown("#### 📊 KPIs Generales")
+      monto_total = df_si_filt[col_monto].sum()
+      unidades_totales = df_si_filt[col_unid].sum()
+      costo_pmp_total = (df_si_filt[col_unid] * df_si_filt[col_pmp]).sum()
+      ticket_promedio = (
+          (monto_total / unidades_totales) if unidades_totales > 0 else 0
+      )
+      num_facturas = (
+          df_si_filt[col_factura].nunique()
+          if col_factura in df_si_filt.columns
+          else len(df_si_filt)
+      )
 
-            # 4. Componentes Visuales y Tablas (División y Cliente)
-            c_div_view, c_cli_view = st.columns([1, 1.2], gap="large")
+      k1, k2, k3, k4, k5 = st.columns(5)
+      k1.metric("Monto Total Facturado", formato_moneda(monto_total))
+      k2.metric("Unidades Vendidas", formato_unidades(unidades_totales))
+      k3.metric("Ticket Promedio / Unid", formato_moneda(ticket_promedio))
+      k4.metric("Costo PMP Total", formato_moneda(costo_pmp_total))
+      k5.metric("N° Transacciones/Facturas", formato_unidades(num_facturas))
 
-            # --- SECCIÓN DIVISIÓN ---
-            with c_div_view:
-                st.markdown("#### 🏢 Venta por División")
-                if col_div in df_si_filt.columns and not df_si_filt.empty:
-                    grp_div = df_si_filt.groupby(col_div, as_index=False).agg({
-                        col_monto: 'sum',
-                        col_unid: 'sum'
-                    })
-                    grp_div['Participación'] = (grp_div[col_monto] / monto_total) if monto_total > 0 else 0
-                    grp_div = grp_div.sort_values(by=col_monto, ascending=False)
+      st.divider()
 
-                    # Gráfico Donut
-                    fig_donut = px.pie(
-                        grp_div, 
-                        values=col_monto, 
-                        names=col_div,
-                        hole=0.5,
-                        color_discrete_sequence=["#0070f3", "#109618", "#f97316", "#ff9900"]
-                    )
-                    fig_donut.update_traces(
-                        textposition='inside', 
-                        textinfo='percent+label',
-                        marker=dict(line=dict(color='#0b0b0b', width=2))
-                    )
-                    fig_donut.update_layout(
-                        template="plotly_dark",
-                        paper_bgcolor="rgba(0,0,0,0)",
-                        plot_bgcolor="rgba(0,0,0,0)",
-                        margin=dict(t=10, b=10, l=10, r=10),
-                        height=220,
-                        showlegend=False
-                    )
-                    st.plotly_chart(fig_donut, use_container_width=True, key=f"donut_div_{i}")
+      c_div_view, c_cli_view = st.columns([1, 1.2], gap="large")
 
-                    # Tabla con barra de progreso
-                    grp_div_disp = pd.DataFrame({
-                        "División": grp_div[col_div],
-                        "Monto ($)": grp_div[col_monto],
-                        "Unidades": grp_div[col_unid],
-                        "Participación": grp_div['Participación']
-                    })
+      with c_div_view:
+        st.markdown("#### 🏢 Venta por División")
+        if col_div in df_si_filt.columns and not df_si_filt.empty:
+          grp_div = df_si_filt.groupby(col_div, as_index=False).agg(
+              {col_monto: "sum", col_unid: "sum"}
+          )
+          grp_div["Participación"] = (
+              (grp_div[col_monto] / monto_total) if monto_total > 0 else 0
+          )
+          grp_div = grp_div.sort_values(by=col_monto, ascending=False)
 
-                    st.dataframe(
-                        grp_div_disp,
-                        column_config={
-                            "Monto ($)": st.column_config.NumberColumn("Monto ($)", format="$%,d"),
-                            "Unidades": st.column_config.NumberColumn("Unidades", format="%,d"),
-                            "Participación": st.column_config.ProgressColumn(
-                                "Participación",
-                                format="%.1f%%",
-                                min_value=0,
-                                max_value=1
-                            ),
-                        },
-                        hide_index=True,
-                        use_container_width=True
-                    )
-                else:
-                    st.info("No hay datos de división disponibles.")
+          fig_donut = px.pie(
+              grp_div,
+              values=col_monto,
+              names=col_div,
+              hole=0.5,
+              color_discrete_sequence=[
+                  "#0070f3",
+                  "#109618",
+                  "#f97316",
+                  "#ff9900",
+              ],
+          )
+          fig_donut.update_traces(
+              textposition="inside",
+              textinfo="percent+label",
+              marker=dict(line=dict(color="#0b0b0b", width=2)),
+          )
+          fig_donut.update_layout(
+              template="plotly_dark",
+              paper_bgcolor="rgba(0,0,0,0)",
+              plot_bgcolor="rgba(0,0,0,0)",
+              margin=dict(t=10, b=10, l=10, r=10),
+              height=220,
+              showlegend=False,
+          )
+          st.plotly_chart(
+              fig_donut, use_container_width=True, key=f"donut_div_{i}"
+          )
 
-            # --- SECCIÓN TOP CLIENTES ---
-            with c_cli_view:
-                st.markdown("#### 🏆 Top Clientes por Facturación")
-                if col_cliente in df_si_filt.columns and not df_si_filt.empty:
-                    grp_cli = df_si_filt.groupby(col_cliente, as_index=False).agg({
-                        col_monto: 'sum',
-                        col_unid: 'sum'
-                    }).sort_values(by=col_monto, ascending=False).head(10)
+          grp_div_disp = pd.DataFrame({
+              "División": grp_div[col_div],
+              "Monto ($)": grp_div[col_monto],
+              "Unidades": grp_div[col_unid],
+              "Participación": grp_div["Participación"],
+          })
 
-                    # Gráfico de Barras Horizontales
-                    grp_cli_sorted = grp_cli.sort_values(by=col_monto, ascending=True)
-                    fig_bars = px.bar(
-                        grp_cli_sorted,
-                        x=col_monto,
-                        y=col_cliente,
-                        orientation='h',
-                        text_auto='.2s',
-                        color_discrete_sequence=["#00CC96"]
-                    )
-                    fig_bars.update_traces(
-                        textfont_size=11, 
-                        textposition="outside", 
-                        cliponaxis=False
-                    )
-                    fig_bars.update_layout(
-                        template="plotly_dark",
-                        paper_bgcolor="rgba(0,0,0,0)",
-                        plot_bgcolor="rgba(0,0,0,0)",
-                        margin=dict(t=10, b=10, l=10, r=10),
-                        height=220,
-                        xaxis_title="",
-                        yaxis_title=""
-                    )
-                    st.plotly_chart(fig_bars, use_container_width=True, key=f"bars_cli_{i}")
+          st.dataframe(
+              grp_div_disp,
+              column_config={
+                  "Monto ($)": st.column_config.NumberColumn(
+                      "Monto ($)", format="$%,d"
+                  ),
+                  "Unidades": st.column_config.NumberColumn(
+                      "Unidades", format="%,d"
+                  ),
+                  "Participación": st.column_config.ProgressColumn(
+                      "Participación", format="%.1f%%", min_value=0, max_value=1
+                  ),
+              },
+              hide_index=True,
+              use_container_width=True,
+          )
+        else:
+          st.info("No hay datos de división disponibles.")
 
-                    # Tabla Detallada
-                    grp_cli_disp = pd.DataFrame({
-                        "Cliente": grp_cli[col_cliente],
-                        "Monto Total ($)": grp_cli[col_monto],
-                        "Unidades": grp_cli[col_unid]
-                    })
+      with c_cli_view:
+        st.markdown("#### 🏆 Top Clientes por Facturación")
+        if col_cliente in df_si_filt.columns and not df_si_filt.empty:
+          grp_cli = (
+              df_si_filt.groupby(col_cliente, as_index=False)
+              .agg({col_monto: "sum", col_unid: "sum"})
+              .sort_values(by=col_monto, ascending=False)
+              .head(10)
+          )
 
-                    st.dataframe(
-                        grp_cli_disp,
-                        column_config={
-                            "Monto Total ($)": st.column_config.NumberColumn("Monto Total ($)", format="$%,d"),
-                            "Unidades": st.column_config.NumberColumn("Unidades", format="%,d"),
-                        },
-                        hide_index=True,
-                        use_container_width=True
-                    )
-                else:
-                    st.info("No hay datos de clientes disponibles.")
+          grp_cli_sorted = grp_cli.sort_values(by=col_monto, ascending=True)
+          fig_bars = px.bar(
+              grp_cli_sorted,
+              x=col_monto,
+              y=col_cliente,
+              orientation="h",
+              text_auto=".2s",
+              color_discrete_sequence=["#00CC96"],
+          )
+          fig_bars.update_traces(
+              textfont_size=11, textposition="outside", cliponaxis=False
+          )
+          fig_bars.update_layout(
+              template="plotly_dark",
+              paper_bgcolor="rgba(0,0,0,0)",
+              plot_bgcolor="rgba(0,0,0,0)",
+              margin=dict(t=10, b=10, l=10, r=10),
+              height=220,
+              xaxis_title="",
+              yaxis_title="",
+          )
+          st.plotly_chart(
+              fig_bars, use_container_width=True, key=f"bars_cli_{i}"
+          )
 
-            st.divider()
+          grp_cli_disp = pd.DataFrame({
+              "Cliente": grp_cli[col_cliente],
+              "Monto Total ($)": grp_cli[col_monto],
+              "Unidades": grp_cli[col_unid],
+          })
 
-            # 5. Registro completo de transacciones
-            st.subheader("📋 Registro Completo de Ventas SI")
-            busqueda_si = st.text_input("🔍 Buscar en registros SI (Descripción, SKU, Factura, etc.):", key=f"search_si_{i}")
-            
-            df_si_det = df_si_filt.copy()
-            if busqueda_si:
-                mask_si = df_si_det.astype(str).apply(lambda x: x.str.contains(busqueda_si, case=False)).any(axis=1)
-                df_si_det = df_si_det[mask_si]
-            
-            st.caption(f"Mostrando {len(df_si_det)} registros.")
-            st.dataframe(df_si_det, hide_index=True, use_container_width=True)
+          st.dataframe(
+              grp_cli_disp,
+              column_config={
+                  "Monto Total ($)": st.column_config.NumberColumn(
+                      "Monto Total ($)", format="$%,d"
+                  ),
+                  "Unidades": st.column_config.NumberColumn(
+                      "Unidades", format="%,d"
+                  ),
+              },
+              hide_index=True,
+              use_container_width=True,
+          )
+        else:
+          st.info("No hay datos de clientes disponibles.")
 
-        # =================================================================
-        # DASHBOARD DE STOCK / CADUCIDAD
-        # =================================================================
-        elif is_stock:
-            st.markdown("### 📦 Dashboard de Fecha de Caducidad")
-            
-            col_cod = next((c for c in df.columns if c.strip().lower() in ['codigo_articulo', 'id_producto', 'sku', 'codigo']), None)
-            col_estado_sub = next((c for c in df.columns if c.strip().lower() in ['estado_subin', 'sub_inventario', 'estado sub inventario']), None)
-            col_estado_lote = next((c for c in df.columns if c.strip().lower() in ['estado_lote', 'estado lote', 'estado_lote_prov']), None)
-            col_lote = next((c for c in df.columns if c.strip().lower() == 'lote_proveedor'), None) or next((c for c in df.columns if c.strip().lower() in ['lote', 'lote_prov']), None)
-            col_loc = next((c for c in df.columns if c.strip().lower() in ['localizador', 'ubicacion']), None)
-            col_fecha = next((c for c in df.columns if c.strip().lower() in ['fecha_expiracion_lote', 'vencimiento', 'fecha expiracion', 'fecha_expiracion']), None)
-            col_cant = next((c for c in df.columns if c.strip().lower() in ['cantidad', 'stock', 'unidades']), None)
+      st.divider()
 
-            if col_cod and col_cod in df.columns:
-                df[col_cod] = df[col_cod].apply(fmt_code)
+      st.subheader("📋 Registro Completo de Ventas SI")
+      busqueda_si = st.text_input(
+          "🔍 Buscar en registros SI (Descripción, SKU, Factura, etc.):",
+          key=f"search_si_{i}",
+      )
 
-            if col_cant:
-                df[col_cant] = pd.to_numeric(df[col_cant], errors='coerce').fillna(0)
+      df_si_det = df_si_filt.copy()
+      if busqueda_si:
+        mask_si = (
+            df_si_det.astype(str)
+            .apply(lambda x: x.str.contains(busqueda_si, case=False))
+            .any(axis=1)
+        )
+        df_si_det = df_si_det[mask_si]
 
-            hoy = pd.Timestamp.today()
-            limite_6m = hoy + pd.DateOffset(months=6)
-            limite_13m = hoy + pd.DateOffset(months=13)
+      st.caption(f"Mostrando {len(df_si_det)} registros.")
+      st.dataframe(df_si_det, hide_index=True, use_container_width=True)
 
-            if col_fecha:
-                df[col_fecha] = pd.to_datetime(df[col_fecha], errors='coerce')
-                
-                def calcular_alerta(fecha):
-                    if pd.isna(fecha): return "Sin Fecha"
-                    if fecha < limite_6m: return "Menos de 6 meses"
-                    elif fecha <= limite_13m: return "Pronto vence (6-13m)"
-                    else: return "Vigente (> 13m)"
-                
-                df["Alerta_Caducidad"] = df[col_fecha].apply(calcular_alerta)
-            else:
-                df["Alerta_Caducidad"] = "Sin Fecha"
-                df[col_fecha] = "N/A"
+    # =================================================================
+    # DASHBOARD DE STOCK / CADUCIDAD
+    # =================================================================
+    elif is_stock:
+      st.markdown("### 📦 Dashboard de Fecha de Caducidad")
 
-            col_dash1, col_dash2, col_dash3 = st.columns([1, 1.5, 1.5])
+      col_cod = next(
+          (
+              c
+              for c in df.columns
+              if c.strip().lower()
+              in ["codigo_articulo", "id_producto", "sku", "codigo"]
+          ),
+          None,
+      )
+      col_estado_sub = next(
+          (
+              c
+              for c in df.columns
+              if c.strip().lower()
+              in ["estado_subin", "sub_inventario", "estado sub inventario"]
+          ),
+          None,
+      )
+      col_estado_lote = next(
+          (
+              c
+              for c in df.columns
+              if c.strip().lower()
+              in ["estado_lote", "estado lote", "estado_lote_prov"]
+          ),
+          None,
+      )
+      col_lote = next(
+          (
+              c
+              for c in df.columns
+              if c.strip().lower() == "lote_proveedor"
+          ),
+          None,
+      ) or next(
+          (
+              c
+              for c in df.columns
+              if c.strip().lower() in ["lote", "lote_prov"]
+          ),
+          None,
+      )
+      col_loc = next(
+          (
+              c
+              for c in df.columns
+              if c.strip().lower() in ["localizador", "ubicacion"]
+          ),
+          None,
+      )
+      col_fecha = next(
+          (
+              c
+              for c in df.columns
+              if c.strip().lower()
+              in [
+                  "fecha_expiracion_lote",
+                  "vencimiento",
+                  "fecha expiracion",
+                  "fecha_expiracion",
+              ]
+          ),
+          None,
+      )
+      col_cant = next(
+          (
+              c
+              for c in df.columns
+              if c.strip().lower() in ["cantidad", "stock", "unidades"]
+          ),
+          None,
+      )
 
-            with col_dash3:
-                if col_cod:
-                    lista_prods = sorted([str(x) for x in df[col_cod].dropna().unique()])
-                    prod_sel = st.selectbox("Elija un producto (Código / SKU):", ["Seleccione..."] + lista_prods, key=f"sel_prod_{i}")
-                else:
-                    prod_sel = "Seleccione..."
+      if col_cod and col_cod in df.columns:
+        df[col_cod] = df[col_cod].apply(fmt_code)
 
-            if prod_sel != "Seleccione...":
-                df_dash = df[df[col_cod].astype(str) == prod_sel].copy()
-            else:
-                df_dash = df.copy()
+      if col_cant:
+        df[col_cant] = pd.to_numeric(df[col_cant], errors="coerce").fillna(0)
 
-            if col_cant:
-                total_unidades = df_dash[col_cant].sum()
-                total_menos_6m = df_dash[df_dash["Alerta_Caducidad"] == "Menos de 6 meses"][col_cant].sum()
-                total_pronto = df_dash[df_dash["Alerta_Caducidad"] == "Pronto vence (6-13m)"][col_cant].sum()
-                total_vigentes = df_dash[df_dash["Alerta_Caducidad"] == "Vigente (> 13m)"][col_cant].sum()
-            else:
-                total_unidades = len(df_dash)
-                total_menos_6m = len(df_dash[df_dash["Alerta_Caducidad"] == "Menos de 6 meses"])
-                total_pronto = len(df_dash[df_dash["Alerta_Caducidad"] == "Pronto vence (6-13m)"])
-                total_vigentes = len(df_dash[df_dash["Alerta_Caducidad"] == "Vigente (> 13m)"])
+      hoy = pd.Timestamp.today()
+      limite_6m = hoy + pd.DateOffset(months=6)
+      limite_13m = hoy + pd.DateOffset(months=13)
 
-            with col_dash1:
-                st.markdown("""
+      if col_fecha:
+        df[col_fecha] = pd.to_datetime(df[col_fecha], errors="coerce")
+
+        def calcular_alerta(fecha):
+          if pd.isna(fecha):
+            return "Sin Fecha"
+          if fecha < limite_6m:
+            return "Menos de 6 meses"
+          elif fecha <= limite_13m:
+            return "Pronto vence (6-13m)"
+          else:
+            return "Vigente (> 13m)"
+
+        df["Alerta_Caducidad"] = df[col_fecha].apply(calcular_alerta)
+      else:
+        df["Alerta_Caducidad"] = "Sin Fecha"
+        df[col_fecha] = "N/A"
+
+      col_dash1, col_dash2, col_dash3 = st.columns([1, 1.5, 1.5])
+
+      with col_dash3:
+        if col_cod:
+          lista_prods = sorted([str(x) for x in df[col_cod].dropna().unique()])
+          prod_sel = st.selectbox(
+              "Elija un producto (Código / SKU):",
+              ["Seleccione..."] + lista_prods,
+              key=f"sel_prod_{i}",
+          )
+        else:
+          prod_sel = "Seleccione..."
+
+      if prod_sel != "Seleccione...":
+        df_dash = df[df[col_cod].astype(str) == prod_sel].copy()
+      else:
+        df_dash = df.copy()
+
+      if col_cant:
+        total_unidades = df_dash[col_cant].sum()
+        total_menos_6m = df_dash[
+            df_dash["Alerta_Caducidad"] == "Menos de 6 meses"
+        ][col_cant].sum()
+        total_pronto = df_dash[
+            df_dash["Alerta_Caducidad"] == "Pronto vence (6-13m)"
+        ][col_cant].sum()
+        total_vigentes = df_dash[
+            df_dash["Alerta_Caducidad"] == "Vigente (> 13m)"
+        ][col_cant].sum()
+      else:
+        total_unidades = len(df_dash)
+        total_menos_6m = len(
+            df_dash[df_dash["Alerta_Caducidad"] == "Menos de 6 meses"]
+        )
+        total_pronto = len(
+            df_dash[df_dash["Alerta_Caducidad"] == "Pronto vence (6-13m)"]
+        )
+        total_vigentes = len(
+            df_dash[df_dash["Alerta_Caducidad"] == "Vigente (> 13m)"]
+        )
+
+      with col_dash1:
+        st.markdown(
+            """
                 <style>
                 .stock-card { border-radius: 5px; padding: 15px; margin-bottom: 10px; text-align: center; color: white; font-weight: bold; }
                 </style>
-                """, unsafe_allow_html=True)
-                
-                st.markdown(f'<div class="stock-card" style="background-color: #333; color: white;">Unidades Registradas<br><span style="font-size:24px;">{formato_unidades(total_unidades)}</span></div>', unsafe_allow_html=True)
-                st.markdown(f'<div class="stock-card" style="background-color: #e74c3c;">Unidades < 6 meses<br><span style="font-size:24px;">{formato_unidades(total_menos_6m)}</span></div>', unsafe_allow_html=True)
-                st.markdown(f'<div class="stock-card" style="background-color: #f1c40f; color: black;">Pronto vence (6 a 13 meses)<br><span style="font-size:24px;">{formato_unidades(total_pronto)}</span></div>', unsafe_allow_html=True)
-                st.markdown(f'<div class="stock-card" style="background-color: #2ecc71;">Vigentes (> 13 meses)<br><span style="font-size:24px;">{formato_unidades(total_vigentes)}</span></div>', unsafe_allow_html=True)
-
-            with col_dash2:
-                st.markdown("#### Estado de caducidad")
-                labels = ['< 6 meses', '6 a 13 meses', 'Vigente (> 13m)']
-                values = [total_menos_6m, total_pronto, total_vigentes]
-                colors = ['#e74c3c', '#f1c40f', '#2ecc71']
-                
-                if sum(values) > 0:
-                    fig_pie = go.Figure(data=[go.Pie(labels=labels, values=values, hole=.5, marker=dict(colors=colors))])
-                    fig_pie.update_layout(height=300, margin=dict(t=0, b=0, l=0, r=0), paper_bgcolor="rgba(0,0,0,0)", font=dict(color="#ffffff"), showlegend=True, legend=dict(orientation="h", y=-0.1))
-                    st.plotly_chart(fig_pie, use_container_width=True, key=f"pie_stock_{i}")
-                else:
-                    st.info("Sin registros para mostrar.")
-
-            with col_dash3:
-                if prod_sel != "Seleccione...":
-                    stock_actual = df_dash[col_cant].sum() if col_cant else 0
-                    prox_vencer = df_dash[df_dash[col_fecha].notna()][col_fecha].min() if col_fecha else None
-                    dias_vencer = (prox_vencer - hoy).days if pd.notna(prox_vencer) else "N/A"
-                    
-                    st.markdown(f'<div class="stock-card" style="background-color: #7f8c8d;">Stock actual<br><span style="font-size:24px;">{formato_unidades(stock_actual)}</span></div>', unsafe_allow_html=True)
-                    
-                    if isinstance(dias_vencer, int):
-                        if prox_vencer < limite_6m:
-                            texto_vence = f"Vence en {dias_vencer} días" if dias_vencer >= 0 else f"Venció hace {abs(dias_vencer)} días"
-                            color_vence = "#e74c3c"
-                            color_texto = "color: white;"
-                        elif prox_vencer <= limite_13m:
-                            texto_vence = f"Vence en {dias_vencer} días"
-                            color_vence = "#f1c40f"
-                            color_texto = "color: black;"
-                        else:
-                            texto_vence = f"Vence en {dias_vencer} días"
-                            color_vence = "#2ecc71"
-                            color_texto = "color: white;"
-                    else:
-                        texto_vence = "Sin fecha registrada"
-                        color_vence = "#333333"
-                        color_texto = "color: white;"
-                        
-                    st.markdown(f'<div class="stock-card" style="background-color: {color_vence}; {color_texto} border: 1px solid #555;">Plazo de vencimiento<br><span style="font-size:20px;">{texto_vence}</span></div>', unsafe_allow_html=True)
-
-            st.divider()
-
-            if col_estado_lote and col_estado_lote in df_dash.columns:
-                st.markdown("##### 🏷️ Cantidad de Unidades por Estado de Lote")
-                df_est_grp = df_dash.groupby(col_estado_lote, dropna=False)[col_cant].sum().reset_index() if col_cant else df_dash[col_estado_lote].value_counts().reset_index()
-                
-                if not df_est_grp.empty:
-                    c_e, c_q = df_est_grp.columns[0], df_est_grp.columns[1]
-                    num_items = len(df_est_grp)
-                    cols_est = st.columns(min(num_items, 6))
-                    for idx_e, row_e in df_est_grp.iterrows():
-                        nombre_est = str(row_e[c_e]) if pd.notna(row_e[c_e]) else "Sin Estado"
-                        cant_est = row_e[c_q]
-                        
-                        with cols_est[idx_e % min(num_items, 6)]:
-                            st.markdown(
-                                f'''<div style="background-color: #141414; border: 1px solid #0070f3; border-radius: 8px; padding: 10px; text-align: center; margin-bottom: 15px;">
-                                    <div style="font-size: 12px; color: #aaaaaa; font-weight: 600; text-transform: uppercase;">{nombre_est}</div>
-                                    <div style="font-size: 20px; font-weight: bold; color: #ffffff; margin-top: 3px;">{formato_unidades(cant_est)}</div>
-                                </div>''', 
-                                unsafe_allow_html=True
-                            )
-
-            st.subheader(f"📋 Detalle de Stock y Lotes {f'(SKU: {prod_sel})' if prod_sel != 'Seleccione...' else '(General)'}")
-            
-            cols_mostrar = []
-            nombres_amigables = {}
-            if col_cod: cols_mostrar.append(col_cod); nombres_amigables[col_cod] = "Código Artículo"
-            if col_estado_sub: cols_mostrar.append(col_estado_sub); nombres_amigables[col_estado_sub] = "Estado Sub-Inv"
-            if col_estado_lote: cols_mostrar.append(col_estado_lote); nombres_amigables[col_estado_lote] = "Estado Lote"
-            if col_lote: cols_mostrar.append(col_lote); nombres_amigables[col_lote] = "Lote Proveedor"
-            if col_loc: cols_mostrar.append(col_loc); nombres_amigables[col_loc] = "Localizador"
-            if col_cant: cols_mostrar.append(col_cant); nombres_amigables[col_cant] = "Cantidad"
-            if col_fecha: cols_mostrar.append(col_fecha); nombres_amigables[col_fecha] = "Fecha Expiración"
-            cols_mostrar.append("Alerta_Caducidad"); nombres_amigables["Alerta_Caducidad"] = "Rango Caducidad"
-            
-            df_vista_stock = df_dash[cols_mostrar].copy()
-            df_vista_stock = df_vista_stock.rename(columns=nombres_amigables)
-            
-            if "Fecha Expiración" in df_vista_stock.columns:
-                df_vista_stock["Fecha Expiración"] = pd.to_datetime(df_vista_stock["Fecha Expiración"], errors='coerce').dt.strftime('%d-%m-%Y')
-            
-            st.dataframe(df_vista_stock, hide_index=True, use_container_width=True)
-
-        # =================================================================
-        # LÓGICA ORIGINAL PARA SB Y PU
-        # =================================================================
-        elif is_sb or is_pu:
-            col_semana = next((c for c in df.columns if c.strip().lower() in ['semana', 'sem', 'wk', 'week']), None) or next((c for c in df.columns if 'semana' in c.lower() or 'sem' in c.lower()), None)
-            col_sku = next((c for c in df.columns if c.strip().lower() in ['id_producto', 'id_product', 'id_prod', 'sku', 'cod_sku', 'codigo_sku', 'codigo', 'cod_prod', 'material']), None) or next((c for c in df.columns if any(k in c.lower() for k in ['id_prod', 'producto_id', 'sku', 'cod_prod'])), None)
-            col_oc = next((c for c in df.columns if c.strip().lower() in ['oc', 'orden_compra', 'orden de compra', 'num_oc', 'numero_oc', 'orden', 'numero_orden']), None) or next((c for c in df.columns if 'oc' in c.lower() or 'orden' in c.lower()), None)
-            col_desc = next((c for c in df.columns if c.strip().lower() in ['descripcion', 'desc_producto', 'producto', 'desc', 'nombre']), None) or next((c for c in df.columns if 'desc' in c.lower() or 'nombre' in c.lower() or 'prod' in c.lower()), None)
-            col_div = next((c for c in df.columns if c.strip().lower() in ['division', 'categoría', 'categoria', 'linea', 'div', 'cat']), None) or next((c for c in df.columns if 'divis' in c.lower() or 'categ' in c.lower() or 'linea' in c.lower()), None)
-            col_marca = next((c for c in df.columns if c.strip().lower() in ['marca', 'brand', 'lab', 'laboratorio', 'proveedor']), None) or next((c for c in df.columns if any(k in c.lower() for k in ['marca', 'brand', 'lab', 'proveedor'])), None)
-            col_u_compra = next((c for c in df.columns if c.strip().lower() in ['unidades_compra', 'unidades_pedidas', 'unid_pedidas', 'cant_pedida', 'cantidad_pedida', 'unidades_solicitadas', 'cant_solic', 'cantidad', 'unidades', 'solicitado', 'cant']), None) or next((c for c in df.columns if any(k in c.lower() for k in ['comp', 'pedi', 'solic', 'cant', 'unid'])), None)
-            col_u_recib = next((c for c in df.columns if c.strip().lower() in ['unidades_recibidas', 'unid_recibidas', 'cant_recibida', 'cantidad_recibida', 'unidades_entregadas', 'unid_entregadas', 'cant_entregada', 'recibido', 'entregado']), None) or next((c for c in df.columns if any(k in c.lower() for k in ['recib', 'entre', 'despa'])), None)
-            col_m_compra = next((c for c in df.columns if c.lower().strip() in ['compra total', 'monto_compra', 'monto compra', 'total_compra', 'costo_total', 'monto_pedido', 'val_compra', 'valor_compra', 'monto_solicitado', 'precio_total']), None) or next((c for c in df.columns if any(k in c.lower() for k in ['monto', 'val', 'cost', 'total', '$']) and any(k in c.lower() for k in ['comp', 'pedi', 'solic', 'total'])), None)
-            col_m_recib = next((c for c in df.columns if c.lower().strip() in ['recibidas', 'monto_recibido', 'monto recibido', 'total_recibido', 'monto_facturado', 'monto_entregado', 'val_recibido', 'valor_recibido']), None) or next((c for c in df.columns if any(k in c.lower() for k in ['recib', 'fact', 'entre']) and any(k in c.lower() for k in ['monto', 'val', 'cost', 'total', '$'])), None)
-            col_precio = next((c for c in df.columns if any(k in c.lower() for k in ['precio', 'costo_unitario', 'p_unitario', 'precio_costo', 'puc', 'precio_final'])), None)
-            col_quiebre = next((c for c in df.columns if 'quiebre' in c.lower() or 'monto_falta' in c.lower()), None)
-            col_rechazado = next((c for c in df.columns if 'rechaz' in c.lower() or 'devuel' in c.lower()), None)
-
-            if not col_sku or col_sku not in df.columns: col_sku = df.columns[0]
-            if not col_desc or col_desc not in df.columns: col_desc = col_sku
-
-            df[col_sku] = df[col_sku].apply(fmt_code)
-            df[col_desc] = df[col_desc].fillna("Sin Descripción").astype(str)
-
-            if col_semana and col_semana in df.columns:
-                df[col_semana] = df[col_semana].apply(fmt_sem)
-
-            if not col_u_compra or col_u_compra not in df.columns: df["unidades_compra_calc"] = 0; col_u_compra = "unidades_compra_calc"
-            if not col_u_recib or col_u_recib not in df.columns: df["unidades_recibidas_calc"] = 0; col_u_recib = "unidades_recibidas_calc"
-            if not col_precio or col_precio not in df.columns: df["precio_calc"] = 0; col_precio = "precio_calc"
-
-            cols_a_num = [c for c in [col_u_compra, col_u_recib, col_m_compra, col_m_recib, col_precio, col_quiebre, col_rechazado] if c and c in df.columns]
-            for c_num in cols_a_num:
-                df[c_num] = pd.to_numeric(df[c_num], errors='coerce').fillna(0)
-
-            if not col_m_compra or col_m_compra not in df.columns:
-                df["monto_compra_calc"] = df[col_u_compra] * df[col_precio]
-                col_m_compra = "monto_compra_calc"
-
-            if not col_m_recib or col_m_recib not in df.columns:
-                if col_precio in df.columns and (df[col_precio] > 0).any(): 
-                    df["monto_recibido_calc"] = df[col_u_recib] * df[col_precio]
-                else:
-                    precio_linea = (df[col_m_compra] / df[col_u_compra].replace(0, 1)).fillna(0)
-                    df["monto_recibido_calc"] = df[col_u_recib] * precio_linea
-                col_m_recib = "monto_recibido_calc"
-
-            if col_quiebre and col_quiebre in df.columns: df["quiebre_monto_calc"] = df[col_quiebre].abs()
-            else: df["quiebre_monto_calc"] = (df[col_m_compra] - df[col_m_recib]).clip(lower=0)
-                
-            df["quiebre_unid_calc"] = (df[col_u_compra] - df[col_u_recib]).clip(lower=0)
-
-            def orden_semana_key(s):
-                try: return (0, int(float(s)))
-                except (ValueError, TypeError): return (1, str(s))
-
-            semanas_todas = sorted([s for s in df[col_semana].unique() if str(s).strip() != ""], key=orden_semana_key) if col_semana else []
-            ultimas_4_semanas = semanas_todas[-4:] if semanas_todas else []
-
-            st.markdown("### 📅 Seleccionar Semana")
-            opciones_semanas = {"Todas": "Todas"}
-            for s in semanas_todas:
-                val_str = fmt_sem(s)
-                opciones_semanas[f"Semana {val_str}"] = s
-
-            semanas_disp = list(opciones_semanas.keys())
-            idx_defecto = len(semanas_disp) - 1 if semanas_todas else 0
-
-            semana_sel_raw = st.radio("Selección de Semana", options=semanas_disp, index=idx_defecto, horizontal=True, key=f"semana_sel_{nombre_hoja}_{i}")
-            semana_sel = opciones_semanas[semana_sel_raw]
-
-            df_filt = df.copy()
-            if semana_sel != "Todas" and col_semana: df_filt = df_filt[df_filt[col_semana] == semana_sel]
-            st.divider()
-
-            if col_semana:
-                sem_actual = semana_sel if semana_sel != "Todas" else (semanas_todas[-1] if semanas_todas else None)
-                if sem_actual is not None:
-                    df_sem_curr = df[df[col_semana] == sem_actual].copy()
-                    
-                    if is_pu:
-                        tot_c = df_sem_curr[col_m_compra].sum()
-                        tot_r = df_sem_curr[col_m_recib].sum()
-                        fr_tot = (tot_r / tot_c * 100) if tot_c > 0 else 0.0
-                        
-                        st.markdown(f"### ⏱️ Fill rate W{fmt_sem(sem_actual)} (PU General)")
-                        col_r1, col_r2, col_r3 = st.columns([1, 2, 1])
-                        with col_r2:
-                            fig_g = crear_reloj_gauge("FILL RATE GLOBAL", fr_tot, "#0070f3")
-                            st.plotly_chart(fig_g, use_container_width=True, key=f"gauge_pu_{nombre_hoja}_{i}")
-                            
-                    elif is_sb and col_div:
-                        grp_curr = df_sem_curr.groupby(col_div)[[col_m_compra, col_m_recib]].sum().reset_index()
-                        fr_consumo_monto, fr_farma_monto = 0.0, 0.0
-                        for _, row in grp_curr.iterrows():
-                            div_name = str(row[col_div]).upper()
-                            pct = (row[col_m_recib] / row[col_m_compra] * 100) if row[col_m_compra] > 0 else 0.0
-                            if "CONSUMO" in div_name: fr_consumo_monto = pct
-                            elif "FARMA" in div_name: fr_farma_monto = pct
-
-                        st.markdown(f"### ⏱️ Fill rate W{fmt_sem(sem_actual)}")
-                        col_r1, col_r2 = st.columns(2)
-                        with col_r1:
-                            fig_g_cons = crear_reloj_gauge("CONSUMO MASIVO", fr_consumo_monto, "#f97316")
-                            st.plotly_chart(fig_g_cons, use_container_width=True, key=f"gauge_cons_{nombre_hoja}_{i}")
-                        with col_r2:
-                            fig_g_farma = crear_reloj_gauge("FARMA", fr_farma_monto, "#00adb5")
-                            st.plotly_chart(fig_g_farma, use_container_width=True, key=f"gauge_farma_{nombre_hoja}_{i}")
-
-                    st.divider()
-
-            # TOP 15
-            st.subheader(f"🔥 TOP 15 Quiebres {'(Global)' if is_pu else '(Por División)'}")
-            crit_orden = st.radio("Ordenar Top 15 por:", options=["Monto ($)", "Unidades"], horizontal=True, key=f"crit_top15_{nombre_hoja}_{i}")
-            sem_top = semana_sel if semana_sel != "Todas" else (semanas_todas[-1] if semanas_todas else None)
-
-            lista_divs = []
-            if sem_top is not None:
-                sem_sig = None
-                try:
-                    idx_curr = semanas_todas.index(sem_top)
-                    if idx_curr + 1 < len(semanas_todas): 
-                        sem_sig = semanas_todas[idx_curr + 1]
-                    elif str(sem_top).isdigit(): 
-                        sem_sig = str(int(sem_top) + 1)
-                except ValueError:
-                    if str(sem_top).isdigit(): 
-                        sem_sig = str(int(sem_top) + 1)
-
-                oc_abierta_map = {}
-                if sem_sig is not None:
-                    df_sig = df[df[col_semana] == sem_sig]
-                    oc_abierta_map = df_sig.groupby(col_sku)[col_u_compra].sum().to_dict()
-
-                df_sem_top = df[df[col_semana] == sem_top].copy()
-
-                if df_sem_top.empty:
-                    st.info(f"No se encontraron registros para la semana {fmt_sem(sem_top)}.")
-                else:
-                    if is_pu:
-                        tot_compra_m = df_sem_top[col_m_compra].sum()
-                        tot_recib_m = df_sem_top[col_m_recib].sum()
-                        fr_div_pct = (tot_recib_m / tot_compra_m * 100) if tot_compra_m > 0 else 0.0
-
-                        st.markdown(f"#### 📌 RESUMEN GENERAL PU (Sem {fmt_sem(sem_top)})")
-                        st.metric(
-                            label="Fill Rate General", 
-                            value=f"{fr_div_pct:.1f}%",
-                            delta=f"{tot_recib_m - tot_compra_m:,.0f} $ (Dif)".replace(",", ".")
-                        )
-
-                        grp_top = df_sem_top.groupby([col_sku, col_desc], as_index=False).agg({
-                            col_u_compra: 'sum', col_m_compra: 'sum',
-                            'quiebre_monto_calc': 'sum', 'quiebre_unid_calc': 'sum'
-                        })
-
-                        if col_rechazado and col_rechazado in df_sem_top.columns:
-                            grp_rech = df_sem_top.groupby([col_sku, col_desc], as_index=False)[col_rechazado].sum()
-                            grp_top = pd.merge(grp_top, grp_rech, on=[col_sku, col_desc], how='left')
-                            grp_top[col_rechazado] = grp_top[col_rechazado].fillna(0)
-                        else:
-                            grp_top["Suma de RECHAZADO"] = 0
-
-                        grp_top["OC abierta"] = grp_top[col_sku].map(oc_abierta_map).fillna(0)
-                        col_sort = 'quiebre_monto_calc' if crit_orden == "Monto ($)" else 'quiebre_unid_calc'
-                        grp_top = grp_top.sort_values(by=col_sort, ascending=False).head(15)
-
-                        if not grp_top.empty:
-                            grp_top_disp = pd.DataFrame()
-                            grp_top_disp["SKU"] = grp_top[col_sku].astype(str)
-                            grp_top_disp["Descripción"] = grp_top[col_desc]
-                            grp_top_disp["Unidades Compra"] = grp_top[col_u_compra].apply(formato_unidades)
-                            grp_top_disp["Compra Total ($)"] = grp_top[col_m_compra].apply(formato_moneda)
-                            grp_top_disp["Quiebre ($)"] = grp_top['quiebre_monto_calc'].apply(lambda x: f"-{formato_moneda(abs(x))}" if x > 0 else "$0")
-                            col_r_name = col_rechazado if (col_rechazado and col_rechazado in grp_top.columns) else "Suma de RECHAZADO"
-                            grp_top_disp["Rechazado (Unds)"] = grp_top[col_r_name].apply(formato_unidades)
-                            lbl_oc = f"OC Abierta Sem {fmt_sem(sem_sig)}" if sem_sig else "OC Abierta"
-                            grp_top_disp[lbl_oc] = grp_top["OC abierta"].apply(formato_unidades)
-
-                            st.dataframe(grp_top_disp, hide_index=True, use_container_width=True)
-
-                    elif is_sb and col_div:
-                        divisiones_unicas = [d for d in df_sem_top[col_div].dropna().unique()]
-                        div_cons = next((d for d in divisiones_unicas if "CONSUMO" in str(d).upper()), None)
-                        div_farm = next((d for d in divisiones_unicas if "FARMA" in str(d).upper()), None)
-                        
-                        lista_divs = [d for d in [div_cons, div_farm] if d is not None]
-                        if not lista_divs and len(divisiones_unicas) > 0: lista_divs = divisiones_unicas[:2]
-
-                        col_t1, col_t2 = st.columns(2)
-                        columnas_ui = [col_t1, col_t2]
-
-                        for idx, div_nombre in enumerate(lista_divs):
-                            if idx >= 2: break
-                            with columnas_ui[idx]:
-                                df_div = df_sem_top[df_sem_top[col_div] == div_nombre].copy()
-                                tot_compra_m = df_div[col_m_compra].sum()
-                                tot_recib_m = df_div[col_m_recib].sum()
-                                fr_div_pct = (tot_recib_m / tot_compra_m * 100) if tot_compra_m > 0 else 0.0
-
-                                st.markdown(f"#### 📌 {str(div_nombre).upper()}")
-                                st.metric(label=f"Fill Rate (Sem {fmt_sem(sem_top)})", value=f"{fr_div_pct:.1f}%", delta=f"{tot_recib_m - tot_compra_m:,.0f} $ (Dif)".replace(",", "."))
-
-                                grp_top = df_div.groupby([col_sku, col_desc], as_index=False).agg({
-                                    col_u_compra: 'sum', col_m_compra: 'sum', 'quiebre_monto_calc': 'sum', 'quiebre_unid_calc': 'sum'
-                                })
-
-                                if col_rechazado and col_rechazado in df_div.columns:
-                                    grp_rech = df_div.groupby([col_sku, col_desc], as_index=False)[col_rechazado].sum()
-                                    grp_top = pd.merge(grp_top, grp_rech, on=[col_sku, col_desc], how='left')
-                                    grp_top[col_rechazado] = grp_top[col_rechazado].fillna(0)
-                                else: grp_top["Suma de RECHAZADO"] = 0
-
-                                grp_top["OC abierta"] = grp_top[col_sku].map(oc_abierta_map).fillna(0)
-                                col_sort = 'quiebre_monto_calc' if crit_orden == "Monto ($)" else 'quiebre_unid_calc'
-                                grp_top = grp_top.sort_values(by=col_sort, ascending=False).head(15)
-
-                                grp_top_disp = pd.DataFrame()
-                                grp_top_disp["SKU"] = grp_top[col_sku].astype(str)
-                                grp_top_disp["Descripción"] = grp_top[col_desc]
-                                grp_top_disp["Unidades Compra"] = grp_top[col_u_compra].apply(formato_unidades)
-                                grp_top_disp["Compra Total ($)"] = grp_top[col_m_compra].apply(formato_moneda)
-                                grp_top_disp["Quiebre ($)"] = grp_top['quiebre_monto_calc'].apply(lambda x: f"-{formato_moneda(abs(x))}" if x > 0 else "$0")
-                                col_r_name = col_rechazado if (col_rechazado and col_rechazado in grp_top.columns) else "Suma de RECHAZADO"
-                                grp_top_disp["Rechazado (Unds)"] = grp_top[col_r_name].apply(formato_unidades)
-                                lbl_oc = f"OC Abierta Sem {fmt_sem(sem_sig)}" if sem_sig else "OC Abierta"
-                                grp_top_disp[lbl_oc] = grp_top["OC abierta"].apply(formato_unidades)
-
-                                st.dataframe(grp_top_disp, hide_index=True, use_container_width=True)
-
-            st.divider()
-
-            # RESUMEN 4 SEMANAS
-            if col_semana:
-                df_base_fr = df.copy()
-                df_4sem = df_base_fr[df_base_fr[col_semana].isin(ultimas_4_semanas)].copy()
-
-                st.subheader("📊 Resumen Fill Rate (Últimas 4 Semanas)")
-
-                if is_pu:
-                    grp = df_4sem.groupby(col_semana, as_index=False)[[col_u_compra, col_u_recib, col_m_compra, col_m_recib]].sum()
-                    grp["FR_Unds_pct"] = (grp[col_u_recib] / grp[col_u_compra] * 100).fillna(0)
-                    grp["FR_Monto_pct"] = (grp[col_m_recib] / grp[col_m_compra] * 100).fillna(0)
-
-                    df_disp = grp.copy()
-                    df_disp[col_semana] = df_disp[col_semana].apply(fmt_sem)
-                    df_disp[col_u_compra] = df_disp[col_u_compra].apply(formato_unidades)
-                    df_disp[col_u_recib] = df_disp[col_u_recib].apply(formato_unidades)
-                    df_disp[col_m_compra] = df_disp[col_m_compra].apply(formato_moneda)
-                    df_disp[col_m_recib] = df_disp[col_m_recib].apply(formato_moneda)
-                    df_disp["FR_Unds_pct"] = df_disp["FR_Unds_pct"].apply(lambda x: f"{x:.2f}%")
-                    df_disp["FR_Monto_pct"] = df_disp["FR_Monto_pct"].apply(lambda x: f"{x:.2f}%")
-
-                    df_disp.columns = [
-                        "Semana", "Unidades Compra", "Unidades Recibidas", 
-                        "Monto Compra ($)", "Monto Recibido ($)", "Fill Rate Unidades", "Fill Rate Monto"
-                    ]
-                    st.dataframe(df_disp, hide_index=True, use_container_width=True)
-                    st.divider()
-
-                    col_g1, col_g2 = st.columns(2)
-                    with col_g1:
-                        st.markdown("##### Fill Rate por Unidades (Evolutivo)")
-                        fig_unds = go.Figure(go.Bar(
-                            x=[f"Sem {fmt_sem(s)}" for s in grp[col_semana]], y=grp["FR_Unds_pct"],
-                            text=[f"{v:.1f}%" for v in grp["FR_Unds_pct"]], textposition="auto", marker_color="#0070f3"
-                        ))
-                        fig_unds.update_layout(height=360, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#ffffff"), yaxis=dict(range=[0, 115], gridcolor="#222222", ticksuffix="%"), xaxis=dict(gridcolor="#222222"))
-                        st.plotly_chart(fig_unds, use_container_width=True, key=f"plot_unds_{nombre_hoja}_{i}")
-
-                    with col_g2:
-                        st.markdown("##### Fill Rate por Monto (Evolutivo)")
-                        fig_monto = go.Figure(go.Bar(
-                            x=[f"Sem {fmt_sem(s)}" for s in grp[col_semana]], y=grp["FR_Monto_pct"],
-                            text=[f"{v:.1f}%" for v in grp["FR_Monto_pct"]], textposition="auto", marker_color="#00adb5"
-                        ))
-                        fig_monto.update_layout(height=360, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#ffffff"), yaxis=dict(range=[0, 115], gridcolor="#222222", ticksuffix="%"), xaxis=dict(gridcolor="#222222"))
-                        st.plotly_chart(fig_monto, use_container_width=True, key=f"plot_monto_{nombre_hoja}_{i}")
-
-                elif is_sb and col_div:
-                    grp = df_4sem.groupby([col_semana, col_div], as_index=False)[[col_u_compra, col_u_recib, col_m_compra, col_m_recib]].sum()
-                    grp["FR_Unds_pct"] = (grp[col_u_recib] / grp[col_u_compra] * 100).fillna(0)
-                    grp["FR_Monto_pct"] = (grp[col_m_recib] / grp[col_m_compra] * 100).fillna(0)
-                    
-                    df_disp = grp.copy()
-                    df_disp[col_semana] = df_disp[col_semana].apply(fmt_sem)
-                    df_disp[col_u_compra] = df_disp[col_u_compra].apply(formato_unidades)
-                    df_disp[col_u_recib] = df_disp[col_u_recib].apply(formato_unidades)
-                    df_disp[col_m_compra] = df_disp[col_m_compra].apply(formato_moneda)
-                    df_disp[col_m_recib] = df_disp[col_m_recib].apply(formato_moneda)
-                    df_disp["FR_Unds_pct"] = df_disp["FR_Unds_pct"].apply(lambda x: f"{x:.2f}%")
-                    df_disp["FR_Monto_pct"] = df_disp["FR_Monto_pct"].apply(lambda x: f"{x:.2f}%")
-
-                    df_disp.columns = ["Semana", "División", "Unidades Compra", "Unidades Recibidas", "Monto Compra ($)", "Monto Recibido ($)", "Fill Rate Unidades", "Fill Rate Monto"]
-                    st.dataframe(df_disp, hide_index=True, use_container_width=True)
-                    st.divider()
-
-                    col_g1, col_g2 = st.columns(2)
-                    p_unds = grp.pivot(index=col_semana, columns=col_div, values="FR_Unds_pct").reset_index()
-                    p_monto = grp.pivot(index=col_semana, columns=col_div, values="FR_Monto_pct").reset_index()
-
-                    tot_sem = df_4sem.groupby(col_semana, as_index=False)[[col_u_compra, col_u_recib, col_m_compra, col_m_recib]].sum()
-                    tot_sem["Total_FR_Unds"] = (tot_sem[col_u_recib] / tot_sem[col_u_compra] * 100).fillna(0)
-                    tot_sem["Total_FR_Monto"] = (tot_sem[col_m_recib] / tot_sem[col_m_compra] * 100).fillna(0)
-
-                    with col_g1:
-                        st.markdown("##### Fill Rate por Unidades")
-                        fig_unds = go.Figure()
-                        for col_d in [c for c in p_unds.columns if c != col_semana]:
-                            color_bar = "#f97316" if "CONSUMO" in str(col_d).upper() else "#00adb5"
-                            fig_unds.add_trace(go.Bar(x=[f"Sem {fmt_sem(s)}" for s in p_unds[col_semana]], y=p_unds[col_d], name=str(col_d).title(), marker_color=color_bar))
-                        fig_unds.add_trace(go.Scatter(x=[f"Sem {fmt_sem(s)}" for s in tot_sem[col_semana]], y=tot_sem["Total_FR_Unds"], name="Total Semana", mode="lines+markers+text", text=[f"{v:.1f}%" for v in tot_sem["Total_FR_Unds"]], textposition="top center", line=dict(color="#e2e8f0", width=3)))
-                        fig_unds.update_layout(barmode="group", height=360, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#ffffff"), yaxis=dict(range=[0, 115], gridcolor="#222222", ticksuffix="%"), xaxis=dict(gridcolor="#222222"), legend=dict(orientation="h", y=-0.2))
-                        st.plotly_chart(fig_unds, use_container_width=True, key=f"plot_unds_sb_{i}")
-
-                    with col_g2:
-                        st.markdown("##### Fill Rate por Monto")
-                        fig_monto = go.Figure()
-                        for col_d in [c for c in p_monto.columns if c != col_semana]:
-                            color_bar = "#f97316" if "CONSUMO" in str(col_d).upper() else "#00adb5"
-                            fig_monto.add_trace(go.Bar(x=[f"Sem {fmt_sem(s)}" for s in p_monto[col_semana]], y=p_monto[col_d], name=str(col_d).title(), marker_color=color_bar))
-                        fig_monto.add_trace(go.Scatter(x=[f"Sem {fmt_sem(s)}" for s in tot_sem[col_semana]], y=tot_sem["Total_FR_Monto"], name="Total Semana", mode="lines+markers+text", text=[f"{v:.1f}%" for v in tot_sem["Total_FR_Monto"]], textposition="top center", line=dict(color="#e2e8f0", width=3)))
-                        fig_monto.update_layout(barmode="group", height=360, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#ffffff"), yaxis=dict(range=[0, 115], gridcolor="#222222", ticksuffix="%"), xaxis=dict(gridcolor="#222222"), legend=dict(orientation="h", y=-0.2))
-                        st.plotly_chart(fig_monto, use_container_width=True, key=f"plot_monto_sb_{i}")
-
-                st.divider()
-
-            # TABLAS DINÁMICAS: QUIEBRE POR MARCA
-            if sem_top is not None and col_marca:
-                st.subheader("🏷️ Resumen Quiebres por Marca")
-                df_sem_marca = df[df[col_semana] == sem_top].copy()
-
-                if is_pu:
-                    grp_m = df_sem_marca.groupby(col_marca, as_index=False).agg({col_m_compra: 'sum', 'quiebre_monto_calc': 'sum'})
-                    grp_m = grp_m[grp_m['quiebre_monto_calc'] > 0]
-
-                    if not grp_m.empty:
-                        total_quiebre_div = grp_m['quiebre_monto_calc'].sum()
-                        grp_m['pct_quiebre'] = (grp_m['quiebre_monto_calc'] / total_quiebre_div * 100) if total_quiebre_div > 0 else 0.0
-                        grp_m = grp_m.sort_values(by='quiebre_monto_calc', ascending=False)
-
-                        grp_m_disp = pd.DataFrame()
-                        grp_m_disp["Etiquetas de fila"] = grp_m[col_marca].astype(str)
-                        grp_m_disp["TOTAL COMPRA"] = grp_m[col_m_compra].apply(formato_moneda)
-                        grp_m_disp["MONTO QUIEBRE"] = grp_m['quiebre_monto_calc'].apply(lambda x: f"-{formato_moneda(abs(x))}")
-                        grp_m_disp["QUIEBRE %"] = grp_m['pct_quiebre']
-
-                        total_compra_div = grp_m[col_m_compra].sum()
-                        fila_total = pd.DataFrame([{"Etiquetas de fila": "Total general", "TOTAL COMPRA": formato_moneda(total_compra_div), "MONTO QUIEBRE": f"-{formato_moneda(abs(total_quiebre_div))}", "QUIEBRE %": 100.0}])
-                        grp_m_final = pd.concat([grp_m_disp, fila_total], ignore_index=True)
-
-                        styled_df = grp_m_final.style.format({"QUIEBRE %": "{:.2f}%"}).apply(aplicar_criticidad, subset=["QUIEBRE %"])
-                        st.dataframe(styled_df, hide_index=True, use_container_width=True)
-                    else:
-                        st.info(f"No hay quiebres registrados para la semana {fmt_sem(sem_top)} en PU.")
-
-                elif is_sb and col_div:
-                    col_m1, col_m2 = st.columns(2)
-                    cols_marca_ui = [col_m1, col_m2]
-
-                    for idx, div_nombre in enumerate(lista_divs):
-                        if idx >= 2: break
-                        with cols_marca_ui[idx]:
-                            st.markdown(f"#### {str(div_nombre).upper()}")
-                            df_div_m = df_sem_marca[df_sem_marca[col_div] == div_nombre].copy()
-                            grp_m = df_div_m.groupby(col_marca, as_index=False).agg({col_m_compra: 'sum', 'quiebre_monto_calc': 'sum'})
-                            grp_m = grp_m[grp_m['quiebre_monto_calc'] > 0]
-
-                            if not grp_m.empty:
-                                total_quiebre_div = grp_m['quiebre_monto_calc'].sum()
-                                grp_m['pct_quiebre'] = (grp_m['quiebre_monto_calc'] / total_quiebre_div * 100) if total_quiebre_div > 0 else 0.0
-                                grp_m = grp_m.sort_values(by='quiebre_monto_calc', ascending=False)
-
-                                grp_m_disp = pd.DataFrame()
-                                grp_m_disp["Etiquetas de fila"] = grp_m[col_marca].astype(str)
-                                grp_m_disp["TOTAL COMPRA"] = grp_m[col_m_compra].apply(formato_moneda)
-                                grp_m_disp["MONTO QUIEBRE"] = grp_m['quiebre_monto_calc'].apply(lambda x: f"-{formato_moneda(abs(x))}")
-                                grp_m_disp["QUIEBRE %"] = grp_m['pct_quiebre']
-
-                                total_compra_div = grp_m[col_m_compra].sum()
-                                fila_total = pd.DataFrame([{"Etiquetas de fila": "Total general", "TOTAL COMPRA": formato_moneda(total_compra_div), "MONTO QUIEBRE": f"-{formato_moneda(abs(total_quiebre_div))}", "QUIEBRE %": 100.0}])
-                                grp_m_final = pd.concat([grp_m_disp, fila_total], ignore_index=True)
-
-                                styled_df = grp_m_final.style.format({"QUIEBRE %": "{:.2f}%"}).apply(aplicar_criticidad, subset=["QUIEBRE %"])
-                                st.dataframe(styled_df, hide_index=True, use_container_width=True)
-                            else:
-                                st.info(f"No hay quiebres registrados para {div_nombre} en la semana {fmt_sem(sem_top)}.")
-
-                st.divider()
-
-            # DETALLE DE REGISTRO CON FILTROS
-            st.subheader("📋 Detalle de Registro de Compras")
-            col_det_f1, col_det_f2 = st.columns(2)
-            with col_det_f1:
-                ocs_disponibles = ["Todas"] + sorted([str(x) for x in df_filt[col_oc].dropna().unique()]) if col_oc and col_oc in df_filt.columns else ["Todas"]
-                oc_seleccionada = st.selectbox("Filtrar Detalle por OC:", ocs_disponibles, key=f"det_oc_{nombre_hoja}_{i}")
-            with col_det_f2:
-                skus_det_disponibles = ["Todos"] + sorted([str(x) for x in df_filt[col_sku].dropna().unique()]) if col_sku and col_sku in df_filt.columns else ["Todos"]
-                sku_det_seleccionado = st.selectbox("Filtrar Detalle por SKU:", skus_det_disponibles, key=f"det_sku_{nombre_hoja}_{i}")
-
-            df_detalle = df_filt.copy()
-            if col_oc and oc_seleccionada != "Todas": df_detalle = df_detalle[df_detalle[col_oc].astype(str) == oc_seleccionada]
-            if col_sku and sku_det_seleccionado != "Todos": df_detalle = df_detalle[df_detalle[col_sku].astype(str) == sku_det_seleccionado]
-
-            if col_rechazado and col_rechazado in df_detalle.columns:
-                idx_corte = list(df_detalle.columns).index(col_rechazado) + 1
-                df_corte_final = df_detalle.iloc[:, :idx_corte].copy()
-            else:
-                df_corte_final = df_detalle.copy()
-
-            renombrar_columnas = {
-                "id_producto": "SKU", "id_prod": "SKU", "numero_orden": "OC", "num_oc": "OC",
-                "orden_compra": "OC", "descripcion": "Descripción", "unidades_compra": "Unidades Compra",
-                "unidades_recibidas": "Unidades Recibidas", "unidades_rechazadas": "Unidades Rechazadas",
-                "cantidad": "Unidades Compra", "cantidad_recibida": "Unidades Recibidas",
-                "fecha_hora_despacho_default": "Fecha Despacho", "precio_final": "Precio Final",
-                "precio_total": "Precio Total"
-            }
-
-            nuevas_columnas = {}
-            for col in df_corte_final.columns:
-                col_lower = str(col).strip().lower()
-                if col_lower in renombrar_columnas:
-                    nuevas_columnas[col] = renombrar_columnas[col_lower]
-                else:
-                    nuevas_columnas[col] = str(col).replace('_', ' ').strip().title()
-
-            df_corte_final = df_corte_final.rename(columns=nuevas_columnas)
-
-            st.dataframe(df_corte_final, hide_index=True, use_container_width=True)
-
-        # PARA OTRAS PESTAÑAS AUXILIARES
+                """,
+            unsafe_allow_html=True,
+        )
+
+        st.markdown(
+            '<div class="stock-card" style="background-color: #333; color:'
+            ' white;">Unidades Registradas<br><span'
+            f' style="font-size:24px;">{formato_unidades(total_unidades)}</span></div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            '<div class="stock-card" style="background-color:'
+            ' #e74c3c;">Unidades < 6 meses<br><span'
+            f' style="font-size:24px;">{formato_unidades(total_menos_6m)}</span></div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            '<div class="stock-card" style="background-color: #f1c40f; color:'
+            ' black;">Pronto vence (6 a 13 meses)<br><span'
+            f' style="font-size:24px;">{formato_unidades(total_pronto)}</span></div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            '<div class="stock-card" style="background-color:'
+            ' #2ecc71;">Vigentes (> 13 meses)<br><span'
+            f' style="font-size:24px;">{formato_unidades(total_vigentes)}</span></div>',
+            unsafe_allow_html=True,
+        )
+
+      with col_dash2:
+        st.markdown("#### Estado de caducidad")
+        labels = ["< 6 meses", "6 a 13 meses", "Vigente (> 13m)"]
+        values = [total_menos_6m, total_pronto, total_vigentes]
+        colors = ["#e74c3c", "#f1c40f", "#2ecc71"]
+
+        if sum(values) > 0:
+          fig_pie = go.Figure(
+              data=[
+                  go.Pie(
+                      labels=labels,
+                      values=values,
+                      hole=0.5,
+                      marker=dict(colors=colors),
+                  )
+              ]
+          )
+          fig_pie.update_layout(
+              height=300,
+              margin=dict(t=0, b=0, l=0, r=0),
+              paper_bgcolor="rgba(0,0,0,0)",
+              font=dict(color="#ffffff"),
+              showlegend=True,
+              legend=dict(orientation="h", y=-0.1),
+          )
+          st.plotly_chart(
+              fig_pie, use_container_width=True, key=f"pie_stock_{i}"
+          )
         else:
-            busqueda = st.text_input(f"🔍 Buscar en {nombre_hoja}:", key=f"search_{nombre_hoja}_{i}")
-            if busqueda:
-                mask = df.astype(str).apply(lambda x: x.str.contains(busqueda, case=False)).any(axis=1)
-                df = df[mask]
-            st.caption(f"Mostrando {len(df)} registros en {nombre_hoja}.")
-            st.dataframe(df, hide_index=True, use_container_width=True)
+          st.info("Sin registros para mostrar.")
+
+      with col_dash3:
+        if prod_sel != "Seleccione...":
+          stock_actual = df_dash[col_cant].sum() if col_cant else 0
+          prox_vencer = (
+              df_dash[df_dash[col_fecha].notna()][col_fecha].min()
+              if col_fecha
+              else None
+          )
+          dias_vencer = (
+              (prox_vencer - hoy).days if pd.notna(prox_vencer) else "N/A"
+          )
+
+          st.markdown(
+              '<div class="stock-card" style="background-color: #7f8c8d;">Stock'
+              ' actual<br><span'
+              f' style="font-size:24px;">{formato_unidades(stock_actual)}</span></div>',
+              unsafe_allow_html=True,
+          )
+
+          if isinstance(dias_vencer, int):
+            if prox_vencer < limite_6m:
+              texto_vence = (
+                  f"Vence en {dias_vencer} días"
+                  if dias_vencer >= 0
+                  else f"Venció hace {abs(dias_vencer)} días"
+              )
+              color_vence = "#e74c3c"
+              color_texto = "color: white;"
+            elif prox_vencer <= limite_13m:
+              texto_vence = f"Vence en {dias_vencer} días"
+              color_vence = "#f1c40f"
+              color_texto = "color: black;"
+            else:
+              texto_vence = f"Vence en {dias_vencer} días"
+              color_vence = "#2ecc71"
+              color_texto = "color: white;"
+          else:
+            texto_vence = "Sin fecha registrada"
+            color_vence = "#333333"
+            color_texto = "color: white;"
+
+          st.markdown(
+              f'<div class="stock-card" style="background-color: {color_vence};'
+              f' {color_texto} border: 1px solid #555;">Plazo de'
+              f' vencimiento<br><span style="font-size:20px;">{texto_vence}</span></div>',
+              unsafe_allow_html=True,
+          )
+
+      st.divider()
+
+      st.subheader("📋 Registro de Inventario")
+      busqueda_stock = st.text_input(
+          "🔍 Buscar en inventario (SKU, Lote, Sub-inventario, etc.):",
+          key=f"search_stock_{i}",
+      )
+
+      df_vista_stock = df.copy()
+      if busqueda_stock:
+        mask_st = (
+            df_vista_stock.astype(str)
+            .apply(lambda x: x.str.contains(busqueda_stock, case=False))
+            .any(axis=1)
+        )
+        df_vista_stock = df_vista_stock[mask_st]
+
+      renombrar_stock = {
+          col_cod: "SKU",
+          col_estado_sub: "Estado Sub-inventario",
+          col_estado_lote: "Estado Lote",
+          col_lote: "Lote",
+          col_loc: "Localizador",
+          col_fecha: "Fecha Expiración",
+          col_cant: "Unidades Stock",
+      }
+      cols_validas = {
+          k: v for k, v in renombrar_stock.items() if k and k in df_vista_stock
+      }
+      df_vista_stock = df_vista_stock.rename(columns=cols_validas)
+
+      if "Fecha Expiración" in df_vista_stock.columns:
+        df_vista_stock["Fecha Expiración"] = pd.to_datetime(
+            df_vista_stock["Fecha Expiración"], errors="coerce"
+        ).dt.strftime("%d-%m-%Y")
+
+      st.dataframe(df_vista_stock, hide_index=True, use_container_width=True)
+
+    # =================================================================
+    # LÓGICA ORIGINAL PARA SB Y PU
+    # =================================================================
+    elif is_sb or is_pu:
+      col_semana = next(
+          (
+              c
+              for c in df.columns
+              if c.strip().lower() in ["semana", "sem", "wk", "week"]
+          ),
+          None,
+      ) or next(
+          (
+              c
+              for c in df.columns
+              if "semana" in c.lower() or "sem" in c.lower()
+          ),
+          None,
+      )
+      col_sku = next(
+          (
+              c
+              for c in df.columns
+              if c.strip().lower()
+              in [
+                  "id_producto",
+                  "id_product",
+                  "id_prod",
+                  "sku",
+                  "cod_sku",
+                  "codigo_sku",
+                  "codigo",
+                  "cod_prod",
+                  "material",
+              ]
+          ),
+          None,
+      ) or next(
+          (
+              c
+              for c in df.columns
+              if any(
+                  k in c.lower()
+                  for k in ["id_prod", "producto_id", "sku", "cod_prod"]
+              )
+          ),
+          None,
+      )
+      col_oc = next(
+          (
+              c
+              for c in df.columns
+              if c.strip().lower()
+              in [
+                  "oc",
+                  "orden_compra",
+                  "orden de compra",
+                  "num_oc",
+                  "numero_oc",
+                  "orden",
+                  "numero_orden",
+              ]
+          ),
+          None,
+      ) or next(
+          (c for c in df.columns if "oc" in c.lower() or "orden" in c.lower()),
+          None,
+      )
+      col_desc = next(
+          (
+              c
+              for c in df.columns
+              if c.strip().lower()
+              in ["descripcion", "desc_producto", "producto", "desc", "nombre"]
+          ),
+          None,
+      ) or next(
+          (
+              c
+              for c in df.columns
+              if "desc" in c.lower()
+              or "nombre" in c.lower()
+              or "prod" in c.lower()
+          ),
+          None,
+      )
+      col_div = next(
+          (
+              c
+              for c in df.columns
+              if c.strip().lower()
+              in ["division", "categoría", "categoria", "linea", "div", "cat"]
+          ),
+          None,
+      ) or next(
+          (
+              c
+              for c in df.columns
+              if "divis" in c.lower()
+              or "categ" in c.lower()
+              or "linea" in c.lower()
+          ),
+          None,
+      )
+      col_marca = next(
+          (
+              c
+              for c in df.columns
+              if c.strip().lower()
+              in ["marca", "brand", "laboratorio", "lab", "proveedor"]
+          ),
+          None,
+      ) or next(
+          (
+              c
+              for c in df.columns
+              if "marca" in c.lower()
+              or "lab" in c.lower()
+              or "prov" in c.lower()
+          ),
+          None,
+      )
+
+      col_u_compra = next(
+          (
+              c
+              for c in df.columns
+              if c.lower().strip()
+              in [
+                  "unidades_compra",
+                  "unidades compra",
+                  "unid_compra",
+                  "cant_compra",
+                  "unidades_pedidas",
+                  "unidades pedidas",
+                  "cantidad_pedida",
+                  "cant_pedida",
+                  "unidades",
+                  "cantidad",
+              ]
+          ),
+          None,
+      ) or next(
+          (
+              c
+              for c in df.columns
+              if any(
+                  k in c.lower()
+                  for k in ["compra", "pedid", "solicit", "solic", "unid"]
+              )
+              and not any(
+                  k in c.lower() for k in ["recib", "monto", "val", "cost", "$"]
+              )
+          ),
+          None,
+      )
+      col_u_recib = next(
+          (
+              c
+              for c in df.columns
+              if c.lower().strip()
+              in [
+                  "unidades_recibidas",
+                  "unidades recibidas",
+                  "unid_recibidas",
+                  "cant_recibida",
+                  "unidades_entregadas",
+                  "cant_entregada",
+                  "recibidas",
+              ]
+          ),
+          None,
+      ) or next(
+          (
+              c
+              for c in df.columns
+              if any(k in c.lower() for k in ["recib", "entreg", "factur"])
+              and not any(
+                  k in c.lower() for k in ["monto", "val", "cost", "$"]
+              )
+          ),
+          None,
+      )
+
+      col_m_compra = next(
+          (
+              c
+              for c in df.columns
+              if c.lower().strip()
+              in [
+                  "monto_compra",
+                  "monto compra",
+                  "total_compra",
+                  "monto_pedido",
+                  "monto pedido",
+                  "monto_solicitado",
+                  "val_compra",
+                  "valor_compra",
+              ]
+          ),
+          None,
+      ) or next(
+          (
+              c
+              for c in df.columns
+              if any(
+                  k in c.lower() for k in ["monto", "val", "cost", "total", "$"]
+              )
+              and any(k in c.lower() for k in ["comp", "pedi", "solic"])
+          ),
+          None,
+      )
+      col_m_recib = next(
+          (
+              c
+              for c in df.columns
+              if c.lower().strip()
+              in [
+                  "recibidas",
+                  "monto_recibido",
+                  "monto recibido",
+                  "total_recibido",
+                  "monto_facturado",
+                  "monto_entregado",
+                  "val_recibido",
+                  "valor_recibido",
+              ]
+          ),
+          None,
+      ) or next(
+          (
+              c
+              for c in df.columns
+              if any(k in c.lower() for k in ["recib", "fact", "entre"])
+              and any(
+                  k in c.lower() for k in ["monto", "val", "cost", "total", "$"]
+              )
+          ),
+          None,
+      )
+
+      col_precio = next(
+          (
+              c
+              for c in df.columns
+              if any(
+                  k in c.lower()
+                  for k in [
+                      "precio",
+                      "costo_unitario",
+                      "p_unitario",
+                      "precio_costo",
+                      "puc",
+                      "precio_final",
+                  ]
+              )
+          ),
+          None,
+      )
+      col_quiebre = next(
+          (
+              c
+              for c in df.columns
+              if "quiebre" in c.lower() or "monto_falta" in c.lower()
+          ),
+          None,
+      )
+      col_rechazado = next(
+          (
+              c
+              for c in df.columns
+              if "rechaz" in c.lower() or "devuel" in c.lower()
+          ),
+          None,
+      )
+
+      if not col_sku or col_sku not in df.columns:
+        col_sku = df.columns[0]
+      if not col_desc or col_desc not in df.columns:
+        col_desc = col_sku
+
+      df[col_sku] = df[col_sku].apply(fmt_code)
+      df[col_desc] = df[col_desc].fillna("Sin Descripción").astype(str)
+
+      if col_semana and col_semana in df.columns:
+        df[col_semana] = df[col_semana].apply(fmt_sem)
+
+      if not col_u_compra or col_u_compra not in df.columns:
+        df["unidades_compra_calc"] = 0
+        col_u_compra = "unidades_compra_calc"
+      if not col_u_recib or col_u_recib not in df.columns:
+        df["unidades_recibidas_calc"] = 0
+        col_u_recib = "unidades_recibidas_calc"
+      if not col_precio or col_precio not in df.columns:
+        df["precio_calc"] = 0
+        col_precio = "precio_calc"
+
+      cols_a_num = [
+          c
+          for c in [
+              col_u_compra,
+              col_u_recib,
+              col_m_compra,
+              col_m_recib,
+              col_precio,
+              col_quiebre,
+              col_rechazado,
+          ]
+          if c and c in df.columns
+      ]
+      for coln in cols_a_num:
+        df[coln] = pd.to_numeric(df[coln], errors="coerce").fillna(0)
+
+      if not col_m_compra or col_m_compra not in df.columns:
+        df["monto_compra_calc"] = df[col_u_compra] * df[col_precio]
+        col_m_compra = "monto_compra_calc"
+      if not col_m_recib or col_m_recib not in df.columns:
+        df["monto_recibido_calc"] = df[col_u_recib] * df[col_precio]
+        col_m_recib = "monto_recibido_calc"
+
+      df["quiebre_monto_calc"] = (df[col_m_compra] - df[col_m_recib]).apply(
+          lambda x: max(0, x)
+      )
+      df["quiebre_unid_calc"] = (df[col_u_compra] - df[col_u_recib]).apply(
+          lambda x: max(0, x)
+      )
+
+      semanas_todas = []
+      if col_semana and col_semana in df.columns:
+        semanas_todas = sorted(
+            [s for s in df[col_semana].dropna().unique() if str(s).strip()],
+            key=lambda x: (
+                float(x) if str(x).replace(".", "", 1).isdigit() else str(x)
+            ),
+        )
+
+      opciones_semanas = (
+          [f"W{fmt_sem(s)}" for s in semanas_todas] + ["Todas"]
+          if semanas_todas
+          else ["Todas"]
+      )
+      idx_defecto = len(opciones_semanas) - 2 if semanas_todas else 0
+
+      st.markdown("#### 📅 Selecciona la Semana")
+      semana_sel_raw = st.radio(
+          "Selecciona la Semana",
+          range(len(opciones_semanas)),
+          format_func=lambda x: opciones_semanas[x],
+          index=idx_defecto,
+          horizontal=True,
+          key=f"semana_sel_{nombre_hoja}_{i}",
+      )
+      semana_sel = (
+          semanas_todas[semana_sel_raw]
+          if semana_sel_raw < len(semanas_todas)
+          else "Todas"
+      )
+
+      df_filt = df.copy()
+      if semana_sel != "Todas" and col_semana:
+        df_filt = df_filt[df_filt[col_semana] == semana_sel]
+
+      st.divider()
+
+      if col_semana:
+        sem_actual = (
+            semana_sel
+            if semana_sel != "Todas"
+            else (semanas_todas[-1] if semanas_todas else None)
+        )
+        if sem_actual is not None:
+          df_sem_curr = df[df[col_semana] == sem_actual].copy()
+          if is_pu:
+            tot_c = df_sem_curr[col_m_compra].sum()
+            tot_r = df_sem_curr[col_m_recib].sum()
+            fr_tot = (tot_r / tot_c * 100) if tot_c > 0 else 0.0
+            st.markdown(
+                f"### ⏱️ Fill rate W{fmt_sem(sem_actual)} (PU General)"
+            )
+            col_r1, col_r2, col_r3 = st.columns([1, 2, 1])
+            with col_r2:
+              fig_g = crear_reloj_gauge("FILL RATE GLOBAL", fr_tot, "#0070f3")
+              st.plotly_chart(
+                  fig_g,
+                  use_container_width=True,
+                  key=f"gauge_pu_{nombre_hoja}_{i}",
+              )
+          elif is_sb and col_div:
+            grp_curr = (
+                df_sem_curr.groupby(col_div)[[col_m_compra, col_m_recib]]
+                .sum()
+                .reset_index()
+            )
+            fr_consumo_monto, fr_farma_monto = 0.0, 0.0
+            for _, row in grp_curr.iterrows():
+              div_name = str(row[col_div]).upper()
+              pct = (
+                  (row[col_m_recib] / row[col_m_compra] * 100)
+                  if row[col_m_compra] > 0
+                  else 0.0
+              )
+              if "CONSUMO" in div_name:
+                fr_consumo_monto = pct
+              elif "FARMA" in div_name:
+                fr_farma_monto = pct
+            st.markdown(f"### ⏱️ Fill rate W{fmt_sem(sem_actual)}")
+            col_r1, col_r2 = st.columns(2)
+            with col_r1:
+              fig_g_cons = crear_reloj_gauge(
+                  "CONSUMO MASIVO", fr_consumo_monto, "#f97316"
+              )
+              st.plotly_chart(
+                  fig_g_cons,
+                  use_container_width=True,
+                  key=f"gauge_cons_{nombre_hoja}_{i}",
+              )
+            with col_r2:
+              fig_g_farma = crear_reloj_gauge(
+                  "FARMA", fr_farma_monto, "#00adb5"
+              )
+              st.plotly_chart(
+                  fig_g_farma,
+                  use_container_width=True,
+                  key=f"gauge_farma_{nombre_hoja}_{i}",
+              )
+
+      st.divider()
+
+      # TOP 15
+      st.subheader(
+          f"🔥 TOP 15 Quiebres {'(Global)' if is_pu else '(Por División)'}"
+      )
+      crit_orden = st.radio(
+          "Ordenar Top 15 por:",
+          options=["Monto ($)", "Unidades"],
+          horizontal=True,
+          key=f"crit_top15_{nombre_hoja}_{i}",
+      )
+      sem_top = (
+          semana_sel
+          if semana_sel != "Todas"
+          else (semanas_todas[-1] if semanas_todas else None)
+      )
+
+      lista_divs = []
+      if sem_top is not None:
+        sem_sig = None
+        try:
+          idx_curr = semanas_todas.index(sem_top)
+          if idx_curr + 1 < len(semanas_todas):
+            sem_sig = semanas_todas[idx_curr + 1]
+          elif str(sem_top).isdigit():
+            sem_sig = str(int(sem_top) + 1)
+        except ValueError:
+          if str(sem_top).isdigit():
+            sem_sig = str(int(sem_top) + 1)
+
+        oc_abierta_map = {}
+        if sem_sig is not None:
+          df_sig = df[df[col_semana] == sem_sig]
+          oc_abierta_map = (
+              df_sig.groupby(col_sku)[col_u_compra].sum().to_dict()
+          )
+
+        df_sem_top = df[df[col_semana] == sem_top].copy()
+
+        if df_sem_top.empty:
+          st.info(
+              f"No se encontraron registros para la semana"
+              f" {fmt_sem(sem_top)}."
+          )
+        else:
+          if is_pu:
+            # Cálculo adaptable a Unidades o Monto ($)
+            if crit_orden == "Unidades":
+              tot_compra = df_sem_top[col_u_compra].sum()
+              tot_recib = df_sem_top[col_u_recib].sum()
+              delta_txt = (
+                  f"{formato_unidades(tot_recib - tot_compra)} Unds (Dif)"
+              )
+            else:
+              tot_compra = df_sem_top[col_m_compra].sum()
+              tot_recib = df_sem_top[col_m_recib].sum()
+              delta_txt = (
+                  f"{tot_recib - tot_compra:,.0f} $ (Dif)".replace(",", ".")
+              )
+
+            fr_div_pct = (
+                (tot_recib / tot_compra * 100) if tot_compra > 0 else 0.0
+            )
+
+            st.markdown(f"#### 📌 RESUMEN GENERAL PU (Sem {fmt_sem(sem_top)})")
+            st.metric(
+                label="Fill Rate General",
+                value=f"{fr_div_pct:.1f}%",
+                delta=delta_txt,
+            )
+
+            grp_top = df_sem_top.groupby(
+                [col_sku, col_desc], as_index=False
+            ).agg({
+                col_u_compra: "sum",
+                col_m_compra: "sum",
+                "quiebre_monto_calc": "sum",
+                "quiebre_unid_calc": "sum",
+            })
+
+            if col_rechazado and col_rechazado in df_sem_top.columns:
+              grp_rech = df_sem_top.groupby(
+                  [col_sku, col_desc], as_index=False
+              )[col_rechazado].sum()
+              grp_top = pd.merge(
+                  grp_top, grp_rech, on=[col_sku, col_desc], how="left"
+              )
+              grp_top[col_rechazado] = grp_top[col_rechazado].fillna(0)
+            else:
+              grp_top["Suma de RECHAZADO"] = 0
+
+            grp_top["OC abierta"] = (
+                grp_top[col_sku].map(oc_abierta_map).fillna(0)
+            )
+            col_sort = (
+                "quiebre_monto_calc"
+                if crit_orden == "Monto ($)"
+                else "quiebre_unid_calc"
+            )
+            grp_top = grp_top.sort_values(by=col_sort, ascending=False).head(15)
+
+            if not grp_top.empty:
+              grp_top_disp = pd.DataFrame()
+              grp_top_disp["SKU"] = grp_top[col_sku].astype(str)
+              grp_top_disp["Descripción"] = grp_top[col_desc]
+              grp_top_disp["Unidades Compra"] = grp_top[col_u_compra].apply(
+                  formato_unidades
+              )
+              grp_top_disp["Compra Total ($)"] = grp_top[col_m_compra].apply(
+                  formato_moneda
+              )
+              grp_top_disp["Quiebre ($)"] = grp_top["quiebre_monto_calc"].apply(
+                  lambda x: f"-{formato_moneda(abs(x))}" if x > 0 else "$0"
+              )
+              col_r_name = (
+                  col_rechazado
+                  if (col_rechazado and col_rechazado in grp_top.columns)
+                  else "Suma de RECHAZADO"
+              )
+              grp_top_disp["Rechazado (Unds)"] = grp_top[col_r_name].apply(
+                  formato_unidades
