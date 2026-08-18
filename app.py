@@ -111,10 +111,22 @@ def aplicar_criticidad(column):
         else: styles.append('')
     return styles
 
-# --- 3. CARGA DEL EXCEL (Optimizado para Despliegue) ---
-@st.cache_data(ttl=300)
-def cargar_libro_excel(origen_datos):
-    xls = pd.ExcelFile(origen_datos)
+# --- 3. CARGA DEL EXCEL ---
+def buscar_excel():
+    posibles_rutas = [
+        "SQL Seba.xlsx", "SQL Seba.xls",
+        r"C:\Users\sebastianperez\Desktop\QUERY REDSHIFT\SQL Seba.xlsx",
+        r"C:\Users\sebastianperez\Desktop\QUERY REDSHIFT\SQL Seba.xls"
+    ]
+    for ruta in posibles_rutas:
+        if os.path.exists(ruta): return ruta
+    return None
+
+ruta_final = buscar_excel()
+
+@st.cache_data(ttl=60)
+def cargar_libro_excel(ruta):
+    xls = pd.ExcelFile(ruta)
     hojas_dict = {}
     for hoja in xls.sheet_names:
         df_temp = pd.read_excel(xls, hoja, dtype=str)
@@ -124,28 +136,14 @@ def cargar_libro_excel(origen_datos):
         hojas_dict[hoja] = df_temp
     return hojas_dict
 
-# Búsqueda local o selector dinámico en la web
-origen_archivo = None
-posibles_locales = ["SQL Seba.xlsx", "SQL Seba.xls"]
-
-for ruta in posibles_locales:
-    if os.path.exists(ruta):
-        origen_archivo = ruta
-        break
-
-if origen_archivo is None:
-    st.sidebar.title("📂 Cargar Datos")
-    archivo_subido = st.sidebar.file_uploader("Sube tu archivo 'SQL Seba.xlsx'", type=["xlsx", "xls"])
-    if archivo_subido is not None:
-        origen_archivo = archivo_subido
-    else:
-        st.info("👋 Por favor, carga el archivo Excel mediante el panel lateral para iniciar.")
-        st.stop()
+if not ruta_final:
+    st.error("⚠️ No se encontró el archivo 'SQL Seba.xlsx' en la ruta especificada.")
+    st.stop()
 
 try:
-    hojas = cargar_libro_excel(origen_archivo)
+    hojas = cargar_libro_excel(ruta_final)
 except Exception as e:
-    st.error(f"Error al leer el archivo Excel: {e}")
+    st.error(f"Error al leer Excel: {e}")
     st.stop()
 
 # --- 4. HEADER ---
@@ -197,11 +195,12 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         is_si = (nombre_clean == "SI")
 
         # =================================================================
-        # PESTAÑA VENTA SI
+        # PESTAÑA VENTA SI (REDISEÑADA, VISUAL Y DINÁMICA)
         # =================================================================
         if is_si:
             st.markdown("### 📈 Dashboard Operativo de Venta SI")
 
+            # 1. Detección y conversión de columnas
             col_cliente = next((c for c in df.columns if 'cliente' in c.lower()), 'nombre_cliente')
             col_div = next((c for c in df.columns if 'division' in c.lower() or 'división' in c.lower()), 'Division')
             col_monto = next((c for c in df.columns if 'monto' in c.lower()), 'monto')
@@ -214,6 +213,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             df[col_unid] = pd.to_numeric(df[col_unid], errors='coerce').fillna(0) if col_unid in df.columns else 0
             df[col_pmp] = pd.to_numeric(df[col_pmp], errors='coerce').fillna(0) if col_pmp in df.columns else 0
 
+            # 2. Panel de filtros interactivos
             st.markdown("#### 🎛️ Filtros de Control")
             f_col1, f_col2, f_col3 = st.columns(3)
             
@@ -229,6 +229,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 inflamable_opts = ["Todos"] + sorted([str(x) for x in df[col_inflamable].dropna().unique()]) if col_inflamable in df.columns else ["Todos"]
                 inflamable_sel = st.selectbox("Producto Inflamable:", inflamable_opts, key=f"f_inf_{i}")
 
+            # Aplicar filtros
             df_si_filt = df.copy()
             if div_sel != "Todas" and col_div in df_si_filt.columns:
                 df_si_filt = df_si_filt[df_si_filt[col_div].astype(str) == div_sel]
@@ -239,6 +240,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
             st.divider()
 
+            # 3. Métricas Principales (KPIs)
             st.markdown("#### 📊 KPIs Generales")
             monto_total = df_si_filt[col_monto].sum()
             unidades_totales = df_si_filt[col_unid].sum()
@@ -255,8 +257,10 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
             st.divider()
 
+            # 4. Componentes Visuales y Tablas (División y Cliente)
             c_div_view, c_cli_view = st.columns([1, 1.2], gap="large")
 
+            # --- SECCIÓN DIVISIÓN ---
             with c_div_view:
                 st.markdown("#### 🏢 Venta por División")
                 if col_div in df_si_filt.columns and not df_si_filt.empty:
@@ -267,6 +271,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                     grp_div['Participación'] = (grp_div[col_monto] / monto_total) if monto_total > 0 else 0
                     grp_div = grp_div.sort_values(by=col_monto, ascending=False)
 
+                    # Gráfico Donut
                     fig_donut = px.pie(
                         grp_div, 
                         values=col_monto, 
@@ -289,6 +294,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                     )
                     st.plotly_chart(fig_donut, use_container_width=True, key=f"donut_div_{i}")
 
+                    # Tabla con barra de progreso
                     grp_div_disp = pd.DataFrame({
                         "División": grp_div[col_div],
                         "Monto ($)": grp_div[col_monto],
@@ -314,6 +320,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 else:
                     st.info("No hay datos de división disponibles.")
 
+            # --- SECCIÓN TOP CLIENTES ---
             with c_cli_view:
                 st.markdown("#### 🏆 Top Clientes por Facturación")
                 if col_cliente in df_si_filt.columns and not df_si_filt.empty:
@@ -322,6 +329,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                         col_unid: 'sum'
                     }).sort_values(by=col_monto, ascending=False).head(10)
 
+                    # Gráfico de Barras Horizontales
                     grp_cli_sorted = grp_cli.sort_values(by=col_monto, ascending=True)
                     fig_bars = px.bar(
                         grp_cli_sorted,
@@ -347,6 +355,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                     )
                     st.plotly_chart(fig_bars, use_container_width=True, key=f"bars_cli_{i}")
 
+                    # Tabla Detallada
                     grp_cli_disp = pd.DataFrame({
                         "Cliente": grp_cli[col_cliente],
                         "Monto Total ($)": grp_cli[col_monto],
@@ -367,6 +376,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
             st.divider()
 
+            # 5. Registro completo de transacciones
             st.subheader("📋 Registro Completo de Ventas SI")
             busqueda_si = st.text_input("🔍 Buscar en registros SI (Descripción, SKU, Factura, etc.):", key=f"search_si_{i}")
             
@@ -539,7 +549,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             st.dataframe(df_vista_stock, hide_index=True, use_container_width=True)
 
         # =================================================================
-        # LÓGICA PARA SB Y PU
+        # LÓGICA ORIGINAL PARA SB Y PU
         # =================================================================
         elif is_sb or is_pu:
             col_semana = next((c for c in df.columns if c.strip().lower() in ['semana', 'sem', 'wk', 'week']), None) or next((c for c in df.columns if 'semana' in c.lower() or 'sem' in c.lower()), None)
@@ -649,6 +659,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
                     st.divider()
 
+            # TOP 15
             st.subheader(f"🔥 TOP 15 Quiebres {'(Global)' if is_pu else '(Por División)'}")
             crit_orden = st.radio("Ordenar Top 15 por:", options=["Monto ($)", "Unidades"], horizontal=True, key=f"crit_top15_{nombre_hoja}_{i}")
             sem_top = semana_sel if semana_sel != "Todas" else (semanas_todas[-1] if semanas_todas else None)
@@ -677,6 +688,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                     st.info(f"No se encontraron registros para la semana {fmt_sem(sem_top)}.")
                 else:
                     if is_pu:
+                        # Lógica dinámica según selección (Monto o Unidades)
                         if crit_orden == "Monto ($)":
                             tot_compra_val = df_sem_top[col_m_compra].sum()
                             tot_recib_val = df_sem_top[col_m_recib].sum()
@@ -691,7 +703,11 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                             lbl_metric = "Fill Rate General (Unidades)"
 
                         st.markdown(f"#### 📌 RESUMEN GENERAL PU (Sem {fmt_sem(sem_top)})")
-                        st.metric(label=lbl_metric, value=f"{fr_div_pct:.1f}%", delta=delta_str)
+                        st.metric(
+                            label=lbl_metric, 
+                            value=f"{fr_div_pct:.1f}%",
+                            delta=delta_str
+                        )
 
                         grp_top = df_sem_top.groupby([col_sku, col_desc], as_index=False).agg({
                             col_u_compra: 'sum', col_m_compra: 'sum',
@@ -739,6 +755,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                             with columnas_ui[idx]:
                                 df_div = df_sem_top[df_sem_top[col_div] == div_nombre].copy()
                                 
+                                # Lógica dinámica según selección (Monto o Unidades)
                                 if crit_orden == "Monto ($)":
                                     tot_compra_val = df_div[col_m_compra].sum()
                                     tot_recib_val = df_div[col_m_recib].sum()
@@ -784,6 +801,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
             st.divider()
 
+            # RESUMEN 4 SEMANAS
             if col_semana:
                 df_base_fr = df.copy()
                 df_4sem = df_base_fr[df_base_fr[col_semana].isin(ultimas_4_semanas)].copy()
@@ -878,6 +896,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
                 st.divider()
 
+            # TABLAS DINÁMICAS: QUIEBRE POR MARCA
             if sem_top is not None and col_marca:
                 st.subheader("🏷️ Resumen Quiebres por Marca")
                 df_sem_marca = df[df[col_semana] == sem_top].copy()
@@ -940,6 +959,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
                 st.divider()
 
+            # DETALLE DE REGISTRO CON FILTROS
             st.subheader("📋 Detalle de Registro de Compras")
             col_det_f1, col_det_f2 = st.columns(2)
             with col_det_f1:
@@ -980,7 +1000,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
             st.dataframe(df_corte_final, hide_index=True, use_container_width=True)
 
-        # OTRAS PESTAÑAS AUXILIARES
+        # PARA OTRAS PESTAÑAS AUXILIARES
         else:
             busqueda = st.text_input(f"🔍 Buscar en {nombre_hoja}:", key=f"search_{nombre_hoja}_{i}")
             if busqueda:
