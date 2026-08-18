@@ -28,7 +28,7 @@ COLOR_CARD_BG = "#131B2E"
 COLOR_BORDER = "#1F2D47"
 
 # ==============================================================================
-# 2. ESTILOS CSS PERSONALIZADOS
+# 2. ESTILOS CSS PERSONALIZADOS (DARK THEME MEDCELL)
 # ==============================================================================
 st.markdown(f"""
     <style>
@@ -174,8 +174,23 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ==============================================================================
-# 3. FUNCIONES AUXILIARES DE FORMATO
+# 3. FUNCIONES AUXILIARES Y DEDUPLICACIÓN DE COLUMNAS
 # ==============================================================================
+def asegurar_columnas_unicas(df_in):
+    """Garantiza que el DataFrame no tenga columnas duplicadas para evitar errores en Streamlit."""
+    if df_in is None or df_in.empty:
+        return df_in
+    df_out = df_in.copy()
+    # 1. Elimina duplicadas idénticas
+    df_out = df_out.loc[:, ~df_out.columns.duplicated()]
+    # 2. Asigna sufijos si existen nombres idénticos tras renombrar
+    cols_series = pd.Series(df_out.columns)
+    if cols_series.duplicated().any():
+        for dup in cols_series[cols_series.duplicated()].unique():
+            cols_series[cols_series == dup] = [f"{dup}" if idx == 0 else f"{dup}_{idx+1}" for idx in range((cols_series == dup).sum())]
+        df_out.columns = cols_series
+    return df_out
+
 def fmt_sem(val):
     if pd.isna(val) or val == "" or val is None:
         return ""
@@ -283,7 +298,6 @@ st.markdown(f"""
     </div>
 """, unsafe_allow_html=True)
 
-# Helper para Reloj Gauge Corporativo
 def crear_reloj_gauge(titulo, porcentaje, color_barra):
     fig = go.Figure(go.Indicator(
         mode="gauge+number",
@@ -426,13 +440,14 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                     )
                     st.plotly_chart(fig_donut, use_container_width=True, key=f"donut_div_{i}")
 
+                    df_grp_disp = pd.DataFrame({
+                        "División": grp_div[col_div],
+                        "Monto ($)": grp_div[col_monto],
+                        "Unidades": grp_div[col_unid],
+                        "Participación": grp_div['Participación']
+                    })
                     st.dataframe(
-                        pd.DataFrame({
-                            "División": grp_div[col_div],
-                            "Monto ($)": grp_div[col_monto],
-                            "Unidades": grp_div[col_unid],
-                            "Participación": grp_div['Participación']
-                        }),
+                        asegurar_columnas_unicas(df_grp_disp),
                         column_config={
                             "Monto ($)": st.column_config.NumberColumn("Monto ($)", format="$%,d"),
                             "Unidades": st.column_config.NumberColumn("Unidades", format="%,d"),
@@ -470,12 +485,13 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                     )
                     st.plotly_chart(fig_bars, use_container_width=True, key=f"bars_cli_{i}")
 
+                    df_cli_disp = pd.DataFrame({
+                        "Cliente": grp_cli[col_cliente],
+                        "Monto Total ($)": grp_cli[col_monto],
+                        "Unidades": grp_cli[col_unid]
+                    })
                     st.dataframe(
-                        pd.DataFrame({
-                            "Cliente": grp_cli[col_cliente],
-                            "Monto Total ($)": grp_cli[col_monto],
-                            "Unidades": grp_cli[col_unid]
-                        }),
+                        asegurar_columnas_unicas(df_cli_disp),
                         column_config={
                             "Monto Total ($)": st.column_config.NumberColumn("Monto Total ($)", format="$%,d"),
                             "Unidades": st.column_config.NumberColumn("Unidades", format="%,d"),
@@ -491,7 +507,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             if busqueda_si:
                 mask_si = df_si_det.astype(str).apply(lambda x: x.str.contains(busqueda_si, case=False)).any(axis=1)
                 df_si_det = df_si_det[mask_si]
-            st.dataframe(df_si_det, hide_index=True, use_container_width=True)
+            st.dataframe(asegurar_columnas_unicas(df_si_det), hide_index=True, use_container_width=True)
 
         # ----------------------------------------------------------------------
         # PESTAÑA STOCK / CADUCIDAD
@@ -658,7 +674,8 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             df_vista_stock = df_vista_stock.rename(columns=nombres_amigables)
             if "Fecha Expiración" in df_vista_stock.columns:
                 df_vista_stock["Fecha Expiración"] = pd.to_datetime(df_vista_stock["Fecha Expiración"], errors='coerce').dt.strftime('%d-%m-%Y')
-            st.dataframe(df_vista_stock, hide_index=True, use_container_width=True)
+            
+            st.dataframe(asegurar_columnas_unicas(df_vista_stock), hide_index=True, use_container_width=True)
 
         # ----------------------------------------------------------------------
         # PESTAÑAS SB Y PU (FILL RATE Y QUIEBRES)
@@ -808,7 +825,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                     lbl_oc = f"OC Abierta Sem {fmt_sem(sem_sig)}" if sem_sig else "OC Abierta"
                     grp_top_disp[lbl_oc] = grp_top["OC abierta"].apply(formato_unidades)
 
-                    st.dataframe(grp_top_disp, hide_index=True, use_container_width=True)
+                    st.dataframe(asegurar_columnas_unicas(grp_top_disp), hide_index=True, use_container_width=True)
 
             elif is_sb and col_div:
                 divisiones_unicas = [d for d in df_sem_top[col_div].dropna().unique()]
@@ -857,7 +874,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                             lbl_oc = f"OC Abierta Sem {fmt_sem(sem_sig)}" if sem_sig else "OC Abierta"
                             grp_top_disp[lbl_oc] = grp_top["OC abierta"].apply(formato_unidades)
 
-                            st.dataframe(grp_top_disp, hide_index=True, use_container_width=True)
+                            st.dataframe(asegurar_columnas_unicas(grp_top_disp), hide_index=True, use_container_width=True)
 
             st.divider()
 
@@ -972,7 +989,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                     grp_m_disp["% Quiebre"] = grp_m_final['pct_quiebre']
 
                     st.dataframe(
-                        grp_m_disp.style.apply(aplicar_criticidad, subset=['% Quiebre']),
+                        asegurar_columnas_unicas(grp_m_disp).style.apply(aplicar_criticidad, subset=['% Quiebre']),
                         column_config={"% Quiebre": st.column_config.NumberColumn("% Quiebre", format="%.1f%%")},
                         hide_index=True,
                         use_container_width=True
@@ -980,7 +997,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
             st.divider()
 
-            # DETALLE Y REGISTROS FILTRADOS
+            # DETALLE Y REGISTROS FILTRADOS CON DESDUPLICACIÓN
             st.subheader(f"📋 Registro de Órdenes y Filas ({nombre_hoja})")
             
             f1, f2 = st.columns(2)
@@ -1003,14 +1020,29 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 "orden_compra": "OC", "descripcion": "Descripción", "unidades_compra": "Unidades Compra",
                 "unidades_recibidas": "Unidades Recibidas", "unidades_rechazadas": "Unidades Rechazadas",
                 "cantidad": "Unidades Compra", "cantidad_recibida": "Unidades Recibidas",
-                "precio_final": "Precio Final", "precio_total": "Precio Total"
+                "fecha_hora_despacho_default": "Fecha Despacho", "precio_final": "Precio Final",
+                "precio_total": "Precio Total"
             }
 
-            df_corte_final = df_detalle.rename(columns={c: renombrar_columnas.get(str(c).strip().lower(), str(c).replace('_', ' ').strip().title()) for c in df_detalle.columns})
+            # Aplicar renombrado seguro
+            df_corte_final = df_detalle.copy()
+            nuevas_columnas = {}
+            for col in df_corte_final.columns:
+                col_lower = str(col).strip().lower()
+                if col_lower in renombrar_columnas:
+                    nuevas_columnas[col] = renombrar_columnas[col_lower]
+                else:
+                    nuevas_columnas[col] = str(col).replace('_', ' ').strip().title()
+
+            df_corte_final = df_corte_final.rename(columns=nuevas_columnas)
+
+            # APLICAR DESDUPLICACIÓN DE COLUMNAS PARA EVITAR ERROR DE STREAMLIT
+            df_corte_final = asegurar_columnas_unicas(df_corte_final)
+
             st.dataframe(df_corte_final, hide_index=True, use_container_width=True)
 
         # ----------------------------------------------------------------------
-        # OTRAS PESTAÑAS AUXILIARES
+        # PARA OTRAS PESTAÑAS AUXILIARES
         # ----------------------------------------------------------------------
         else:
             busqueda = st.text_input(f"🔍 Buscar en {nombre_hoja}:", key=f"search_{nombre_hoja}_{i}")
@@ -1018,4 +1050,4 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             if busqueda:
                 mask = df_aux.astype(str).apply(lambda x: x.str.contains(busqueda, case=False)).any(axis=1)
                 df_aux = df_aux[mask]
-            st.dataframe(df_aux, hide_index=True, use_container_width=True)
+            st.dataframe(asegurar_columnas_unicas(df_aux), hide_index=True, use_container_width=True)
