@@ -8,10 +8,11 @@ from datetime import datetime
 # 1. Configuración de la página
 st.set_page_config(page_title="Medcell Operaciones", layout="wide")
 
-# 2. Estilos personalizados
+# 2. Estilos personalizados (Modo Claro / Blanco)
 st.markdown("""
     <style>
-    .stApp { background-color: #0b0b0b; color: #ffffff; }
+    /* Fondo principal blanco y texto oscuro */
+    .stApp { background-color: #ffffff; color: #111827; }
     
     .medcell-header { 
         border-bottom: 3px solid #0070f3; 
@@ -22,45 +23,45 @@ st.markdown("""
         font-size: 34px; 
         font-weight: 900; 
         letter-spacing: 2px; 
-        color: #ffffff; 
+        color: #000000; 
         text-transform: uppercase; 
         font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
     }
     .medcell-brand span { color: #0070f3; }
-    .medcell-subtitle { color: #aaaaaa; font-size: 13px; font-weight: 600; letter-spacing: 1px; margin-top: 2px; }
-    .medcell-author { color: #777777; font-size: 11px; margin-top: 4px; font-style: italic; }
+    .medcell-subtitle { color: #4b5563; font-size: 13px; font-weight: 600; letter-spacing: 1px; margin-top: 2px; }
+    .medcell-author { color: #6b7280; font-size: 11px; margin-top: 4px; font-style: italic; }
 
     /* Estilo de Tarjetas de Filtro por Semana */
     div[data-testid="stRadio"] > label { display: none; }
     div[data-testid="stRadio"] > div { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 8px; }
     div[data-testid="stRadio"] label {
-        background-color: #141414 !important; border: 1px solid #2b2b2b !important;
+        background-color: #f3f4f6 !important; border: 1px solid #d1d5db !important;
         padding: 10px 22px !important; border-radius: 10px !important;
         cursor: pointer !important; transition: all 0.25s ease-in-out !important;
-        color: #cccccc !important; font-weight: 600 !important; font-size: 14px !important;
+        color: #374151 !important; font-weight: 600 !important; font-size: 14px !important;
     }
     div[data-testid="stRadio"] label:hover {
-        border-color: #0070f3 !important; background-color: #1e1e1e !important;
-        color: #ffffff !important; transform: translateY(-2px);
+        border-color: #0070f3 !important; background-color: #e5e7eb !important;
+        color: #000000 !important; transform: translateY(-2px);
     }
     div[data-testid="stRadio"] label[data-checked="true"] {
         background-color: #0070f3 !important; border-color: #0070f3 !important;
-        color: #ffffff !important; box-shadow: 0px 4px 14px rgba(0, 112, 243, 0.4);
+        color: #ffffff !important; box-shadow: 0px 4px 14px rgba(0, 112, 243, 0.3);
     }
 
     /* Pestañas generales */
     .stTabs [data-baseweb="tab-list"] {
-        gap: 8px; background-color: #121212; padding: 8px 12px; border-radius: 10px; border: 1px solid #262626; margin-bottom: 20px;
+        gap: 8px; background-color: #f9fafb; padding: 8px 12px; border-radius: 10px; border: 1px solid #e5e7eb; margin-bottom: 20px;
     }
     .stTabs [data-baseweb="tab"] {
-        height: 42px; white-space: pre-wrap; background-color: #1a1a1a; border-radius: 8px; color: #888888; font-weight: 600; font-size: 14px; border: 1px solid #2b2b2b; padding: 0px 20px; transition: all 0.3s ease;
+        height: 42px; white-space: pre-wrap; background-color: #ffffff; border-radius: 8px; color: #4b5563; font-weight: 600; font-size: 14px; border: 1px solid #d1d5db; padding: 0px 20px; transition: all 0.3s ease;
     }
-    .stTabs [data-baseweb="tab"]:hover { color: #ffffff; background-color: #242424; border-color: #0070f3; }
+    .stTabs [data-baseweb="tab"]:hover { color: #000000; background-color: #f3f4f6; border-color: #0070f3; }
     .stTabs [aria-selected="true"] { background-color: #0070f3 !important; color: #ffffff !important; border-color: #0070f3 !important; box-shadow: 0px 4px 12px rgba(0, 112, 243, 0.3); }
     
-    div[data-testid="stMetricValue"] { color: #ffffff !important; font-size: 26px !important; font-weight: bold; }
-    div[data-testid="stMetricLabel"] { color: #888888 !important; }
-    div[data-testid="stDataFrame"] { background-color: #121212; border-radius: 8px; }
+    div[data-testid="stMetricValue"] { color: #111827 !important; font-size: 26px !important; font-weight: bold; }
+    div[data-testid="stMetricLabel"] { color: #4b5563 !important; }
+    div[data-testid="stDataFrame"] { background-color: #ffffff; border-radius: 8px; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -103,11 +104,11 @@ def aplicar_criticidad(column):
     is_total = column.index == (len(column) - 1)
     styles = []
     for i, val in enumerate(column):
-        if is_total[i]: styles.append('font-weight: bold; background-color: #1a1a1a;')
-        elif val >= 15.0: styles.append('background-color: #8b0000; color: #ffffff; font-weight: bold;')
-        elif val >= 10.0: styles.append('background-color: #b91c1c; color: #ffffff; font-weight: bold;')
-        elif val >= 5.0: styles.append('background-color: #c2410c; color: #ffffff;')
-        elif val > 0: styles.append('background-color: #27272a; color: #d4d4d8;')
+        if is_total[i]: styles.append('font-weight: bold; background-color: #e5e7eb; color: #000000;')
+        elif val >= 15.0: styles.append('background-color: #fee2e2; color: #991b1b; font-weight: bold;')
+        elif val >= 10.0: styles.append('background-color: #ffedd5; color: #c2410c; font-weight: bold;')
+        elif val >= 5.0: styles.append('background-color: #fef9c3; color: #854d0e;')
+        elif val > 0: styles.append('background-color: #f3f4f6; color: #374151;')
         else: styles.append('')
     return styles
 
@@ -155,7 +156,7 @@ st.markdown("""
                 <div class="medcell-subtitle">ANÁLISIS DE OPERACIÓN</div>
                 <div class="medcell-author">Desarrollado por Sebastián Alexis Pérez López</div>
             </div>
-            <div style="font-size: 28px; font-weight: 800; color: #ffffff; white-space: nowrap; padding-bottom: 2px;">
+            <div style="font-size: 28px; font-weight: 800; color: #111827; white-space: nowrap; padding-bottom: 2px;">
                 💊 Cadena Operaciones
             </div>
         </div>
@@ -165,17 +166,17 @@ st.markdown("""
 def crear_reloj_gauge(titulo, porcentaje, color_barra):
     fig = go.Figure(go.Indicator(
         mode="gauge+number", value=porcentaje,
-        number={'suffix': "%", 'font': {'size': 28, 'color': '#ffffff'}},
-        title={'text': f"<b>{titulo}</b>", 'font': {'size': 16, 'color': '#cccccc'}},
+        number={'suffix': "%", 'font': {'size': 28, 'color': '#111827'}},
+        title={'text': f"<b>{titulo}</b>", 'font': {'size': 16, 'color': '#374151'}},
         gauge={
-            'axis': {'range': [0, 100], 'ticksuffix': '%'},
+            'axis': {'range': [0, 100], 'ticksuffix': '%', 'tickcolor': '#374151'},
             'bar': {'color': color_barra, 'thickness': 0.4},
-            'bgcolor': "#1a1a1a", 'borderwidth': 1, 'bordercolor': "#333333",
-            'steps': [{'range': [0, 50], 'color': '#281a1a'}, {'range': [50, 80], 'color': '#28241a'}, {'range': [80, 100], 'color': '#1a281f'}],
-            'threshold': {'line': {'color': "#ffffff", 'width': 3}, 'thickness': 0.8, 'value': porcentaje}
+            'bgcolor': "#f3f4f6", 'borderwidth': 1, 'bordercolor': "#e5e7eb",
+            'steps': [{'range': [0, 50], 'color': '#fee2e2'}, {'range': [50, 80], 'color': '#fef3c7'}, {'range': [80, 100], 'color': '#d1fae5'}],
+            'threshold': {'line': {'color': "#111827", 'width': 3}, 'thickness': 0.8, 'value': porcentaje}
         }
     ))
-    fig.update_layout(height=210, margin=dict(l=25, r=25, t=35, b=15), paper_bgcolor="rgba(0,0,0,0)", font=dict(color="#ffffff"))
+    fig.update_layout(height=210, margin=dict(l=25, r=25, t=35, b=15), paper_bgcolor="rgba(0,0,0,0)", font=dict(color="#111827"))
     return fig
 
 # --- 5. PESTAÑAS ---
@@ -195,12 +196,11 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         is_si = (nombre_clean == "SI")
 
         # =================================================================
-        # PESTAÑA VENTA SI (REDISEÑADA, VISUAL Y DINÁMICA)
+        # PESTAÑA VENTA SI
         # =================================================================
         if is_si:
             st.markdown("### 📈 Dashboard Operativo de Venta SI")
 
-            # 1. Detección y conversión de columnas
             col_cliente = next((c for c in df.columns if 'cliente' in c.lower()), 'nombre_cliente')
             col_div = next((c for c in df.columns if 'division' in c.lower() or 'división' in c.lower()), 'Division')
             col_monto = next((c for c in df.columns if 'monto' in c.lower()), 'monto')
@@ -213,7 +213,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             df[col_unid] = pd.to_numeric(df[col_unid], errors='coerce').fillna(0) if col_unid in df.columns else 0
             df[col_pmp] = pd.to_numeric(df[col_pmp], errors='coerce').fillna(0) if col_pmp in df.columns else 0
 
-            # 2. Panel de filtros interactivos
             st.markdown("#### 🎛️ Filtros de Control")
             f_col1, f_col2, f_col3 = st.columns(3)
             
@@ -229,7 +228,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 inflamable_opts = ["Todos"] + sorted([str(x) for x in df[col_inflamable].dropna().unique()]) if col_inflamable in df.columns else ["Todos"]
                 inflamable_sel = st.selectbox("Producto Inflamable:", inflamable_opts, key=f"f_inf_{i}")
 
-            # Aplicar filtros
             df_si_filt = df.copy()
             if div_sel != "Todas" and col_div in df_si_filt.columns:
                 df_si_filt = df_si_filt[df_si_filt[col_div].astype(str) == div_sel]
@@ -240,7 +238,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
             st.divider()
 
-            # 3. Métricas Principales (KPIs)
             st.markdown("#### 📊 KPIs Generales")
             monto_total = df_si_filt[col_monto].sum()
             unidades_totales = df_si_filt[col_unid].sum()
@@ -257,10 +254,8 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
             st.divider()
 
-            # 4. Componentes Visuales y Tablas (División y Cliente)
             c_div_view, c_cli_view = st.columns([1, 1.2], gap="large")
 
-            # --- SECCIÓN DIVISIÓN ---
             with c_div_view:
                 st.markdown("#### 🏢 Venta por División")
                 if col_div in df_si_filt.columns and not df_si_filt.empty:
@@ -271,30 +266,29 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                     grp_div['Participación'] = (grp_div[col_monto] / monto_total) if monto_total > 0 else 0
                     grp_div = grp_div.sort_values(by=col_monto, ascending=False)
 
-                    # Gráfico Donut
                     fig_donut = px.pie(
                         grp_div, 
                         values=col_monto, 
                         names=col_div,
                         hole=0.5,
-                        color_discrete_sequence=["#0070f3", "#109618", "#f97316", "#ff9900"]
+                        color_discrete_sequence=["#0070f3", "#000000", "#7f7f7f", "#f97316"]
                     )
                     fig_donut.update_traces(
                         textposition='inside', 
                         textinfo='percent+label',
-                        marker=dict(line=dict(color='#0b0b0b', width=2))
+                        marker=dict(line=dict(color='#ffffff', width=2))
                     )
                     fig_donut.update_layout(
-                        template="plotly_dark",
+                        template="plotly_white",
                         paper_bgcolor="rgba(0,0,0,0)",
                         plot_bgcolor="rgba(0,0,0,0)",
                         margin=dict(t=10, b=10, l=10, r=10),
                         height=220,
-                        showlegend=False
+                        showlegend=False,
+                        font=dict(color="#111827")
                     )
                     st.plotly_chart(fig_donut, use_container_width=True, key=f"donut_div_{i}")
 
-                    # Tabla con barra de progreso
                     grp_div_disp = pd.DataFrame({
                         "División": grp_div[col_div],
                         "Monto ($)": grp_div[col_monto],
@@ -308,10 +302,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                             "Monto ($)": st.column_config.NumberColumn("Monto ($)", format="$%,d"),
                             "Unidades": st.column_config.NumberColumn("Unidades", format="%,d"),
                             "Participación": st.column_config.ProgressColumn(
-                                "Participación",
-                                format="%.1f%%",
-                                min_value=0,
-                                max_value=1
+                                "Participación", format="%.1f%%", min_value=0, max_value=1
                             ),
                         },
                         hide_index=True,
@@ -320,42 +311,26 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 else:
                     st.info("No hay datos de división disponibles.")
 
-            # --- SECCIÓN TOP CLIENTES ---
             with c_cli_view:
                 st.markdown("#### 🏆 Top Clientes por Facturación")
                 if col_cliente in df_si_filt.columns and not df_si_filt.empty:
                     grp_cli = df_si_filt.groupby(col_cliente, as_index=False).agg({
-                        col_monto: 'sum',
-                        col_unid: 'sum'
+                        col_monto: 'sum', col_unid: 'sum'
                     }).sort_values(by=col_monto, ascending=False).head(10)
 
-                    # Gráfico de Barras Horizontales
                     grp_cli_sorted = grp_cli.sort_values(by=col_monto, ascending=True)
                     fig_bars = px.bar(
-                        grp_cli_sorted,
-                        x=col_monto,
-                        y=col_cliente,
-                        orientation='h',
-                        text_auto='.2s',
-                        color_discrete_sequence=["#00CC96"]
+                        grp_cli_sorted, x=col_monto, y=col_cliente,
+                        orientation='h', text_auto='.2s', color_discrete_sequence=["#0070f3"]
                     )
-                    fig_bars.update_traces(
-                        textfont_size=11, 
-                        textposition="outside", 
-                        cliponaxis=False
-                    )
+                    fig_bars.update_traces(textfont_size=11, textposition="outside", cliponaxis=False)
                     fig_bars.update_layout(
-                        template="plotly_dark",
-                        paper_bgcolor="rgba(0,0,0,0)",
-                        plot_bgcolor="rgba(0,0,0,0)",
-                        margin=dict(t=10, b=10, l=10, r=10),
-                        height=220,
-                        xaxis_title="",
-                        yaxis_title=""
+                        template="plotly_white", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                        margin=dict(t=10, b=10, l=10, r=10), height=220, xaxis_title="", yaxis_title="",
+                        font=dict(color="#111827")
                     )
                     st.plotly_chart(fig_bars, use_container_width=True, key=f"bars_cli_{i}")
 
-                    # Tabla Detallada
                     grp_cli_disp = pd.DataFrame({
                         "Cliente": grp_cli[col_cliente],
                         "Monto Total ($)": grp_cli[col_monto],
@@ -368,15 +343,13 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                             "Monto Total ($)": st.column_config.NumberColumn("Monto Total ($)", format="$%,d"),
                             "Unidades": st.column_config.NumberColumn("Unidades", format="%,d"),
                         },
-                        hide_index=True,
-                        use_container_width=True
+                        hide_index=True, use_container_width=True
                     )
                 else:
                     st.info("No hay datos de clientes disponibles.")
 
             st.divider()
 
-            # 5. Registro completo de transacciones
             st.subheader("📋 Registro Completo de Ventas SI")
             busqueda_si = st.text_input("🔍 Buscar en registros SI (Descripción, SKU, Factura, etc.):", key=f"search_si_{i}")
             
@@ -454,24 +427,24 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             with col_dash1:
                 st.markdown("""
                 <style>
-                .stock-card { border-radius: 5px; padding: 15px; margin-bottom: 10px; text-align: center; color: white; font-weight: bold; }
+                .stock-card { border-radius: 8px; padding: 15px; margin-bottom: 10px; text-align: center; color: white; font-weight: bold; }
                 </style>
                 """, unsafe_allow_html=True)
                 
-                st.markdown(f'<div class="stock-card" style="background-color: #333; color: white;">Unidades Registradas<br><span style="font-size:24px;">{formato_unidades(total_unidades)}</span></div>', unsafe_allow_html=True)
-                st.markdown(f'<div class="stock-card" style="background-color: #e74c3c;">Unidades < 6 meses<br><span style="font-size:24px;">{formato_unidades(total_menos_6m)}</span></div>', unsafe_allow_html=True)
-                st.markdown(f'<div class="stock-card" style="background-color: #f1c40f; color: black;">Pronto vence (6 a 13 meses)<br><span style="font-size:24px;">{formato_unidades(total_pronto)}</span></div>', unsafe_allow_html=True)
-                st.markdown(f'<div class="stock-card" style="background-color: #2ecc71;">Vigentes (> 13 meses)<br><span style="font-size:24px;">{formato_unidades(total_vigentes)}</span></div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="stock-card" style="background-color: #111827; color: white;">Unidades Registradas<br><span style="font-size:24px;">{formato_unidades(total_unidades)}</span></div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="stock-card" style="background-color: #dc2626;">Unidades < 6 meses<br><span style="font-size:24px;">{formato_unidades(total_menos_6m)}</span></div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="stock-card" style="background-color: #d97706; color: white;">Pronto vence (6 a 13 meses)<br><span style="font-size:24px;">{formato_unidades(total_pronto)}</span></div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="stock-card" style="background-color: #16a34a;">Vigentes (> 13 meses)<br><span style="font-size:24px;">{formato_unidades(total_vigentes)}</span></div>', unsafe_allow_html=True)
 
             with col_dash2:
                 st.markdown("#### Estado de caducidad")
                 labels = ['< 6 meses', '6 a 13 meses', 'Vigente (> 13m)']
                 values = [total_menos_6m, total_pronto, total_vigentes]
-                colors = ['#e74c3c', '#f1c40f', '#2ecc71']
+                colors = ['#dc2626', '#d97706', '#16a34a']
                 
                 if sum(values) > 0:
                     fig_pie = go.Figure(data=[go.Pie(labels=labels, values=values, hole=.5, marker=dict(colors=colors))])
-                    fig_pie.update_layout(height=300, margin=dict(t=0, b=0, l=0, r=0), paper_bgcolor="rgba(0,0,0,0)", font=dict(color="#ffffff"), showlegend=True, legend=dict(orientation="h", y=-0.1))
+                    fig_pie.update_layout(height=300, margin=dict(t=0, b=0, l=0, r=0), paper_bgcolor="rgba(0,0,0,0)", font=dict(color="#111827"), showlegend=True, legend=dict(orientation="h", y=-0.1))
                     st.plotly_chart(fig_pie, use_container_width=True, key=f"pie_stock_{i}")
                 else:
                     st.info("Sin registros para mostrar.")
@@ -482,27 +455,27 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                     prox_vencer = df_dash[df_dash[col_fecha].notna()][col_fecha].min() if col_fecha else None
                     dias_vencer = (prox_vencer - hoy).days if pd.notna(prox_vencer) else "N/A"
                     
-                    st.markdown(f'<div class="stock-card" style="background-color: #7f8c8d;">Stock actual<br><span style="font-size:24px;">{formato_unidades(stock_actual)}</span></div>', unsafe_allow_html=True)
+                    st.markdown(f'<div class="stock-card" style="background-color: #4b5563;">Stock actual<br><span style="font-size:24px;">{formato_unidades(stock_actual)}</span></div>', unsafe_allow_html=True)
                     
                     if isinstance(dias_vencer, int):
                         if prox_vencer < limite_6m:
                             texto_vence = f"Vence en {dias_vencer} días" if dias_vencer >= 0 else f"Venció hace {abs(dias_vencer)} días"
-                            color_vence = "#e74c3c"
+                            color_vence = "#dc2626"
                             color_texto = "color: white;"
                         elif prox_vencer <= limite_13m:
                             texto_vence = f"Vence en {dias_vencer} días"
-                            color_vence = "#f1c40f"
-                            color_texto = "color: black;"
+                            color_vence = "#d97706"
+                            color_texto = "color: white;"
                         else:
                             texto_vence = f"Vence en {dias_vencer} días"
-                            color_vence = "#2ecc71"
+                            color_vence = "#16a34a"
                             color_texto = "color: white;"
                     else:
                         texto_vence = "Sin fecha registrada"
-                        color_vence = "#333333"
+                        color_vence = "#6b7280"
                         color_texto = "color: white;"
                         
-                    st.markdown(f'<div class="stock-card" style="background-color: {color_vence}; {color_texto} border: 1px solid #555;">Plazo de vencimiento<br><span style="font-size:20px;">{texto_vence}</span></div>', unsafe_allow_html=True)
+                    st.markdown(f'<div class="stock-card" style="background-color: {color_vence}; {color_texto}">Plazo de vencimiento<br><span style="font-size:20px;">{texto_vence}</span></div>', unsafe_allow_html=True)
 
             st.divider()
 
@@ -520,9 +493,9 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                         
                         with cols_est[idx_e % min(num_items, 6)]:
                             st.markdown(
-                                f'''<div style="background-color: #141414; border: 1px solid #0070f3; border-radius: 8px; padding: 10px; text-align: center; margin-bottom: 15px;">
-                                    <div style="font-size: 12px; color: #aaaaaa; font-weight: 600; text-transform: uppercase;">{nombre_est}</div>
-                                    <div style="font-size: 20px; font-weight: bold; color: #ffffff; margin-top: 3px;">{formato_unidades(cant_est)}</div>
+                                f'''<div style="background-color: #f8fafc; border: 1px solid #0070f3; border-radius: 8px; padding: 10px; text-align: center; margin-bottom: 15px;">
+                                    <div style="font-size: 12px; color: #4b5563; font-weight: 600; text-transform: uppercase;">{nombre_est}</div>
+                                    <div style="font-size: 20px; font-weight: bold; color: #111827; margin-top: 3px;">{formato_unidades(cant_est)}</div>
                                 </div>''', 
                                 unsafe_allow_html=True
                             )
@@ -549,7 +522,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             st.dataframe(df_vista_stock, hide_index=True, use_container_width=True)
 
         # =================================================================
-        # LÓGICA ORIGINAL PARA SB Y PU
+        # LÓGICA PARA SB Y PU
         # =================================================================
         elif is_sb or is_pu:
             col_semana = next((c for c in df.columns if c.strip().lower() in ['semana', 'sem', 'wk', 'week']), None) or next((c for c in df.columns if 'semana' in c.lower() or 'sem' in c.lower()), None)
@@ -651,10 +624,10 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                         st.markdown(f"### ⏱️ Fill rate W{fmt_sem(sem_actual)}")
                         col_r1, col_r2 = st.columns(2)
                         with col_r1:
-                            fig_g_cons = crear_reloj_gauge("CONSUMO MASIVO", fr_consumo_monto, "#f97316")
+                            fig_g_cons = crear_reloj_gauge("CONSUMO MASIVO", fr_consumo_monto, "#000000")
                             st.plotly_chart(fig_g_cons, use_container_width=True, key=f"gauge_cons_{nombre_hoja}_{i}")
                         with col_r2:
-                            fig_g_farma = crear_reloj_gauge("FARMA", fr_farma_monto, "#00adb5")
+                            fig_g_farma = crear_reloj_gauge("FARMA", fr_farma_monto, "#7f7f7f")
                             st.plotly_chart(fig_g_farma, use_container_width=True, key=f"gauge_farma_{nombre_hoja}_{i}")
 
                     st.divider()
@@ -780,7 +753,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
             st.divider()
 
-            # RESUMEN 4 SEMANAS
+            # RESUMEN 4 SEMANAS (ESTILO PANTALLAZO: BARRAS NEGRAS/GRISES Y LÍNEA AZUL)
             if col_semana:
                 df_base_fr = df.copy()
                 df_4sem = df_base_fr[df_base_fr[col_semana].isin(ultimas_4_semanas)].copy()
@@ -813,18 +786,24 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                         st.markdown("##### Fill Rate por Unidades (Evolutivo)")
                         fig_unds = go.Figure(go.Bar(
                             x=[f"Sem {fmt_sem(s)}" for s in grp[col_semana]], y=grp["FR_Unds_pct"],
-                            text=[f"{v:.1f}%" for v in grp["FR_Unds_pct"]], textposition="auto", marker_color="#0070f3"
+                            text=[f"{v:.1f}%" for v in grp["FR_Unds_pct"]], textposition="auto", marker_color="#000000"
                         ))
-                        fig_unds.update_layout(height=360, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#ffffff"), yaxis=dict(range=[0, 115], gridcolor="#222222", ticksuffix="%"), xaxis=dict(gridcolor="#222222"))
+                        fig_unds.update_layout(
+                            template="plotly_white", height=360, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                            font=dict(color="#111827"), yaxis=dict(range=[0, 115], gridcolor="#e5e7eb", ticksuffix="%"), xaxis=dict(gridcolor="#e5e7eb")
+                        )
                         st.plotly_chart(fig_unds, use_container_width=True, key=f"plot_unds_{nombre_hoja}_{i}")
 
                     with col_g2:
                         st.markdown("##### Fill Rate por Monto (Evolutivo)")
                         fig_monto = go.Figure(go.Bar(
                             x=[f"Sem {fmt_sem(s)}" for s in grp[col_semana]], y=grp["FR_Monto_pct"],
-                            text=[f"{v:.1f}%" for v in grp["FR_Monto_pct"]], textposition="auto", marker_color="#00adb5"
+                            text=[f"{v:.1f}%" for v in grp["FR_Monto_pct"]], textposition="auto", marker_color="#7f7f7f"
                         ))
-                        fig_monto.update_layout(height=360, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#ffffff"), yaxis=dict(range=[0, 115], gridcolor="#222222", ticksuffix="%"), xaxis=dict(gridcolor="#222222"))
+                        fig_monto.update_layout(
+                            template="plotly_white", height=360, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                            font=dict(color="#111827"), yaxis=dict(range=[0, 115], gridcolor="#e5e7eb", ticksuffix="%"), xaxis=dict(gridcolor="#e5e7eb")
+                        )
                         st.plotly_chart(fig_monto, use_container_width=True, key=f"plot_monto_{nombre_hoja}_{i}")
 
                 elif is_sb and col_div:
@@ -854,23 +833,45 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                     tot_sem["Total_FR_Monto"] = (tot_sem[col_m_recib] / tot_sem[col_m_compra] * 100).fillna(0)
 
                     with col_g1:
-                        st.markdown("##### Fill Rate por Unidades")
+                        st.markdown("##### FR por unidades")
                         fig_unds = go.Figure()
                         for col_d in [c for c in p_unds.columns if c != col_semana]:
-                            color_bar = "#f97316" if "CONSUMO" in str(col_d).upper() else "#00adb5"
-                            fig_unds.add_trace(go.Bar(x=[f"Sem {fmt_sem(s)}" for s in p_unds[col_semana]], y=p_unds[col_d], name=str(col_d).title(), marker_color=color_bar))
-                        fig_unds.add_trace(go.Scatter(x=[f"Sem {fmt_sem(s)}" for s in tot_sem[col_semana]], y=tot_sem["Total_FR_Unds"], name="Total Semana", mode="lines+markers+text", text=[f"{v:.1f}%" for v in tot_sem["Total_FR_Unds"]], textposition="top center", line=dict(color="#e2e8f0", width=3)))
-                        fig_unds.update_layout(barmode="group", height=360, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#ffffff"), yaxis=dict(range=[0, 115], gridcolor="#222222", ticksuffix="%"), xaxis=dict(gridcolor="#222222"), legend=dict(orientation="h", y=-0.2))
+                            color_bar = "#000000" if "CONSUMO" in str(col_d).upper() else "#7f7f7f"
+                            fig_unds.add_trace(go.Bar(
+                                x=[f"Sem {fmt_sem(s)}" for s in p_unds[col_semana]], 
+                                y=p_unds[col_d], name=str(col_d).title(), marker_color=color_bar
+                            ))
+                        fig_unds.add_trace(go.Scatter(
+                            x=[f"Sem {fmt_sem(s)}" for s in tot_sem[col_semana]], 
+                            y=tot_sem["Total_FR_Unds"], name="Total Semana", mode="lines+markers+text", 
+                            text=[f"{v:.1f}%" for v in tot_sem["Total_FR_Unds"]], textposition="top center", 
+                            line=dict(color="#0070f3", width=3)
+                        ))
+                        fig_unds.update_layout(
+                            template="plotly_white", barmode="group", height=360, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", 
+                            font=dict(color="#111827"), yaxis=dict(range=[0, 115], gridcolor="#e5e7eb", ticksuffix="%"), xaxis=dict(gridcolor="#e5e7eb"), legend=dict(orientation="h", y=-0.2)
+                        )
                         st.plotly_chart(fig_unds, use_container_width=True, key=f"plot_unds_sb_{i}")
 
                     with col_g2:
-                        st.markdown("##### Fill Rate por Monto")
+                        st.markdown("##### FR por monto")
                         fig_monto = go.Figure()
                         for col_d in [c for c in p_monto.columns if c != col_semana]:
-                            color_bar = "#f97316" if "CONSUMO" in str(col_d).upper() else "#00adb5"
-                            fig_monto.add_trace(go.Bar(x=[f"Sem {fmt_sem(s)}" for s in p_monto[col_semana]], y=p_monto[col_d], name=str(col_d).title(), marker_color=color_bar))
-                        fig_monto.add_trace(go.Scatter(x=[f"Sem {fmt_sem(s)}" for s in tot_sem[col_semana]], y=tot_sem["Total_FR_Monto"], name="Total Semana", mode="lines+markers+text", text=[f"{v:.1f}%" for v in tot_sem["Total_FR_Monto"]], textposition="top center", line=dict(color="#e2e8f0", width=3)))
-                        fig_monto.update_layout(barmode="group", height=360, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#ffffff"), yaxis=dict(range=[0, 115], gridcolor="#222222", ticksuffix="%"), xaxis=dict(gridcolor="#222222"), legend=dict(orientation="h", y=-0.2))
+                            color_bar = "#000000" if "CONSUMO" in str(col_d).upper() else "#7f7f7f"
+                            fig_monto.add_trace(go.Bar(
+                                x=[f"Sem {fmt_sem(s)}" for s in p_monto[col_semana]], 
+                                y=p_monto[col_d], name=str(col_d).title(), marker_color=color_bar
+                            ))
+                        fig_monto.add_trace(go.Scatter(
+                            x=[f"Sem {fmt_sem(s)}" for s in tot_sem[col_semana]], 
+                            y=tot_sem["Total_FR_Monto"], name="Total Semana", mode="lines+markers+text", 
+                            text=[f"{v:.1f}%" for v in tot_sem["Total_FR_Monto"]], textposition="top center", 
+                            line=dict(color="#0070f3", width=3)
+                        ))
+                        fig_monto.update_layout(
+                            template="plotly_white", barmode="group", height=360, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", 
+                            font=dict(color="#111827"), yaxis=dict(range=[0, 115], gridcolor="#e5e7eb", ticksuffix="%"), xaxis=dict(gridcolor="#e5e7eb"), legend=dict(orientation="h", y=-0.2)
+                        )
                         st.plotly_chart(fig_monto, use_container_width=True, key=f"plot_monto_sb_{i}")
 
                 st.divider()
