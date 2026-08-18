@@ -688,15 +688,25 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                     st.info(f"No se encontraron registros para la semana {fmt_sem(sem_top)}.")
                 else:
                     if is_pu:
-                        tot_compra_m = df_sem_top[col_m_compra].sum()
-                        tot_recib_m = df_sem_top[col_m_recib].sum()
-                        fr_div_pct = (tot_recib_m / tot_compra_m * 100) if tot_compra_m > 0 else 0.0
+                        # Lógica dinámica según selección (Monto o Unidades)
+                        if crit_orden == "Monto ($)":
+                            tot_compra_val = df_sem_top[col_m_compra].sum()
+                            tot_recib_val = df_sem_top[col_m_recib].sum()
+                            fr_div_pct = (tot_recib_val / tot_compra_val * 100) if tot_compra_val > 0 else 0.0
+                            delta_str = f"{tot_recib_val - tot_compra_val:,.0f} $ (Dif)".replace(",", ".")
+                            lbl_metric = "Fill Rate General (Monto)"
+                        else:
+                            tot_compra_val = df_sem_top[col_u_compra].sum()
+                            tot_recib_val = df_sem_top[col_u_recib].sum()
+                            fr_div_pct = (tot_recib_val / tot_compra_val * 100) if tot_compra_val > 0 else 0.0
+                            delta_str = f"{tot_recib_val - tot_compra_val:,.0f} Unds (Dif)".replace(",", ".")
+                            lbl_metric = "Fill Rate General (Unidades)"
 
                         st.markdown(f"#### 📌 RESUMEN GENERAL PU (Sem {fmt_sem(sem_top)})")
                         st.metric(
-                            label="Fill Rate General", 
+                            label=lbl_metric, 
                             value=f"{fr_div_pct:.1f}%",
-                            delta=f"{tot_recib_m - tot_compra_m:,.0f} $ (Dif)".replace(",", ".")
+                            delta=delta_str
                         )
 
                         grp_top = df_sem_top.groupby([col_sku, col_desc], as_index=False).agg({
@@ -744,12 +754,23 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                             if idx >= 2: break
                             with columnas_ui[idx]:
                                 df_div = df_sem_top[df_sem_top[col_div] == div_nombre].copy()
-                                tot_compra_m = df_div[col_m_compra].sum()
-                                tot_recib_m = df_div[col_m_recib].sum()
-                                fr_div_pct = (tot_recib_m / tot_compra_m * 100) if tot_compra_m > 0 else 0.0
+                                
+                                # Lógica dinámica según selección (Monto o Unidades)
+                                if crit_orden == "Monto ($)":
+                                    tot_compra_val = df_div[col_m_compra].sum()
+                                    tot_recib_val = df_div[col_m_recib].sum()
+                                    fr_div_pct = (tot_recib_val / tot_compra_val * 100) if tot_compra_val > 0 else 0.0
+                                    delta_str = f"{tot_recib_val - tot_compra_val:,.0f} $ (Dif)".replace(",", ".")
+                                    lbl_metric = f"Fill Rate Monto (Sem {fmt_sem(sem_top)})"
+                                else:
+                                    tot_compra_val = df_div[col_u_compra].sum()
+                                    tot_recib_val = df_div[col_u_recib].sum()
+                                    fr_div_pct = (tot_recib_val / tot_compra_val * 100) if tot_compra_val > 0 else 0.0
+                                    delta_str = f"{tot_recib_val - tot_compra_val:,.0f} Unds (Dif)".replace(",", ".")
+                                    lbl_metric = f"Fill Rate Unidades (Sem {fmt_sem(sem_top)})"
 
                                 st.markdown(f"#### 📌 {str(div_nombre).upper()}")
-                                st.metric(label=f"Fill Rate (Sem {fmt_sem(sem_top)})", value=f"{fr_div_pct:.1f}%", delta=f"{tot_recib_m - tot_compra_m:,.0f} $ (Dif)".replace(",", "."))
+                                st.metric(label=lbl_metric, value=f"{fr_div_pct:.1f}%", delta=delta_str)
 
                                 grp_top = df_div.groupby([col_sku, col_desc], as_index=False).agg({
                                     col_u_compra: 'sum', col_m_compra: 'sum', 'quiebre_monto_calc': 'sum', 'quiebre_unid_calc': 'sum'
