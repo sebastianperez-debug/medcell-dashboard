@@ -1378,3 +1378,394 @@ for i, nombre_hoja in enumerate(nombres_hojas):
               )
               grp_top_disp["Rechazado (Unds)"] = grp_top[col_r_name].apply(
                   formato_unidades
+              )
+              lbl_oc = (
+                  f"OC Abierta Sem {fmt_sem(sem_sig)}"
+                  if sem_sig
+                  else "OC Abierta"
+              )
+              grp_top_disp[lbl_oc] = grp_top["OC abierta"].apply(
+                  formato_unidades
+              )
+
+              st.dataframe(
+                  grp_top_disp, hide_index=True, use_container_width=True
+              )
+
+          elif is_sb and col_div:
+            divisiones_unicas = [
+                d for d in df_sem_top[col_div].dropna().unique()
+            ]
+            div_cons = next(
+                (d for d in divisiones_unicas if "CONSUMO" in str(d).upper()),
+                None,
+            )
+            div_farm = next(
+                (d for d in divisiones_unicas if "FARMA" in str(d).upper()),
+                None,
+            )
+
+            lista_divs = [d for d in [div_cons, div_farm] if d is not None]
+            if not lista_divs and len(divisiones_unicas) > 0:
+              lista_divs = divisiones_unicas[:2]
+
+            col_t1, col_t2 = st.columns(2)
+            columnas_ui = [col_t1, col_t2]
+
+            for idx, div_nombre in enumerate(lista_divs):
+              if idx >= 2:
+                break
+              with columnas_ui[idx]:
+                df_div = df_sem_top[df_sem_top[col_div] == div_nombre].copy()
+
+                # Cálculo adaptable a Unidades o Monto ($)
+                if crit_orden == "Unidades":
+                  tot_compra = df_div[col_u_compra].sum()
+                  tot_recib = df_div[col_u_recib].sum()
+                  delta_txt = (
+                      f"{formato_unidades(tot_recib - tot_compra)} Unds (Dif)"
+                  )
+                else:
+                  tot_compra = df_div[col_m_compra].sum()
+                  tot_recib = df_div[col_m_recib].sum()
+                  delta_txt = (
+                      f"{tot_recib - tot_compra:,.0f} $ (Dif)".replace(",", ".")
+                  )
+
+                fr_div_pct = (
+                    (tot_recib / tot_compra * 100) if tot_compra > 0 else 0.0
+                )
+
+                st.markdown(f"#### 📌 {str(div_nombre).upper()}")
+                st.metric(
+                    label=f"Fill Rate (Sem {fmt_sem(sem_top)})",
+                    value=f"{fr_div_pct:.1f}%",
+                    delta=delta_txt,
+                )
+
+                grp_top = df_div.groupby(
+                    [col_sku, col_desc], as_index=False
+                ).agg({
+                    col_u_compra: "sum",
+                    col_m_compra: "sum",
+                    "quiebre_monto_calc": "sum",
+                    "quiebre_unid_calc": "sum",
+                })
+
+                if col_rechazado and col_rechazado in df_div.columns:
+                  grp_rech = df_div.groupby(
+                      [col_sku, col_desc], as_index=False
+                  )[col_rechazado].sum()
+                  grp_top = pd.merge(
+                      grp_top, grp_rech, on=[col_sku, col_desc], how="left"
+                  )
+                  grp_top[col_rechazado] = grp_top[col_rechazado].fillna(0)
+                else:
+                  grp_top["Suma de RECHAZADO"] = 0
+
+                grp_top["OC abierta"] = (
+                    grp_top[col_sku].map(oc_abierta_map).fillna(0)
+                )
+                col_sort = (
+                    "quiebre_monto_calc"
+                    if crit_orden == "Monto ($)"
+                    else "quiebre_unid_calc"
+                )
+                grp_top = grp_top.sort_values(
+                    by=col_sort, ascending=False
+                ).head(15)
+
+                grp_top_disp = pd.DataFrame()
+                grp_top_disp["SKU"] = grp_top[col_sku].astype(str)
+                grp_top_disp["Descripción"] = grp_top[col_desc]
+                grp_top_disp["Unidades Compra"] = grp_top[col_u_compra].apply(
+                    formato_unidades
+                )
+                grp_top_disp["Compra Total ($)"] = grp_top[col_m_compra].apply(
+                    formato_moneda
+                )
+                grp_top_disp["Quiebre ($)"] = grp_top[
+                    "quiebre_monto_calc"
+                ].apply(
+                    lambda x: f"-{formato_moneda(abs(x))}" if x > 0 else "$0"
+                )
+                col_r_name = (
+                    col_rechazado
+                    if (col_rechazado and col_rechazado in df_div.columns)
+                    else "Suma de RECHAZADO"
+                )
+                grp_top_disp["Rechazado (Unds)"] = grp_top[col_r_name].apply(
+                    formato_unidades
+                )
+                lbl_oc = (
+                    f"OC Abierta Sem {fmt_sem(sem_sig)}"
+                    if sem_sig
+                    else "OC Abierta"
+                )
+                grp_top_disp[lbl_oc] = grp_top["OC abierta"].apply(
+                    formato_unidades
+                )
+
+                st.dataframe(
+                    grp_top_disp, hide_index=True, use_container_width=True
+                )
+
+      st.divider()
+
+      # TABLAS DINÁMICAS / EVOLUTIVOS
+      st.subheader("📊 Fill Rate Evolutivo por Semana")
+      grp = (
+          df.groupby(col_semana)
+          .agg({
+              col_u_compra: "sum",
+              col_u_recib: "sum",
+              col_m_compra: "sum",
+              col_m_recib: "sum",
+          })
+          .reset_index()
+      )
+
+      grp["FR_Unds_pct"] = (
+          grp[col_u_recib] / grp[col_u_compra] * 100
+      ).fillna(0)
+      grp["FR_Monto_pct"] = (
+          grp[col_m_recib] / grp[col_m_compra] * 100
+      ).fillna(0)
+
+      df_disp = grp.copy()
+      df_disp[col_semana] = df_disp[col_semana].apply(fmt_sem)
+      df_disp[col_u_compra] = df_disp[col_u_compra].apply(formato_unidades)
+      df_disp[col_u_recib] = df_disp[col_u_recib].apply(formato_unidades)
+      df_disp[col_m_compra] = df_disp[col_m_compra].apply(formato_moneda)
+      df_disp[col_m_recib] = df_disp[col_m_recib].apply(formato_moneda)
+      df_disp["FR_Unds_pct"] = df_disp["FR_Unds_pct"].apply(
+          lambda x: f"{x:.2f}%"
+      )
+      df_disp["FR_Monto_pct"] = df_disp["FR_Monto_pct"].apply(
+          lambda x: f"{x:.2f}%"
+      )
+      df_disp.columns = [
+          "Semana",
+          "Unidades Compra",
+          "Unidades Recibidas",
+          "Monto Compra ($)",
+          "Monto Recibido ($)",
+          "Fill Rate Unidades",
+          "Fill Rate Monto",
+      ]
+      st.dataframe(df_disp, hide_index=True, use_container_width=True)
+
+      st.divider()
+
+      col_g1, col_g2 = st.columns(2)
+      with col_g1:
+        st.markdown("##### Fill Rate por Unidades (Evolutivo)")
+        fig_unds = go.Figure(
+            go.Bar(
+                x=[f"Sem {fmt_sem(s)}" for s in grp[col_semana]],
+                y=grp["FR_Unds_pct"],
+                text=[f"{v:.1f}%" for v in grp["FR_Unds_pct"]],
+                textposition="auto",
+                marker_color="#0070f3",
+            )
+        )
+        fig_unds.update_layout(
+            height=360,
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            font=dict(color="#ffffff"),
+            yaxis=dict(range=[0, 115], gridcolor="#222222", ticksuffix="%"),
+            xaxis=dict(gridcolor="#222222"),
+        )
+        st.plotly_chart(
+            fig_unds, use_container_width=True, key=f"plot_unds_{nombre_hoja}_{i}"
+        )
+
+      with col_g2:
+        st.markdown("##### Fill Rate por Monto (Evolutivo)")
+        fig_monto = go.Figure(
+            go.Bar(
+                x=[f"Sem {fmt_sem(s)}" for s in grp[col_semana]],
+                y=grp["FR_Monto_pct"],
+                text=[f"{v:.1f}%" for v in grp["FR_Monto_pct"]],
+                textposition="auto",
+                marker_color="#00adb5",
+            )
+        )
+        fig_monto.update_layout(
+            height=360,
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            font=dict(color="#ffffff"),
+            yaxis=dict(range=[0, 115], gridcolor="#222222", ticksuffix="%"),
+            xaxis=dict(gridcolor="#222222"),
+        )
+        st.plotly_chart(
+            fig_monto,
+            use_container_width=True,
+            key=f"plot_monto_{nombre_hoja}_{i}",
+        )
+
+      st.divider()
+
+      # TABLAS DINÁMICAS: QUIEBRE POR MARCA
+      if sem_top is not None and col_marca:
+        st.subheader("🏷️ Resumen Quiebres por Marca")
+        df_sem_marca = df[df[col_semana] == sem_top].copy()
+        if is_pu:
+          grp_m = (
+              df_sem_marca.groupby(col_marca, as_index=False)
+              .agg({col_m_compra: "sum", "quiebre_monto_calc": "sum"})
+          )
+          grp_m = grp_m[grp_m["quiebre_monto_calc"] > 0]
+          if not grp_m.empty:
+            total_quiebre_div = grp_m["quiebre_monto_calc"].sum()
+            grp_m["pct_quiebre"] = (
+                grp_m["quiebre_monto_calc"] / total_quiebre_div * 100
+            )
+            grp_m = grp_m.sort_values(
+                by="quiebre_monto_calc", ascending=False
+            )
+
+            grp_m_disp = pd.DataFrame()
+            grp_m_disp["Marca / Proveedor"] = grp_m[col_marca]
+            grp_m_disp["Compra Total ($)"] = grp_m[col_m_compra].apply(
+                formato_moneda
+            )
+            grp_m_disp["Quiebre ($)"] = grp_m["quiebre_monto_calc"].apply(
+                lambda x: f"-{formato_moneda(abs(x))}"
+            )
+            grp_m_disp["% Quiebre sobre Total"] = grp_m["pct_quiebre"].apply(
+                lambda x: f"{x:.2f}%"
+            )
+
+            st.dataframe(
+                grp_m_disp, hide_index=True, use_container_width=True
+            )
+          else:
+            st.info("No hay quiebres registrados por marca en esta semana.")
+
+        elif is_sb and col_div:
+          for div_nombre in lista_divs:
+            st.markdown(f"#### 🏷️ Quiebres por Marca - {div_nombre.upper()}")
+            df_div_m = df_sem_marca[
+                df_sem_marca[col_div] == div_nombre
+            ].copy()
+            grp_m = (
+                df_div_m.groupby(col_marca, as_index=False)
+                .agg({col_m_compra: "sum", "quiebre_monto_calc": "sum"})
+            )
+            grp_m = grp_m[grp_m["quiebre_monto_calc"] > 0]
+            if not grp_m.empty:
+              total_quiebre_div = grp_m["quiebre_monto_calc"].sum()
+              grp_m["pct_quiebre"] = (
+                  grp_m["quiebre_monto_calc"] / total_quiebre_div * 100
+              )
+              grp_m = grp_m.sort_values(
+                  by="quiebre_monto_calc", ascending=False
+              )
+
+              grp_m_disp = pd.DataFrame()
+              grp_m_disp["Marca / Proveedor"] = grp_m[col_marca]
+              grp_m_disp["Compra Total ($)"] = grp_m[col_m_compra].apply(
+                  formato_moneda
+              )
+              grp_m_disp["Quiebre ($)"] = grp_m["quiebre_monto_calc"].apply(
+                  lambda x: f"-{formato_moneda(abs(x))}"
+              )
+              grp_m_disp["% Quiebre sobre Total"] = grp_m["pct_quiebre"].apply(
+                  lambda x: f"{x:.2f}%"
+              )
+
+              st.dataframe(
+                  grp_m_disp, hide_index=True, use_container_width=True
+              )
+            else:
+              st.info(f"No hay quiebres registrados en {div_nombre}.")
+
+      st.divider()
+
+      # DETALLE DE REGISTROS
+      st.subheader(f"📋 Detalle de Registros - {nombre_hoja}")
+      c_f1, c_f2 = st.columns(2)
+      with c_f1:
+        ocs_disponibles = (
+            ["Todas"] + sorted([str(x) for x in df_filt[col_oc].dropna().unique()])
+            if col_oc and col_oc in df_filt.columns
+            else ["Todas"]
+        )
+        oc_seleccionada = st.selectbox(
+            "Filtrar Detalle por OC:",
+            ocs_disponibles,
+            key=f"det_oc_{nombre_hoja}_{i}",
+        )
+
+      with c_f2:
+        skus_det_disponibles = (
+            ["Todos"] + sorted([str(x) for x in df_filt[col_sku].dropna().unique()])
+            if col_sku and col_sku in df_filt.columns
+            else ["Todos"]
+        )
+        sku_det_seleccionado = st.selectbox(
+            "Filtrar Detalle por SKU:",
+            skus_det_disponibles,
+            key=f"det_sku_{nombre_hoja}_{i}",
+        )
+
+      df_detalle = df_filt.copy()
+      if col_oc and oc_seleccionada != "Todas":
+        df_detalle = df_detalle[
+            df_detalle[col_oc].astype(str) == oc_seleccionada
+        ]
+      if col_sku and sku_det_seleccionado != "Todos":
+        df_detalle = df_detalle[
+            df_detalle[col_sku].astype(str) == sku_det_seleccionado
+        ]
+
+      busqueda_det = st.text_input(
+          f"🔍 Buscar en {nombre_hoja}:", key=f"search_det_{nombre_hoja}_{i}"
+      )
+      if busqueda_det:
+        mask_d = (
+            df_detalle.astype(str)
+            .apply(lambda x: x.str.contains(busqueda_det, case=False))
+            .any(axis=1)
+        )
+        df_detalle = df_detalle[mask_d]
+
+      renombrar_columnas = {
+          col_semana: "Semana",
+          col_sku: "SKU",
+          col_desc: "Descripción",
+          col_div: "División",
+          col_marca: "Marca",
+          col_oc: "OC",
+          col_u_compra: "Unidades Compra",
+          col_u_recib: "Unidades Recibidas",
+          col_m_compra: "Monto Compra ($)",
+          col_m_recib: "Monto Recibido ($)",
+          col_precio: "Precio Unitario",
+          col_quiebre: "Quiebre ($)",
+          col_rechazado: "Rechazado (Unds)",
+      }
+
+      df_corte_final = df_detalle.rename(columns=renombrar_columnas)
+      st.caption(f"Mostrando {len(df_corte_final)} registros.")
+      st.dataframe(df_corte_final, hide_index=True, use_container_width=True)
+
+    # =================================================================
+    # PARA OTRAS PESTAÑAS AUXILIARES
+    # =================================================================
+    else:
+      busqueda = st.text_input(
+          f"🔍 Buscar en {nombre_hoja}:", key=f"search_{nombre_hoja}_{i}"
+      )
+      if busqueda:
+        mask = (
+            df.astype(str)
+            .apply(lambda x: x.str.contains(busqueda, case=False))
+            .any(axis=1)
+        )
+        df = df[mask]
+      st.caption(f"Mostrando {len(df)} registros.")
+      st.dataframe(df, hide_index=True, use_container_width=True)
