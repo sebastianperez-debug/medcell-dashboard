@@ -411,7 +411,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             st.dataframe(df_si_det, hide_index=True, use_container_width=True)
 
         # =================================================================
-        # DASHBOARD DE SI PROYECCION (CORREGIDO Y REESTRUCTURADO)
+        # DASHBOARD DE SI PROYECCION (CORREGIDO DE-DUPLICADO DE CANALES)
         # =================================================================
         elif is_si_proy:
             st.markdown("### 📊 Dashboard de Proyección SI")
@@ -423,7 +423,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 mes_actual = mes_col if str(mes_col).lower() not in ['unnamed: 0', 'canal', 'index'] else "Mes Actual"
 
                 df_proy = df.copy()
-                df_proy = df_proy[df_proy[mes_col].notna() & (df_proy[mes_col].astype(str).str.lower() != 'none')]
+                df_proy[mes_col] = df_proy[mes_col].astype(str).str.strip()
                 
                 cols_moneda = ['Facturado x canal', 'Proyección x canal', 'Meta']
                 cols_pct = ['%', 'Facturado actual']
@@ -433,7 +433,10 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                         df_proy[c] = df_proy[c].apply(limpiar_numero)
 
                 canales_principales = ['Consumo', 'Farma', 'Terceros']
-                df_resumen = df_proy[df_proy[mes_col].astype(str).str.strip().isin(canales_principales)]
+                
+                # Filtrar canales principales y eliminar filas duplicadas si existen bloques repetidos en el Excel
+                df_resumen = df_proy[df_proy[mes_col].isin(canales_principales)].copy()
+                df_resumen = df_resumen.drop_duplicates(subset=[mes_col], keep='first')
                 
                 meta_total = df_resumen['Meta'].sum() if 'Meta' in df_resumen.columns else 0
                 proyeccion_total = df_resumen['Proyección x canal'].sum() if 'Proyección x canal' in df_resumen.columns else 0
@@ -458,7 +461,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 st.divider()
 
                 st.markdown("#### 📈 Detalle por Canal de Ventas")
-                df_mostrar = df_proy.copy()
+                df_mostrar = df_resumen.copy()
                 config_columnas = {mes_col: st.column_config.TextColumn("Canal / Concepto")}
                 
                 for c in cols_moneda:
