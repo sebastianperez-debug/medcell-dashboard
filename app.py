@@ -410,8 +410,8 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             st.caption(f"Mostrando {len(df_si_det)} registros.")
             st.dataframe(df_si_det, hide_index=True, use_container_width=True)
 
-        # =================================================================
-        # DASHBOARD DE SI PROYECCION (TABLA CORREGIDA Y ESCALADA)
+       # =================================================================
+        # DASHBOARD DE SI PROYECCION
         # =================================================================
         elif is_si_proy:
             st.markdown("### 📊 Dashboard de Proyección SI")
@@ -431,7 +431,13 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 col_meta = next((c for c in cols_raw if 'meta' in c.lower()), cols_raw[3] if len(cols_raw) > 3 else None)
 
                 canales_principales = ['consumo', 'farma', 'terceros']
-                df_main = df_proy[df_proy[col_canal].astype(str).str.strip().str.lower().isin(canales_principales)].copy()
+                
+                # Filtrar candidatos por nombre de canal
+                df_candidates = df_proy[df_proy[col_canal].astype(str).str.strip().str.lower().isin(canales_principales)].copy()
+                
+                # Seleccionar SOLO la primera aparición de cada canal principal (evita duplicar desgloses inferiores)
+                df_main_indices = df_candidates.drop_duplicates(subset=[col_canal], keep='first').index
+                df_main = df_proy.loc[df_main_indices].copy()
 
                 if not df_main.empty:
                     df_main['fact_num'] = df_main[col_fact].apply(parse_num_si) if col_fact else 0.0
@@ -496,8 +502,8 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 else:
                     st.warning("No se encontraron registros de los canales principales ('Consumo', 'Farma', 'Terceros').")
 
-                # Sub-tabla si existen filas adicionales en la hoja
-                df_sub = df_proy[~df_proy[col_canal].astype(str).str.strip().str.lower().isin(canales_principales)].copy()
+                # Sub-tabla con las filas restantes excluidas de la tabla principal
+                df_sub = df_proy.loc[~df_proy.index.isin(df_main_indices)].copy()
                 df_sub = df_sub[df_sub[col_canal].notna() & (df_sub[col_canal].astype(str).str.strip() != '') & (df_sub[col_canal].astype(str).str.lower() != 'none')]
 
                 if not df_sub.empty:
@@ -522,7 +528,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                         hide_index=True,
                         use_container_width=True
                     )
-
         # =================================================================
         # DASHBOARD DE STOCK / CADUCIDAD
         # =================================================================
