@@ -606,6 +606,12 @@ for i, nombre_hoja in enumerate(nombres_hojas):
       )
 
       df_si_det = df_si_filt.copy()
+
+      # CORTE HASTA ES_INFLAMABLE
+      if col_inflamable in df_si_det.columns:
+        idx_corte = list(df_si_det.columns).index(col_inflamable) + 1
+        df_si_det = df_si_det.iloc[:, :idx_corte]
+
       if busqueda_si:
         mask_si = (
             df_si_det.astype(str)
