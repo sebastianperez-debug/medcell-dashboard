@@ -100,7 +100,13 @@ def limpiar_numero(val):
 
 def limpiar_nombre_mes(col):
     """Normaliza las cabeceras de fechas a formato corto tipo ene-26."""
+    if pd.isna(col) or col is None or str(col).strip() == "" or str(col).lower() == 'nan':
+        return ""
     s = str(col).strip()
+    
+    if "-" in s and len(s) <= 8 and not s[0:4].isdigit():
+        return s
+        
     if "00:00:00" in s or (len(s) >= 10 and s[0:4].isdigit()):
         try:
             dt = pd.to_datetime(s)
@@ -108,7 +114,13 @@ def limpiar_nombre_mes(col):
             return f"{meses_es[dt.month - 1]}-{str(dt.year)[-2:]}"
         except:
             pass
-    return s
+            
+    try:
+        dt = pd.to_datetime(s)
+        meses_es = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sept', 'oct', 'nov', 'dic']
+        return f"{meses_es[dt.month - 1]}-{str(dt.year)[-2:]}"
+    except:
+        return s
 
 def fmt_sem(val):
     if pd.isna(val) or val == "" or val is None:
@@ -543,53 +555,89 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 * **Terceros**: Presenta un desempeño rezagado con un **28%** facturado y una proyección total del **35%** respecto a su meta ($14.4M proyectados de $41.0M).
                 """)
 
-                # Sección: Tabla Proyecciones Metas por Mes (Extracción Robusta de la Zona Marcarada)
+                # Sección: Tabla Proyecciones Metas por Mes (Extracción Robusta de la Zona Marcada en Rojo)
                 st.divider()
                 st.markdown("#### 🗓️ Proyecciones Metas por Mes (2026)")
 
                 try:
                     df_grid = pd.read_excel(ruta_final, sheet_name=nombre_hoja, header=None, dtype=str)
                     
-                    # Identificar la posición exacta de la tabla inferior (FARMA / CONSUMO)
-                    farma_indices = []
-                    for r_idx in range(len(df_grid)):
-                        vals = [str(x).strip().lower() for x in df_grid.iloc[r_idx].values if pd.notna(x)]
-                        if "farma" in vals:
-                            farma_indices.append(r_idx)
+                    target_r, target_c = None, None
                     
-                    if farma_indices:
-                        idx_farma_last = farma_indices[-1]
-                        idx_hdr = idx_farma_last - 1 # Fila de encabezado DIV. | ene-26 | ...
+                    # Recorrer la hoja para ubicar exactamente la tabla inferior destacada en rojo
+                    for r in range(len(df_grid)):
+                        for c in range(len(df_grid.columns)):
+                            val = str(df_grid.iloc[r, c]).strip().upper()
+                            if val in ["DIV.", "DIV"]:
+                                sub_vals = [str(df_grid.iloc[r_sub, c]).strip().upper() for r_sub in range(r + 1, min(r + 8, len(df_grid)))]
+                                if any("FARMA" in v for v in sub_vals) and any("CONSUMO" in v for v in sub_vals):
+                                    target_r, target_c = r, c
+
+                    if target_r is not None and target_c is not None:
+                        c_start = target_c
+                        c_end = min(c_start + 13, len(df_grid.columns))
                         
-                        df_block = df_grid.iloc[idx_hdr : idx_farma_last + 4].copy()
-                        df_block = df_block.dropna(how='all', axis=1)
+                        r_end = min(target_r + 7, len(df_grid))
+                        df_block = df_grid.iloc[target_r:r_end, c_start:c_end].copy()
                         
-                        headers_mes = [limpiar_nombre_mes(x) for x in df_block.iloc[0].values]
-                        df_meses = df_block.iloc[1:].copy()
-                        df_meses.columns = headers_mes
+                        raw_headers = df_block.iloc[0].values
+                        headers = []
+                        for idx_h, h in enumerate(raw_headers):
+                            if idx_h == 0:
+                                headers.append("División")
+                            else:
+                                headers.append(limpiar_nombre_mes(h))
                         
-                        first_col = df_meses.columns[0]
-                        df_meses = df_meses.rename(columns={first_col: "División"})
-                        df_meses = df_meses[df_meses["División"].notna() & (df_meses["División"].astype(str).str.strip() != "nan") & (df_meses["División"].astype(str).str.strip() != "")]
+                        df_rows = df_block.iloc[1:].copy()
+                        df_rows.columns = headers
                         
-                        cols_num = [c for c in df_meses.columns if c != "División"]
-                        for cm in cols_num:
-                            df_meses[cm] = df_meses[cm].apply(limpiar_numero)
+                        filas_procesadas = []
+                        for _, row_data in df_rows.iterrows():
+                            div_val = str(row_data["División"]).strip()
+                            
+                            tiene_datos = any(pd.notna(v) and str(v).strip() not in ["", "nan"] for v in row_data[1:])
+                            
+                            if not tiene_datos:
+                                continue
+                                
+                            div_upper = div_val.upper()
+                            if div_val == "" or div_val.lower() == "nan" or "TOTAL" in div_upper:
+                                div_val = "Total General"
+                            elif "FARMA" in div_upper:
+                                div_val = "FARMA"
+                            elif "CONSUMO" in div_upper:
+                                div_val = "CONSUMO"
+                            elif "CAN" in div_upper or "TERCEROS" in div_upper or "3" in div_upper:
+                                div_val = "3 Canales"
+                            
+                            row_dict = {"División": div_val}
+                            for col_m in headers[1:]:
+                                row_dict[col_m] = limpiar_numero(row_data[col_m])
+                                
+                            filas_procesadas.append(row_dict)
                         
-                        cfg_meses = {"División": st.column_config.TextColumn("División")}
-                        for cm in cols_num:
-                            cfg_meses[cm] = st.column_config.NumberColumn(cm, format="$%,.0f")
+                        df_res_meses = pd.DataFrame(filas_procesadas)
                         
-                        st.dataframe(
-                            df_meses,
-                            column_config=cfg_meses,
-                            hide_index=True,
-                            use_container_width=True
-                        )
+                        if not df_res_meses.empty:
+                            df_res_meses = df_res_meses.drop_duplicates(subset=["División"], keep='first')
+                            
+                            cols_num_meses = [c for c in df_res_meses.columns if c != "División"]
+                            cfg_meses = {"División": st.column_config.TextColumn("División")}
+                            for cm in cols_num_meses:
+                                cfg_meses[cm] = st.column_config.NumberColumn(cm, format="$%,.0f")
+                            
+                            st.dataframe(
+                                df_res_meses,
+                                column_config=cfg_meses,
+                                hide_index=True,
+                                use_container_width=True
+                            )
+                        else:
+                            st.info("No se pudieron procesar los registros de la tabla.")
                     else:
-                        st.info("No se encontró el bloque mensual en la hoja original.")
+                        st.info("No se encontró la matriz de proyecciones mensuales.")
                 except Exception as e_proy:
-                    st.warning(f"No se pudo cargar la tabla de proyecciones mensuales: {e_proy}")
+                    st.warning(f"Error al procesar la tabla de proyecciones: {e_proy}")
 
         # =================================================================
         # DASHBOARD DE STOCK / CADUCIDAD
