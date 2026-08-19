@@ -77,7 +77,6 @@ def fmt_sem(val):
         return str(val)
 
 def fmt_code(val):
-    """Preserva ceros a la izquierda y formatos de código de origen como 0007341.7"""
     if pd.isna(val) or val == "" or val is None or str(val).lower() == 'nan':
         return "S/N"
     val_str = str(val).strip()
@@ -98,6 +97,15 @@ def formato_unidades(valor):
         return f"{val_int:,}".replace(",", ".")
     except (ValueError, TypeError):
         return "0"
+
+def parse_num(v):
+    if pd.isna(v) or v is None or str(v).lower() in ['none', 'nan', '']:
+        return 0.0
+    try:
+        v_str = str(v).replace('$', '').replace('.', '').replace(',', '.').strip()
+        return float(v_str)
+    except (ValueError, TypeError):
+        return 0.0
 
 def aplicar_criticidad(column):
     is_total = column.index == (len(column) - 1)
@@ -196,12 +204,11 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         is_si_proy = (nombre_clean == "SI PROYECCION")
 
         # =================================================================
-        # PESTAÑA VENTA SI (REDISEÑADA, VISUAL Y DINÁMICA)
+        # PESTAÑA VENTA SI
         # =================================================================
         if is_si:
             st.markdown("### 📈 Dashboard Operativo de Venta SI")
 
-            # 1. Detección y conversión de columnas
             col_cliente = next((c for c in df.columns if 'cliente' in c.lower()), 'nombre_cliente')
             col_div = next((c for c in df.columns if 'division' in c.lower() or 'división' in c.lower()), 'Division')
             col_monto = next((c for c in df.columns if 'monto' in c.lower()), 'monto')
@@ -214,7 +221,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             df[col_unid] = pd.to_numeric(df[col_unid], errors='coerce').fillna(0) if col_unid in df.columns else 0
             df[col_pmp] = pd.to_numeric(df[col_pmp], errors='coerce').fillna(0) if col_pmp in df.columns else 0
 
-            # 2. Panel de filtros interactivos
             st.markdown("#### 🎛️ Filtros de Control")
             f_col1, f_col2, f_col3 = st.columns(3)
             
@@ -230,7 +236,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 inflamable_opts = ["Todos"] + sorted([str(x) for x in df[col_inflamable].dropna().unique()]) if col_inflamable in df.columns else ["Todos"]
                 inflamable_sel = st.selectbox("Producto Inflamable:", inflamable_opts, key=f"f_inf_{i}")
 
-            # Aplicar filtros
             df_si_filt = df.copy()
             if div_sel != "Todas" and col_div in df_si_filt.columns:
                 df_si_filt = df_si_filt[df_si_filt[col_div].astype(str) == div_sel]
@@ -241,7 +246,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
             st.divider()
 
-            # 3. Métricas Principales (KPIs)
             st.markdown("#### 📊 KPIs Generales")
             monto_total = df_si_filt[col_monto].sum()
             unidades_totales = df_si_filt[col_unid].sum()
@@ -258,10 +262,8 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
             st.divider()
 
-            # 4. Componentes Visuales y Tablas (División y Cliente)
             c_div_view, c_cli_view = st.columns([1, 1.2], gap="large")
 
-            # --- SECCIÓN DIVISIÓN ---
             with c_div_view:
                 st.markdown("#### 🏢 Venta por División")
                 if col_div in df_si_filt.columns and not df_si_filt.empty:
@@ -272,7 +274,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                     grp_div['Participación'] = (grp_div[col_monto] / monto_total) if monto_total > 0 else 0
                     grp_div = grp_div.sort_values(by=col_monto, ascending=False)
 
-                    # Gráfico Donut
                     fig_donut = px.pie(
                         grp_div, 
                         values=col_monto, 
@@ -295,7 +296,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                     )
                     st.plotly_chart(fig_donut, use_container_width=True, key=f"donut_div_{i}")
 
-                    # Tabla con barra de progreso
                     grp_div_disp = pd.DataFrame({
                         "División": grp_div[col_div],
                         "Monto ($)": grp_div[col_monto],
@@ -321,7 +321,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 else:
                     st.info("No hay datos de división disponibles.")
 
-            # --- SECCIÓN TOP CLIENTES ---
             with c_cli_view:
                 st.markdown("#### 🏆 Top Clientes por Facturación")
                 if col_cliente in df_si_filt.columns and not df_si_filt.empty:
@@ -330,7 +329,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                         col_unid: 'sum'
                     }).sort_values(by=col_monto, ascending=False).head(10)
 
-                    # Gráfico de Barras Horizontales
                     grp_cli_sorted = grp_cli.sort_values(by=col_monto, ascending=True)
                     fig_bars = px.bar(
                         grp_cli_sorted,
@@ -356,7 +354,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                     )
                     st.plotly_chart(fig_bars, use_container_width=True, key=f"bars_cli_{i}")
 
-                    # Tabla Detallada
                     grp_cli_disp = pd.DataFrame({
                         "Cliente": grp_cli[col_cliente],
                         "Monto Total ($)": grp_cli[col_monto],
@@ -377,7 +374,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
             st.divider()
 
-            # 5. Registro completo de transacciones
             st.subheader("📋 Registro Completo de Ventas SI")
             busqueda_si = st.text_input("🔍 Buscar en registros SI (Descripción, SKU, Factura, etc.):", key=f"search_si_{i}")
             
@@ -390,7 +386,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             st.dataframe(df_si_det, hide_index=True, use_container_width=True)
 
         # =================================================================
-        # DASHBOARD DE SI PROYECCION
+        # DASHBOARD DE SI PROYECCION (TABLA CORREGIDA)
         # =================================================================
         elif is_si_proy:
             st.markdown("### 📊 Dashboard de Proyección SI")
@@ -398,69 +394,114 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             if df.empty:
                 st.info("No hay datos disponibles en SI PROYECCION.")
             else:
-                # 1. Identificar el mes en curso (la primera columna del Excel)
                 mes_col = df.columns[0]
                 mes_actual = mes_col if str(mes_col).lower() not in ['unnamed: 0', 'canal', 'index'] else "Mes Actual"
 
-                # 2. Limpieza de datos
                 df_proy = df.copy()
-                df_proy = df_proy[df_proy[mes_col].notna() & (df_proy[mes_col].astype(str).str.lower() != 'none')]
-                
-                # Definir columnas numéricas de la tabla
-                cols_moneda = ['Facturado x canal', 'Proyección x canal', 'Meta']
-                cols_pct = ['%', 'Facturado actual']
-                
-                for c in cols_moneda + cols_pct:
-                    if c in df_proy.columns:
-                        df_proy[c] = pd.to_numeric(df_proy[c], errors='coerce').fillna(0)
+                cols_raw = df_proy.columns
+                col_canal = cols_raw[0]
 
-                # 3. Extraer KPIs de los canales principales (Consumo, Farma, Terceros)
-                canales_principales = ['Consumo', 'Farma', 'Terceros']
-                df_resumen = df_proy[df_proy[mes_col].astype(str).str.strip().isin(canales_principales)]
-                
-                meta_total = df_resumen['Meta'].sum() if 'Meta' in df_resumen.columns else 0
-                proyeccion_total = df_resumen['Proyección x canal'].sum() if 'Proyección x canal' in df_resumen.columns else 0
-                facturado_total = df_resumen['Facturado x canal'].sum() if 'Facturado x canal' in df_resumen.columns else 0
-                
-                cumplimiento_proy = (proyeccion_total / meta_total * 100) if meta_total > 0 else 0
-                cumplimiento_actual = (facturado_total / meta_total * 100) if meta_total > 0 else 0
+                col_fact = next((c for c in cols_raw if 'facturado' in c.lower() and 'canal' in c.lower()), cols_raw[1] if len(cols_raw) > 1 else None)
+                col_proy = next((c for c in cols_raw if 'proyección' in c.lower() or 'proyeccion' in c.lower()), cols_raw[2] if len(cols_raw) > 2 else None)
+                col_meta = next((c for c in cols_raw if 'meta' in c.lower()), cols_raw[3] if len(cols_raw) > 3 else None)
 
-                # 4. Mostrar KPIs en la parte superior
-                st.markdown("#### 🎯 Resumen de Cumplimiento Meta")
-                k1, k2, k3, k4 = st.columns(4)
-                
-                k1.metric("🗓️ Mes en Curso", str(mes_actual).upper())
-                k2.metric("🎯 Meta Total", formato_moneda(meta_total))
-                k3.metric("💰 Facturado Actual", formato_moneda(facturado_total), delta=f"{cumplimiento_actual:.1f}% Meta")
-                k4.metric("🚀 Cumplimiento Proyectado", f"{cumplimiento_proy:.1f}%")
-                
-                # Barra de progreso visual para la Proyección
-                pct_barra = min(max(float(cumplimiento_proy) / 100.0, 0.0), 1.0)
-                st.progress(pct_barra, text=f"Avance de Proyección sobre la Meta: {cumplimiento_proy:.1f}%")
+                canales_principales = ['consumo', 'farma', 'terceros']
+                df_main = df_proy[df_proy[col_canal].astype(str).str.strip().str.lower().isin(canales_principales)].copy()
 
-                st.divider()
+                if not df_main.empty:
+                    df_main['fact_num'] = df_main[col_fact].apply(parse_num) if col_fact else 0.0
+                    df_main['proy_num'] = df_main[col_proy].apply(parse_num) if col_proy else 0.0
+                    df_main['meta_num'] = df_main[col_meta].apply(parse_num) if col_meta else 0.0
 
-                # 5. Formatear y mostrar la tabla estilo Excel
-                st.markdown("#### 📈 Detalle por Canal de Ventas")
-                
-                df_mostrar = df_proy.copy()
-                
-                # Configurar la presentación visual de columnas
-                config_columnas = {mes_col: st.column_config.TextColumn("Canal / Concepto")}
-                
-                for c in cols_moneda:
-                    if c in df_mostrar.columns:
-                        config_columnas[c] = st.column_config.NumberColumn(c, format="$%,.0f")
-                for c in cols_pct:
-                    if c in df_mostrar.columns:
-                        config_columnas[c] = st.column_config.NumberColumn(c, format="%.2f%%")
+                    meta_total = df_main['meta_num'].sum()
+                    proyeccion_total = df_main['proy_num'].sum()
+                    facturado_total = df_main['fact_num'].sum()
 
-                st.dataframe(
-                    df_mostrar,
-                    column_config=config_columnas,
-                    hide_index=True,
-                    use_container_width=True
-                )
+                    cumplimiento_proy = (proyeccion_total / meta_total * 100) if meta_total > 0 else 0
+                    cumplimiento_actual = (facturado_total / meta_total * 100) if meta_total > 0 else 0
+
+                    st.markdown("#### 🎯 Resumen de Cumplimiento Meta")
+                    k1, k2, k3, k4 = st.columns(4)
+
+                    k1.metric("🗓️ Mes en Curso", str(mes_actual).upper())
+                    k2.metric("🎯 Meta Total", formato_moneda(meta_total))
+                    k3.metric("💰 Facturado Actual", formato_moneda(facturado_total), delta=f"{cumplimiento_actual:.1f}% Meta")
+                    k4.metric("🚀 Cumplimiento Proyectado", f"{cumplimiento_proy:.1f}%")
+
+                    pct_barra = min(max(float(cumplimiento_proy) / 100.0, 0.0), 1.0)
+                    st.progress(pct_barra, text=f"Avance de Proyección sobre la Meta: {cumplimiento_proy:.1f}%")
+
+                    st.divider()
+
+                    st.markdown("#### 📈 Detalle por Canal de Ventas")
+
+                    df_tabla_main = pd.DataFrame()
+                    df_tabla_main["Canal / Concepto"] = df_main[col_canal].astype(str).str.strip().str.title()
+                    df_tabla_main["Facturado ($)"] = df_main['fact_num']
+                    df_tabla_main["Proyección ($)"] = df_main['proy_num']
+                    df_tabla_main["Meta ($)"] = df_main['meta_num']
+
+                    df_tabla_main["% Cumplimiento Proyección"] = (df_main['proy_num'] / df_main['meta_num'] * 100).fillna(0)
+                    df_tabla_main["% Avance Facturado"] = (df_main['fact_num'] / df_main['meta_num'] * 100).fillna(0)
+
+                    total_row = pd.DataFrame([{
+                        "Canal / Concepto": "TOTAL",
+                        "Facturado ($)": facturado_total,
+                        "Proyección ($)": proyeccion_total,
+                        "Meta ($)": meta_total,
+                        "% Cumplimiento Proyección": (proyeccion_total / meta_total * 100) if meta_total > 0 else 0,
+                        "% Avance Facturado": (facturado_total / meta_total * 100) if meta_total > 0 else 0
+                    }])
+
+                    df_tabla_main_final = pd.concat([df_tabla_main, total_row], ignore_index=True)
+
+                    st.dataframe(
+                        df_tabla_main_final,
+                        column_config={
+                            "Canal / Concepto": st.column_config.TextColumn("Canal / Concepto"),
+                            "Facturado ($)": st.column_config.NumberColumn("Facturado ($)", format="$%,.0f"),
+                            "Proyección ($)": st.column_config.NumberColumn("Proyección ($)", format="$%,.0f"),
+                            "Meta ($)": st.column_config.NumberColumn("Meta ($)", format="$%,.0f"),
+                            "% Cumplimiento Proyección": st.column_config.ProgressColumn(
+                                "% Cumplimiento Proyección",
+                                format="%.1f%%",
+                                min_value=0,
+                                max_value=100
+                            ),
+                            "% Avance Facturado": st.column_config.NumberColumn("% Avance Facturado", format="%.2f%%")
+                        },
+                        hide_index=True,
+                        use_container_width=True
+                    )
+                else:
+                    st.warning("No se encontraron registros de los canales principales ('Consumo', 'Farma', 'Terceros').")
+
+                # Sub-tabla si existen filas adicionales en la hoja
+                df_sub = df_proy[~df_proy[col_canal].astype(str).str.strip().str.lower().isin(canales_principales)].copy()
+                df_sub = df_sub[df_sub[col_canal].notna() & (df_sub[col_canal].astype(str).str.strip() != '') & (df_sub[col_canal].astype(str).str.lower() != 'none')]
+
+                if not df_sub.empty:
+                    st.divider()
+                    st.markdown("#### 📂 Detalle Adicional por Cliente / Sub-Canal")
+
+                    df_sub_clean = df_sub.dropna(how='all', axis=1).copy()
+                    config_sub = {}
+
+                    for col_s in df_sub_clean.columns:
+                        col_lower = str(col_s).lower()
+                        if any(k in col_lower for k in ['monto', 'facturado', 'proyección', 'proyeccion', 'meta', 'total', 'venta']):
+                            df_sub_clean[col_s] = df_sub_clean[col_s].apply(parse_num)
+                            config_sub[col_s] = st.column_config.NumberColumn(col_s, format="$%,.0f")
+                        elif '%' in col_s or 'pct' in col_lower or 'cumplimiento' in col_lower:
+                            df_sub_clean[col_s] = df_sub_clean[col_s].apply(parse_num)
+                            config_sub[col_s] = st.column_config.NumberColumn(col_s, format="%.2f%%")
+
+                    st.dataframe(
+                        df_sub_clean,
+                        column_config=config_sub,
+                        hide_index=True,
+                        use_container_width=True
+                    )
 
         # =================================================================
         # DASHBOARD DE STOCK / CADUCIDAD
@@ -623,7 +664,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             st.dataframe(df_vista_stock, hide_index=True, use_container_width=True)
 
         # =================================================================
-        # LÓGICA ORIGINAL PARA SB Y PU
+        # PESTAÑAS SB Y PU
         # =================================================================
         elif is_sb or is_pu:
             col_semana = next((c for c in df.columns if c.strip().lower() in ['semana', 'sem', 'wk', 'week']), None) or next((c for c in df.columns if 'semana' in c.lower() or 'sem' in c.lower()), None)
@@ -733,7 +774,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
                     st.divider()
 
-            # TOP 15
             st.subheader(f"🔥 TOP 15 Quiebres {'(Global)' if is_pu else '(Por División)'}")
             crit_orden = st.radio("Ordenar Top 15 por:", options=["Monto ($)", "Unidades"], horizontal=True, key=f"crit_top15_{nombre_hoja}_{i}")
             sem_top = semana_sel if semana_sel != "Todas" else (semanas_todas[-1] if semanas_todas else None)
@@ -762,7 +802,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                     st.info(f"No se encontraron registros para la semana {fmt_sem(sem_top)}.")
                 else:
                     if is_pu:
-                        # Lógica dinámica según selección (Monto o Unidades)
                         if crit_orden == "Monto ($)":
                             tot_compra_val = df_sem_top[col_m_compra].sum()
                             tot_recib_val = df_sem_top[col_m_recib].sum()
@@ -829,7 +868,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                             with columnas_ui[idx]:
                                 df_div = df_sem_top[df_sem_top[col_div] == div_nombre].copy()
                                 
-                                # Lógica dinámica según selección (Monto o Unidades)
                                 if crit_orden == "Monto ($)":
                                     tot_compra_val = df_div[col_m_compra].sum()
                                     tot_recib_val = df_div[col_m_recib].sum()
@@ -875,7 +913,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
             st.divider()
 
-            # RESUMEN 4 SEMANAS
             if col_semana:
                 df_base_fr = df.copy()
                 df_4sem = df_base_fr[df_base_fr[col_semana].isin(ultimas_4_semanas)].copy()
@@ -970,7 +1007,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
                 st.divider()
 
-            # TABLAS DINÁMICAS: QUIEBRE POR MARCA
             if sem_top is not None and col_marca:
                 st.subheader("🏷️ Resumen Quiebres por Marca")
                 df_sem_marca = df[df[col_semana] == sem_top].copy()
@@ -1033,7 +1069,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
                 st.divider()
 
-            # DETALLE DE REGISTRO CON FILTROS
             st.subheader("📋 Detalle de Registro de Compras")
             col_det_f1, col_det_f2 = st.columns(2)
             with col_det_f1:
@@ -1074,7 +1109,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
             st.dataframe(df_corte_final, hide_index=True, use_container_width=True)
 
-        # PARA OTRAS PESTAÑAS AUXILIARES
         else:
             busqueda = st.text_input(f"🔍 Buscar en {nombre_hoja}:", key=f"search_{nombre_hoja}_{i}")
             if busqueda:
