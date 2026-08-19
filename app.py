@@ -555,7 +555,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 * **Terceros**: Presenta un desempeño rezagado con un **28%** facturado y una proyección total del **35%** respecto a su meta ($14.4M proyectados de $41.0M).
                 """)
 
-                # Sección: Tabla Proyecciones Metas por Mes (Extracción Robusta de la Zona Marcada en Rojo)
+                # Sección: Tabla Proyecciones Metas por Mes
                 st.divider()
                 st.markdown("#### 🗓️ Proyecciones Metas por Mes (2026)")
 
@@ -564,7 +564,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                     
                     target_r, target_c = None, None
                     
-                    # Recorrer la hoja para ubicar exactamente la tabla inferior destacada en rojo
                     for r in range(len(df_grid)):
                         for c in range(len(df_grid.columns)):
                             val = str(df_grid.iloc[r, c]).strip().upper()
@@ -583,7 +582,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                         raw_headers = df_block.iloc[0].values
                         headers = []
                         
-                        # --- NUEVO: Mapeo de meses y detección de mes actual ---
+                        # Mapeo de meses
                         meses_map = {
                             'ene': 'Enero', 'feb': 'Febrero', 'mar': 'Marzo', 'abr': 'Abril',
                             'may': 'Mayo', 'jun': 'Junio', 'jul': 'Julio', 'ago': 'Agosto',
@@ -638,15 +637,13 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                             for cm in cols_num_meses:
                                 cfg_meses[cm] = st.column_config.NumberColumn(cm, format="$%,.0f")
                             
-                            # --- NUEVO: Estilar el DataFrame para resaltar el mes actual ---
+                            # Estilar el DataFrame para resaltar el mes actual
                             nombres_meses_lista = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
-                            # datetime.now().month devuelve un número entre 1 y 12
                             mes_actual_nombre = nombres_meses_lista[datetime.now().month - 1]
                             
                             def resaltar_mes_actual(df_to_style):
                                 df_styles = pd.DataFrame('', index=df_to_style.index, columns=df_to_style.columns)
                                 if mes_actual_nombre in df_to_style.columns:
-                                    # Aplicar color de fondo al mes actual que combine con la UI
                                     df_styles[mes_actual_nombre] = 'background-color: rgba(0, 112, 243, 0.4); color: #ffffff; font-weight: bold;'
                                 return df_styles
                             
