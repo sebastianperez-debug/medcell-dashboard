@@ -808,7 +808,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 """)
 
         # =================================================================
-        # NUEVA SECCIÓN: TABLA DETALLE OC VIGENTE Y PROYECCIÓN COMPRA
+        # SECCIÓN VISUALIZADA: TABLA Y GRÁFICO DETALLE OC VIGENTE Y PROYECCIÓN COMPRA
         # =================================================================
         st.divider()
         st.markdown("#### 📦 Detalle OC Vigente y Proyección Compra")
@@ -873,25 +873,87 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         ]
         df_oc_tab = pd.DataFrame(datos_oc_proyeccion)
 
-        st.dataframe(
-            df_oc_tab,
-            column_config={
-                "Concepto": st.column_config.TextColumn("Categoría / Estado"),
-                "Canal": st.column_config.TextColumn("Canal"),
-                "Monto OC": st.column_config.NumberColumn(
-                    "Monto OC", format="$%,.0f"
-                ),
-                "FR": st.column_config.NumberColumn("FR", format="%d%%"),
-                "Proyección salida": st.column_config.NumberColumn(
-                    "Proyección salida", format="$%,.0f"
-                ),
-                "OC extra": st.column_config.NumberColumn(
-                    "OC extra", format="$%,.0f"
-                ),
-            },
-            hide_index=True,
-            use_container_width=True,
+        # KPIs Resumen de la sección OC
+        tot_monto_oc = df_oc_tab["Monto OC"].sum()
+        tot_proy_salida = df_oc_tab["Proyección salida"].sum()
+        fr_prom_pond = (
+            (tot_proy_salida / tot_monto_oc * 100) if tot_monto_oc > 0 else 0
         )
+
+        col_k1, col_k2, col_k3 = st.columns(3)
+        col_k1.metric("📦 Monto Total OC", formato_moneda(tot_monto_oc))
+        col_k2.metric(
+            "🚚 Total Proyección Salida", formato_moneda(tot_proy_salida)
+        )
+        col_k3.metric("🎯 Fill Rate Prom. Ponderado", f"{fr_prom_pond:.1f}%")
+
+        st.markdown("---")
+
+        # Disposición en 2 columnas: Tabla a la izquierda, Gráfico a la derecha
+        col_oc_tabla, col_oc_grafico = st.columns([1.1, 1], gap="medium")
+
+        with col_oc_tabla:
+          st.markdown("##### 📋 Tabla Detalle")
+          st.dataframe(
+              df_oc_tab,
+              column_config={
+                  "Concepto": st.column_config.TextColumn("Categoría / Estado"),
+                  "Canal": st.column_config.TextColumn("Canal"),
+                  "Monto OC": st.column_config.NumberColumn(
+                      "Monto OC", format="$%,.0f"
+                  ),
+                  "FR": st.column_config.NumberColumn("FR", format="%d%%"),
+                  "Proyección salida": st.column_config.NumberColumn(
+                      "Proyección salida", format="$%,.0f"
+                  ),
+                  "OC extra": st.column_config.NumberColumn(
+                      "OC extra", format="$%,.0f"
+                  ),
+              },
+              hide_index=True,
+              use_container_width=True,
+          )
+
+        with col_oc_grafico:
+          st.markdown("##### 📊 Comparativo Monto OC vs Proyección Salida")
+          df_oc_tab["Canal_Etiqueta"] = (
+              df_oc_tab["Canal"] + " (" + df_oc_tab["Concepto"] + ")"
+          )
+
+          fig_oc = go.Figure()
+          fig_oc.add_trace(
+              go.Bar(
+                  y=df_oc_tab["Canal_Etiqueta"],
+                  x=df_oc_tab["Monto OC"],
+                  name="Monto OC",
+                  orientation="h",
+                  marker_color="#0070f3",
+              )
+          )
+          fig_oc.add_trace(
+              go.Bar(
+                  y=df_oc_tab["Canal_Etiqueta"],
+                  x=df_oc_tab["Proyección salida"],
+                  name="Proyección Salida",
+                  orientation="h",
+                  marker_color="#109618",
+              )
+          )
+
+          fig_oc.update_layout(
+              barmode="group",
+              height=330,
+              paper_bgcolor="rgba(0,0,0,0)",
+              plot_bgcolor="rgba(0,0,0,0)",
+              font=dict(color="#ffffff"),
+              margin=dict(t=10, b=10, l=10, r=10),
+              xaxis=dict(gridcolor="#222222"),
+              yaxis=dict(gridcolor="#222222", autorange="reversed"),
+              legend=dict(orientation="h", y=1.15),
+          )
+          st.plotly_chart(
+              fig_oc, use_container_width=True, key=f"bar_oc_comp_{i}"
+          )
 
         # Sección: Tabla Proyecciones Metas por Mes
         st.divider()
