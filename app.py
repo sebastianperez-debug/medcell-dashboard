@@ -8,7 +8,7 @@ import streamlit as st
 # 1. Configuración de la página
 st.set_page_config(page_title="Medcell Operaciones", layout="wide")
 
-# 2. Estilos personalizados
+# 2. Estilos personalizados (Incluye compactación de tablas)
 st.markdown(
     """
     <style>
@@ -33,12 +33,12 @@ st.markdown(
 
     /* Estilo de Tarjetas de Filtro por Semana */
     div[data-testid="stRadio"] > label { display: none; }
-    div[data-testid="stRadio"] > div { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 8px; }
+    div[data-testid="stRadio"] > div { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
     div[data-testid="stRadio"] label {
         background-color: #141414 !important; border: 1px solid #2b2b2b !important;
-        padding: 10px 22px !important; border-radius: 10px !important;
+        padding: 8px 16px !important; border-radius: 8px !important;
         cursor: pointer !important; transition: all 0.25s ease-in-out !important;
-        color: #cccccc !important; font-weight: 600 !important; font-size: 14px !important;
+        color: #cccccc !important; font-weight: 600 !important; font-size: 13px !important;
     }
     div[data-testid="stRadio"] label:hover {
         border-color: #0070f3 !important; background-color: #1e1e1e !important;
@@ -51,17 +51,23 @@ st.markdown(
 
     /* Pestañas generales */
     .stTabs [data-baseweb="tab-list"] {
-        gap: 8px; background-color: #121212; padding: 8px 12px; border-radius: 10px; border: 1px solid #262626; margin-bottom: 20px;
+        gap: 8px; background-color: #121212; padding: 6px 10px; border-radius: 10px; border: 1px solid #262626; margin-bottom: 15px;
     }
     .stTabs [data-baseweb="tab"] {
-        height: 42px; white-space: pre-wrap; background-color: #1a1a1a; border-radius: 8px; color: #888888; font-weight: 600; font-size: 14px; border: 1px solid #2b2b2b; padding: 0px 20px; transition: all 0.3s ease;
+        height: 38px; white-space: pre-wrap; background-color: #1a1a1a; border-radius: 8px; color: #888888; font-weight: 600; font-size: 13px; border: 1px solid #2b2b2b; padding: 0px 16px; transition: all 0.3s ease;
     }
     .stTabs [data-baseweb="tab"]:hover { color: #ffffff; background-color: #242424; border-color: #0070f3; }
     .stTabs [aria-selected="true"] { background-color: #0070f3 !important; color: #ffffff !important; border-color: #0070f3 !important; box-shadow: 0px 4px 12px rgba(0, 112, 243, 0.3); }
     
-    div[data-testid="stMetricValue"] { color: #ffffff !important; font-size: 26px !important; font-weight: bold; }
+    div[data-testid="stMetricValue"] { color: #ffffff !important; font-size: 24px !important; font-weight: bold; }
     div[data-testid="stMetricLabel"] { color: #888888 !important; }
-    div[data-testid="stDataFrame"] { background-color: #121212; border-radius: 8px; }
+    
+    /* Disminuir espaciado en DataFrames para hacerlo más compacto */
+    div[data-testid="stDataFrame"] { background-color: #121212; border-radius: 8px; padding: 2px; }
+    .stDataFrame [data-testid="stTable"] td, .stDataFrame [data-testid="stTable"] th {
+        padding: 4px 8px !important;
+        font-size: 13px !important;
+    }
     </style>
 """,
     unsafe_allow_html=True,
@@ -472,7 +478,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
       st.divider()
 
-      c_div_view, c_cli_view = st.columns([1, 1.2], gap="large")
+      c_div_view, c_cli_view = st.columns([1, 1.2], gap="small")
 
       with c_div_view:
         st.markdown("#### 🏢 Venta por División")
@@ -507,7 +513,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
               paper_bgcolor="rgba(0,0,0,0)",
               plot_bgcolor="rgba(0,0,0,0)",
               margin=dict(t=10, b=10, l=10, r=10),
-              height=220,
+              height=200,
               showlegend=False,
           )
           st.plotly_chart(
@@ -567,7 +573,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
               paper_bgcolor="rgba(0,0,0,0)",
               plot_bgcolor="rgba(0,0,0,0)",
               margin=dict(t=10, b=10, l=10, r=10),
-              height=220,
+              height=200,
               xaxis_title="",
               yaxis_title="",
           )
@@ -607,7 +613,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
       df_si_det = df_si_filt.copy()
 
-      # CORTE HASTA ES_INFLAMABLE
       if col_inflamable in df_si_det.columns:
         idx_corte = list(df_si_det.columns).index(col_inflamable) + 1
         df_si_det = df_si_det.iloc[:, :idx_corte]
@@ -704,10 +709,11 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
         st.divider()
 
-        col_t, col_g = st.columns([1.1, 1], gap="medium")
+        # DISPOSICIÓN COMPACTA CON GRÁFICO DE TORTA AL LADO
+        col_t, col_pie = st.columns([1.2, 0.8], gap="small")
 
         with col_t:
-          st.markdown("#### 📈 Detalle por Canal de Ventas")
+          st.markdown("#### 📦 Detalle OC Vigente y Proyección Compra")
           df_mostrar = df_resumen.copy()
 
           for c in cols_pct:
@@ -756,49 +762,42 @@ for i, nombre_hoja in enumerate(nombres_hojas):
               use_container_width=True,
           )
 
-        with col_g:
-          st.markdown("#### 📊 Comparativo Facturado vs Proyección vs Meta")
-          fig_bar = go.Figure()
-          fig_bar.add_trace(
-              go.Bar(
-                  y=df_resumen[mes_col],
-                  x=df_resumen["Facturado x canal"],
-                  name="Facturado Actual",
-                  orientation="h",
-                  marker_color="#0070f3",
-              )
+        with col_pie:
+          st.markdown("#### 🥧 Distribución Proyección por Canal")
+          col_val_pie = (
+              "Proyección x canal"
+              if "Proyección x canal" in df_resumen.columns
+              else "Facturado x canal"
           )
-          fig_bar.add_trace(
-              go.Bar(
-                  y=df_resumen[mes_col],
-                  x=df_resumen["Proyección x canal"],
-                  name="Proyección",
-                  orientation="h",
-                  marker_color="#f97316",
-              )
+
+          fig_pie_proy = px.pie(
+              df_resumen,
+              values=col_val_pie,
+              names=mes_col,
+              hole=0.45,
+              color_discrete_sequence=[
+                  "#0070f3",
+                  "#f97316",
+                  "#00adb5",
+                  "#ff9900",
+              ],
           )
-          fig_bar.add_trace(
-              go.Bar(
-                  y=df_resumen[mes_col],
-                  x=df_resumen["Meta"],
-                  name="Meta",
-                  orientation="h",
-                  marker_color="#109618",
-              )
+          fig_pie_proy.update_traces(
+              textposition="inside",
+              textinfo="percent+label",
+              marker=dict(line=dict(color="#0b0b0b", width=2)),
           )
-          fig_bar.update_layout(
-              barmode="group",
-              height=280,
+          fig_pie_proy.update_layout(
+              template="plotly_dark",
               paper_bgcolor="rgba(0,0,0,0)",
               plot_bgcolor="rgba(0,0,0,0)",
-              font=dict(color="#ffffff"),
               margin=dict(t=10, b=10, l=10, r=10),
-              xaxis=dict(gridcolor="#222222"),
-              yaxis=dict(gridcolor="#222222"),
-              legend=dict(orientation="h", y=1.15),
+              height=220,
+              showlegend=True,
+              legend=dict(orientation="h", y=-0.1),
           )
           st.plotly_chart(
-              fig_bar, use_container_width=True, key=f"bar_proy_{i}"
+              fig_pie_proy, use_container_width=True, key=f"pie_proy_{i}"
           )
 
         st.markdown("#### 💡 Insights de la Proyección")
@@ -806,92 +805,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 * **Consumo y Farma**: Representan los motores principales del negocio, alcanzando un **55%** y **57%** de avance sobre sus metas y proyectando cerrar al **91%** ($2.100M y $2.013M respectivamente).
                 * **Terceros**: Presenta un desempeño rezagado con un **28%** facturado y una proyección total del **35%** respecto a su meta ($14.4M proyectados de $41.0M).
                 """)
-
-        # =================================================================
-        # NUEVA SECCIÓN: TABLA DETALLE OC VIGENTE Y PROYECCIÓN COMPRA
-        # =================================================================
-        st.divider()
-        st.markdown("#### 📦 Detalle OC Vigente y Proyección Compra")
-
-        datos_oc_proyeccion = [
-            {
-                "Concepto": "OC vigente",
-                "Canal": "Consumo SB",
-                "Monto OC": 433720962,
-                "FR": 82,
-                "Proyección salida": 355651189,
-                "OC extra": 0,
-            },
-            {
-                "Concepto": "OC vigente",
-                "Canal": "Farma SB",
-                "Monto OC": 391807703,
-                "FR": 87,
-                "Proyección salida": 340872702,
-                "OC extra": 0,
-            },
-            {
-                "Concepto": "OC vigente",
-                "Canal": "PU",
-                "Monto OC": 93238077,
-                "FR": 70,
-                "Proyección salida": 65266654,
-                "OC extra": 0,
-            },
-            {
-                "Concepto": "Proyección Compra",
-                "Canal": "Terceros",
-                "Monto OC": 5137936,
-                "FR": 60,
-                "Proyección salida": 3082762,
-                "OC extra": 0,
-            },
-            {
-                "Concepto": "Proyección Compra",
-                "Canal": "Consumo SB",
-                "Monto OC": 420000000,
-                "FR": 82,
-                "Proyección salida": 344400000,
-                "OC extra": 0,
-            },
-            {
-                "Concepto": "Proyección Compra",
-                "Canal": "Farma SB",
-                "Monto OC": 480000000,
-                "FR": 87,
-                "Proyección salida": 417600000,
-                "OC extra": 0,
-            },
-            {
-                "Concepto": "Proyección Compra",
-                "Canal": "PU",
-                "Monto OC": 105000000,
-                "FR": 70,
-                "Proyección salida": 73500000,
-                "OC extra": 0,
-            },
-        ]
-        df_oc_tab = pd.DataFrame(datos_oc_proyeccion)
-
-        st.dataframe(
-            df_oc_tab,
-            column_config={
-                "Concepto": st.column_config.TextColumn("Categoría / Estado"),
-                "Canal": st.column_config.TextColumn("Canal"),
-                "Monto OC": st.column_config.NumberColumn(
-                    "Monto OC", format="$%,.0f"
-                ),
-                "FR": st.column_config.NumberColumn("FR", format="%d%%"),
-                "Proyección salida": st.column_config.NumberColumn(
-                    "Proyección salida", format="$%,.0f"
-                ),
-                "OC extra": st.column_config.NumberColumn(
-                    "OC extra", format="$%,.0f"
-                ),
-            },
-            hide_index=True,
-            use_container_width=True,
-        )
 
         # Sección: Tabla Proyecciones Metas por Mes
         st.divider()
@@ -1160,7 +1073,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         df["Alerta_Caducidad"] = "Sin Fecha"
         df[col_fecha] = "N/A"
 
-      col_dash1, col_dash2, col_dash3 = st.columns([1, 1.5, 1.5])
+      col_dash1, col_dash2, col_dash3 = st.columns([1, 1.5, 1.5], gap="small")
 
       with col_dash3:
         if col_cod:
@@ -1205,7 +1118,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         st.markdown(
             """
                 <style>
-                .stock-card { border-radius: 5px; padding: 15px; margin-bottom: 10px; text-align: center; color: white; font-weight: bold; }
+                .stock-card { border-radius: 5px; padding: 12px; margin-bottom: 8px; text-align: center; color: white; font-weight: bold; }
                 </style>
                 """,
             unsafe_allow_html=True,
@@ -1214,25 +1127,25 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         st.markdown(
             '<div class="stock-card" style="background-color: #333; color:'
             ' white;">Unidades Registradas<br><span'
-            f' style="font-size:24px;">{formato_unidades(total_unidades)}</span></div>',
+            f' style="font-size:22px;">{formato_unidades(total_unidades)}</span></div>',
             unsafe_allow_html=True,
         )
         st.markdown(
             '<div class="stock-card" style="background-color:'
             ' #e74c3c;">Unidades < 6 meses<br><span'
-            f' style="font-size:24px;">{formato_unidades(total_menos_6m)}</span></div>',
+            f' style="font-size:22px;">{formato_unidades(total_menos_6m)}</span></div>',
             unsafe_allow_html=True,
         )
         st.markdown(
             '<div class="stock-card" style="background-color: #f1c40f; color:'
             ' black;">Pronto vence (6 a 13 meses)<br><span'
-            f' style="font-size:24px;">{formato_unidades(total_pronto)}</span></div>',
+            f' style="font-size:22px;">{formato_unidades(total_pronto)}</span></div>',
             unsafe_allow_html=True,
         )
         st.markdown(
             '<div class="stock-card" style="background-color:'
             ' #2ecc71;">Vigentes (> 13 meses)<br><span'
-            f' style="font-size:24px;">{formato_unidades(total_vigentes)}</span></div>',
+            f' style="font-size:22px;">{formato_unidades(total_vigentes)}</span></div>',
             unsafe_allow_html=True,
         )
 
@@ -1254,7 +1167,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
               ]
           )
           fig_pie.update_layout(
-              height=300,
+              height=280,
               margin=dict(t=0, b=0, l=0, r=0),
               paper_bgcolor="rgba(0,0,0,0)",
               font=dict(color="#ffffff"),
@@ -1282,7 +1195,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
           st.markdown(
               '<div class="stock-card" style="background-color: #7f8c8d;">Stock'
               ' actual<br><span'
-              f' style="font-size:24px;">{formato_unidades(stock_actual)}</span></div>',
+              f' style="font-size:22px;">{formato_unidades(stock_actual)}</span></div>',
               unsafe_allow_html=True,
           )
 
@@ -1311,7 +1224,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
           st.markdown(
               '<div class="stock-card" style="background-color:'
               f" {color_vence}; {color_texto} border: 1px solid #555;\">Plazo de"
-              f' vencimiento<br><span style="font-size:20px;">{texto_vence}</span></div>',
+              f' vencimiento<br><span style="font-size:18px;">{texto_vence}</span></div>',
               unsafe_allow_html=True,
           )
 
@@ -1339,9 +1252,9 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
             with cols_est[idx_e % min(num_items, 6)]:
               st.markdown(
-                  f"""<div style="background-color: #141414; border: 1px solid #0070f3; border-radius: 8px; padding: 10px; text-align: center; margin-bottom: 15px;">
-                                    <div style="font-size: 12px; color: #aaaaaa; font-weight: 600; text-transform: uppercase;">{nombre_est}</div>
-                                    <div style="font-size: 20px; font-weight: bold; color: #ffffff; margin-top: 3px;">{formato_unidades(cant_est)}</div>
+                  f"""<div style="background-color: #141414; border: 1px solid #0070f3; border-radius: 8px; padding: 8px; text-align: center; margin-bottom: 10px;">
+                                    <div style="font-size: 11px; color: #aaaaaa; font-weight: 600; text-transform: uppercase;">{nombre_est}</div>
+                                    <div style="font-size: 18px; font-weight: bold; color: #ffffff; margin-top: 2px;">{formato_unidades(cant_est)}</div>
                                 </div>""",
                   unsafe_allow_html=True,
               )
@@ -1804,7 +1717,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 fr_farma_monto = pct
 
             st.markdown(f"### ⏱️ Fill rate W{fmt_sem(sem_actual)}")
-            col_r1, col_r2 = st.columns(2)
+            col_r1, col_r2 = st.columns(2, gap="small")
             with col_r1:
               fig_g_cons = crear_reloj_gauge(
                   "CONSUMO MASIVO", fr_consumo_monto, "#f97316"
@@ -1985,7 +1898,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             if not lista_divs and len(divisiones_unicas) > 0:
               lista_divs = divisiones_unicas[:2]
 
-            col_t1, col_t2 = st.columns(2)
+            col_t1, col_t2 = st.columns(2, gap="small")
             columnas_ui = [col_t1, col_t2]
 
             for idx, div_nombre in enumerate(lista_divs):
@@ -2145,7 +2058,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
           st.dataframe(df_disp, hide_index=True, use_container_width=True)
           st.divider()
 
-          col_g1, col_g2 = st.columns(2)
+          col_g1, col_g2 = st.columns(2, gap="small")
           with col_g1:
             st.markdown("##### Fill Rate por Unidades (Evolutivo)")
             fig_unds = go.Figure(
@@ -2158,7 +2071,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 )
             )
             fig_unds.update_layout(
-                height=360,
+                height=320,
                 paper_bgcolor="rgba(0,0,0,0)",
                 plot_bgcolor="rgba(0,0,0,0)",
                 font=dict(color="#ffffff"),
@@ -2185,7 +2098,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 )
             )
             fig_monto.update_layout(
-                height=360,
+                height=320,
                 paper_bgcolor="rgba(0,0,0,0)",
                 plot_bgcolor="rgba(0,0,0,0)",
                 font=dict(color="#ffffff"),
@@ -2237,7 +2150,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
           st.dataframe(df_disp, hide_index=True, use_container_width=True)
           st.divider()
 
-          col_g1, col_g2 = st.columns(2)
+          col_g1, col_g2 = st.columns(2, gap="small")
           p_unds = grp.pivot(
               index=col_semana, columns=col_div, values="FR_Unds_pct"
           ).reset_index()
@@ -2283,7 +2196,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             )
             fig_unds.update_layout(
                 barmode="group",
-                height=360,
+                height=320,
                 paper_bgcolor="rgba(0,0,0,0)",
                 plot_bgcolor="rgba(0,0,0,0)",
                 font=dict(color="#ffffff"),
@@ -2325,7 +2238,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             )
             fig_monto.update_layout(
                 barmode="group",
-                height=360,
+                height=320,
                 paper_bgcolor="rgba(0,0,0,0)",
                 plot_bgcolor="rgba(0,0,0,0)",
                 font=dict(color="#ffffff"),
@@ -2397,7 +2310,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             )
 
         elif is_sb and col_div:
-          col_m1, col_m2 = st.columns(2)
+          col_m1, col_m2 = st.columns(2, gap="small")
           cols_marca_ui = [col_m1, col_m2]
 
           for idx, div_nombre in enumerate(lista_divs):
@@ -2463,7 +2376,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
       # DETALLE DE REGISTRO CON FILTROS
       st.subheader("📋 Detalle de Registro de Compras")
-      col_det_f1, col_det_f2 = st.columns(2)
+      col_det_f1, col_det_f2 = st.columns(2, gap="small")
       with col_det_f1:
         ocs_disponibles = (
             ["Todas"] + sorted([str(x) for x in df_filt[col_oc].dropna().unique()])
