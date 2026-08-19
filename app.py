@@ -411,7 +411,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             st.dataframe(df_si_det, hide_index=True, use_container_width=True)
 
         # =================================================================
-        # DASHBOARD DE SI PROYECCION (CORREGIDO DE-DUPLICADO DE CANALES)
+        # DASHBOARD DE SI PROYECCION (VISUALIZACIÓN MEJORADA)
         # =================================================================
         elif is_si_proy:
             st.markdown("### 📊 Dashboard de Proyección SI")
@@ -434,7 +434,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
                 canales_principales = ['Consumo', 'Farma', 'Terceros']
                 
-                # Filtrar canales principales y eliminar filas duplicadas si existen bloques repetidos en el Excel
                 df_resumen = df_proy[df_proy[mes_col].isin(canales_principales)].copy()
                 df_resumen = df_resumen.drop_duplicates(subset=[mes_col], keep='first')
                 
@@ -460,23 +459,77 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
                 st.divider()
 
-                st.markdown("#### 📈 Detalle por Canal de Ventas")
-                df_mostrar = df_resumen.copy()
-                config_columnas = {mes_col: st.column_config.TextColumn("Canal / Concepto")}
-                
-                for c in cols_moneda:
-                    if c in df_mostrar.columns:
-                        config_columnas[c] = st.column_config.NumberColumn(c, format="$%,.0f")
-                for c in cols_pct:
-                    if c in df_mostrar.columns:
-                        config_columnas[c] = st.column_config.NumberColumn(c, format="%.2f%%")
+                col_t, col_g = st.columns([1.1, 1], gap="medium")
 
-                st.dataframe(
-                    df_mostrar,
-                    column_config=config_columnas,
-                    hide_index=True,
-                    use_container_width=True
-                )
+                with col_t:
+                    st.markdown("#### 📈 Detalle por Canal de Ventas")
+                    df_mostrar = df_resumen.copy()
+                    
+                    for c in cols_pct:
+                        if c in df_mostrar.columns:
+                            df_mostrar[c + '_ratio'] = df_mostrar[c].apply(lambda x: x / 100.0 if x > 1 else x)
+
+                    config_columnas = {mes_col: st.column_config.TextColumn("Canal / Concepto")}
+                    
+                    for c in cols_moneda:
+                        if c in df_mostrar.columns:
+                            config_columnas[c] = st.column_config.NumberColumn(c, format="$%,.0f")
+                    
+                    if '%' in df_mostrar.columns:
+                        config_columnas['%_ratio'] = st.column_config.ProgressColumn(
+                            "Proyección vs Meta",
+                            format="%.1f%%",
+                            min_value=0,
+                            max_value=1
+                        )
+                    if 'Facturado actual' in df_mostrar.columns:
+                        config_columnas['Facturado actual_ratio'] = st.column_config.ProgressColumn(
+                            "Facturado Actual",
+                            format="%.1f%%",
+                            min_value=0,
+                            max_value=1
+                        )
+
+                    cols_disp = [mes_col] + [c for c in cols_moneda if c in df_mostrar.columns]
+                    if '%_ratio' in df_mostrar.columns: cols_disp.append('%_ratio')
+                    if 'Facturado actual_ratio' in df_mostrar.columns: cols_disp.append('Facturado actual_ratio')
+
+                    st.dataframe(
+                        df_mostrar[cols_disp],
+                        column_config=config_columnas,
+                        hide_index=True,
+                        use_container_width=True
+                    )
+
+                with col_g:
+                    st.markdown("#### 📊 Comparativo Facturado vs Proyección vs Meta")
+                    fig_bar = go.Figure()
+                    fig_bar.add_trace(go.Bar(
+                        y=df_resumen[mes_col], x=df_resumen['Facturado x canal'],
+                        name='Facturado Actual', orientation='h', marker_color='#0070f3'
+                    ))
+                    fig_bar.add_trace(go.Bar(
+                        y=df_resumen[mes_col], x=df_resumen['Proyección x canal'],
+                        name='Proyección', orientation='h', marker_color='#f97316'
+                    ))
+                    fig_bar.add_trace(go.Bar(
+                        y=df_resumen[mes_col], x=df_resumen['Meta'],
+                        name='Meta', orientation='h', marker_color='#109618'
+                    ))
+                    fig_bar.update_layout(
+                        barmode='group', height=280, paper_bgcolor="rgba(0,0,0,0)",
+                        plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#ffffff"),
+                        margin=dict(t=10, b=10, l=10, r=10),
+                        xaxis=dict(gridcolor="#222222"), yaxis=dict(gridcolor="#222222"),
+                        legend=dict(orientation="h", y=1.15)
+                    )
+                    st.plotly_chart(fig_bar, use_container_width=True, key=f"bar_proy_{i}")
+
+                st.markdown("#### 💡 Insights de la Proyección")
+                st.markdown("""
+                * **Consumo y Farma**: Representan los motores principales del negocio, alcanzando un **55%** y **57%** de avance sobre sus metas y proyectando cerrar al **91%** ($2.100M y $2.013M respectivamente).
+                * **Terceros**: Presenta un desempeño rezagado con un **28%** facturado y una proyección total del **35%** respecto a su meta ($14.4M proyectados de $41.0M).
+                """)
 
         # =================================================================
         # DASHBOARD DE STOCK / CADUCIDAD
