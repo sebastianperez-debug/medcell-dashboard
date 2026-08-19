@@ -64,7 +64,40 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- Funciones auxiliares de formato ---
+# --- Funciones auxiliares de formato y conversión ---
+def limpiar_numero(val):
+    """Limpia cadenas numéricas de Excel preservando la escala real de enteros y decimales."""
+    if pd.isna(val) or val == "" or val is None or str(val).lower() == 'nan':
+        return 0.0
+    if isinstance(val, (int, float)):
+        return float(val)
+    val_str = str(val).strip().replace('$', '').replace(' ', '')
+    if not val_str:
+        return 0.0
+    
+    if '.' in val_str and ',' in val_str:
+        if val_str.rfind(',') > val_str.rfind('.'):
+            val_str = val_str.replace('.', '').replace(',', '.')
+        else:
+            val_str = val_str.replace(',', '')
+    elif ',' in val_str:
+        if val_str.count(',') == 1:
+            val_str = val_str.replace(',', '.')
+        else:
+            val_str = val_str.replace(',', '')
+    elif '.' in val_str:
+        partes = val_str.split('.')
+        if len(partes) > 2:
+            val_str = val_str.replace('.', '')
+        elif len(partes) == 2:
+            if len(partes[1]) == 3 and len(partes[0]) <= 3:
+                val_str = val_str.replace('.', '')
+
+    try:
+        return float(val_str)
+    except (ValueError, TypeError):
+        return 0.0
+
 def fmt_sem(val):
     if pd.isna(val) or val == "" or val is None:
         return ""
@@ -88,8 +121,7 @@ def fmt_code(val):
 def formato_moneda(valor):
     try:
         val_int = int(round(valor))
-        prefijo = "-" if val_int < 0 else ""
-        return f"{prefijo}${abs(val_int):,}".replace(",", ".")
+        return f"${val_int:,}".replace(",", ".")
     except (ValueError, TypeError):
         return "$0"
 
@@ -197,7 +229,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         is_si_proy = (nombre_clean == "SI PROYECCION")
 
         # =================================================================
-        # PESTAÑA VENTA SI (REDISEÑADA, VISUAL Y DINÁMICA)
+        # PESTAÑA VENTA SI
         # =================================================================
         if is_si:
             st.markdown("### 📈 Dashboard Operativo de Venta SI")
@@ -210,9 +242,9 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             col_inflamable = next((c for c in df.columns if 'inflamable' in c.lower()), 'es_inflamable')
             col_factura = next((c for c in df.columns if 'factura' in c.lower() or 'orden' in c.lower()), 'Factura')
 
-            df[col_monto] = pd.to_numeric(df[col_monto], errors='coerce').fillna(0) if col_monto in df.columns else 0
-            df[col_unid] = pd.to_numeric(df[col_unid], errors='coerce').fillna(0) if col_unid in df.columns else 0
-            df[col_pmp] = pd.to_numeric(df[col_pmp], errors='coerce').fillna(0) if col_pmp in df.columns else 0
+            df[col_monto] = df[col_monto].apply(limpiar_numero) if col_monto in df.columns else 0
+            df[col_unid] = df[col_unid].apply(limpiar_numero) if col_unid in df.columns else 0
+            df[col_pmp] = df[col_pmp].apply(limpiar_numero) if col_pmp in df.columns else 0
 
             st.markdown("#### 🎛️ Filtros de Control")
             f_col1, f_col2, f_col3 = st.columns(3)
@@ -379,7 +411,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             st.dataframe(df_si_det, hide_index=True, use_container_width=True)
 
         # =================================================================
-        # DASHBOARD DE SI PROYECCION (AJUSTADO A RESUMEN FINAL EXCEL)
+        # DASHBOARD DE SI PROYECCION (CORREGIDO Y REESTRUCTURADO)
         # =================================================================
         elif is_si_proy:
             st.markdown("### 📊 Dashboard de Proyección SI")
@@ -389,52 +421,27 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             else:
                 mes_col = df.columns[0]
                 mes_actual = mes_col if str(mes_col).lower() not in ['unnamed: 0', 'canal', 'index'] else "Mes Actual"
+
                 df_proy = df.copy()
+                df_proy = df_proy[df_proy[mes_col].notna() & (df_proy[mes_col].astype(str).str.lower() != 'none')]
+                
+                cols_moneda = ['Facturado x canal', 'Proyección x canal', 'Meta']
+                cols_pct = ['%', 'Facturado actual']
+                
+                for c in cols_moneda + cols_pct:
+                    if c in df_proy.columns:
+                        df_proy[c] = df_proy[c].apply(limpiar_numero)
 
-                cierre_val = None
-                meta_val = None
-                resultado_val = None
-                cumplimiento_val = None
-
-                # Escanear filas para detectar la sección en rojo
-                for idx_r, row_r in df_proy.iterrows():
-                    first_cell = str(row_r.iloc[0]).strip().lower() if pd.notna(row_r.iloc[0]) else ""
-                    row_str = " ".join([str(val).strip().lower() for val in row_r.values if pd.notna(val)])
-                    
-                    nums = []
-                    for val in row_r.values:
-                        if pd.notna(val):
-                            val_clean = str(val).replace('$', '').replace('.', '').replace(',', '.').replace('%', '').strip()
-                            try:
-                                nums.append(float(val_clean))
-                            except ValueError:
-                                pass
-
-                    if 'cierre' in first_cell or 'cierre' in row_str:
-                        if nums and cierre_val is None: cierre_val = nums[0]
-                    elif 'meta' in first_cell or 'meta' in row_str:
-                        if nums and meta_val is None: meta_val = nums[0]
-                    elif 'resultado' in first_cell or 'resultado' in row_str:
-                        if nums and resultado_val is None: resultado_val = nums[0]
-                    elif 'cumplimiento' in first_cell or 'cumplimiento' in row_str:
-                        if nums and cumplimiento_val is None:
-                            val_c = nums[0]
-                            cumplimiento_val = val_c * 100 if val_c <= 2.0 else val_c
-
-                # Extraer métricas estándar por canal
                 canales_principales = ['Consumo', 'Farma', 'Terceros']
-                df_resumen = df_proy[df_proy[mes_col].astype(str).str.strip().isin(canales_principales)].copy()
-
-                for col_n in ['Facturado x canal', 'Proyección x canal', 'Meta']:
-                    if col_n in df_resumen.columns:
-                        df_resumen[col_n] = pd.to_numeric(df_resumen[col_n].astype(str).str.replace('$', '').str.replace('.', '').str.replace(',', '.'), errors='coerce').fillna(0)
-
+                df_resumen = df_proy[df_proy[mes_col].astype(str).str.strip().isin(canales_principales)]
+                
+                meta_total = df_resumen['Meta'].sum() if 'Meta' in df_resumen.columns else 0
+                proyeccion_total = df_resumen['Proyección x canal'].sum() if 'Proyección x canal' in df_resumen.columns else 0
                 facturado_total = df_resumen['Facturado x canal'].sum() if 'Facturado x canal' in df_resumen.columns else 0
-                meta_total = meta_val if meta_val is not None else (df_resumen['Meta'].sum() if 'Meta' in df_resumen.columns else 0)
-                proyeccion_total = cierre_val if cierre_val is not None else (df_resumen['Proyección x canal'].sum() if 'Proyección x canal' in df_resumen.columns else 0)
-                resultado_monto = resultado_val if resultado_val is not None else (proyeccion_total - meta_total)
-                cumplimiento_proy = cumplimiento_val if cumplimiento_val is not None else ((proyeccion_total / meta_total * 100) if meta_total > 0 else 0)
+                
+                cumplimiento_proy = (proyeccion_total / meta_total * 100) if meta_total > 0 else 0
                 cumplimiento_actual = (facturado_total / meta_total * 100) if meta_total > 0 else 0
+                diferencia_proy = proyeccion_total - meta_total
 
                 st.markdown("#### 🎯 Resumen de Cumplimiento Meta")
                 k1, k2, k3, k4, k5 = st.columns(5)
@@ -443,15 +450,30 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 k2.metric("🎯 Meta Total", formato_moneda(meta_total))
                 k3.metric("💰 Facturado Actual", formato_moneda(facturado_total), delta=f"{cumplimiento_actual:.1f}% Meta")
                 k4.metric("🚀 Cierre Proyectado", formato_moneda(proyeccion_total))
-                k5.metric("📊 Cumplimiento Proyectado", f"{cumplimiento_proy:.0f}%", delta=formato_moneda(resultado_monto))
+                k5.metric("📈 Cumplimiento Proyectado", f"{cumplimiento_proy:.0f}%", delta=formato_moneda(diferencia_proy))
                 
                 pct_barra = min(max(float(cumplimiento_proy) / 100.0, 0.0), 1.0)
-                st.progress(pct_barra, text=f"Avance de Proyección sobre la Meta: {cumplimiento_proy:.1f}% (Resultado: {formato_moneda(resultado_monto)})")
+                st.progress(pct_barra, text=f"Avance de Proyección sobre la Meta: {cumplimiento_proy:.1f}% (Resultado: {formato_moneda(diferencia_proy)})")
 
                 st.divider()
 
-                st.markdown("#### 📈 Detalle de la Plantilla")
-                st.dataframe(df_proy, hide_index=True, use_container_width=True)
+                st.markdown("#### 📈 Detalle por Canal de Ventas")
+                df_mostrar = df_proy.copy()
+                config_columnas = {mes_col: st.column_config.TextColumn("Canal / Concepto")}
+                
+                for c in cols_moneda:
+                    if c in df_mostrar.columns:
+                        config_columnas[c] = st.column_config.NumberColumn(c, format="$%,.0f")
+                for c in cols_pct:
+                    if c in df_mostrar.columns:
+                        config_columnas[c] = st.column_config.NumberColumn(c, format="%.2f%%")
+
+                st.dataframe(
+                    df_mostrar,
+                    column_config=config_columnas,
+                    hide_index=True,
+                    use_container_width=True
+                )
 
         # =================================================================
         # DASHBOARD DE STOCK / CADUCIDAD
@@ -471,7 +493,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 df[col_cod] = df[col_cod].apply(fmt_code)
 
             if col_cant:
-                df[col_cant] = pd.to_numeric(df[col_cant], errors='coerce').fillna(0)
+                df[col_cant] = df[col_cant].apply(limpiar_numero)
 
             hoy = pd.Timestamp.today()
             limite_6m = hoy + pd.DateOffset(months=6)
@@ -646,7 +668,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
             cols_a_num = [c for c in [col_u_compra, col_u_recib, col_m_compra, col_m_recib, col_precio, col_quiebre, col_rechazado] if c and c in df.columns]
             for c_num in cols_a_num:
-                df[c_num] = pd.to_numeric(df[c_num], errors='coerce').fillna(0)
+                df[c_num] = df[c_num].apply(limpiar_numero)
 
             if not col_m_compra or col_m_compra not in df.columns:
                 df["monto_compra_calc"] = df[col_u_compra] * df[col_precio]
@@ -1063,7 +1085,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
             st.dataframe(df_corte_final, hide_index=True, use_container_width=True)
 
-        # PARA OTRAS PESTAÑAS AUXILIARES
         else:
             busqueda = st.text_input(f"🔍 Buscar en {nombre_hoja}:", key=f"search_{nombre_hoja}_{i}")
             if busqueda:
