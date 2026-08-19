@@ -411,7 +411,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             st.dataframe(df_si_det, hide_index=True, use_container_width=True)
 
         # =================================================================
-        # DASHBOARD DE SI PROYECCION (VISUALIZACIÓN MEJORADA)
+        # DASHBOARD DE SI PROYECCION
         # =================================================================
         elif is_si_proy:
             st.markdown("### 📊 Dashboard de Proyección SI")
@@ -465,9 +465,10 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                     st.markdown("#### 📈 Detalle por Canal de Ventas")
                     df_mostrar = df_resumen.copy()
                     
+                    # Corrección: Escalar porcentajes a base 0-100 para mostrar 91% en lugar de 0.9%
                     for c in cols_pct:
                         if c in df_mostrar.columns:
-                            df_mostrar[c + '_ratio'] = df_mostrar[c].apply(lambda x: x / 100.0 if x > 1 else x)
+                            df_mostrar[c + '_pct'] = df_mostrar[c].apply(lambda x: x * 100.0 if 0 <= x <= 1.0 else x)
 
                     config_columnas = {mes_col: st.column_config.TextColumn("Canal / Concepto")}
                     
@@ -476,23 +477,23 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                             config_columnas[c] = st.column_config.NumberColumn(c, format="$%,.0f")
                     
                     if '%' in df_mostrar.columns:
-                        config_columnas['%_ratio'] = st.column_config.ProgressColumn(
+                        config_columnas['%_pct'] = st.column_config.ProgressColumn(
                             "Proyección vs Meta",
-                            format="%.1f%%",
+                            format="%.0f%%",
                             min_value=0,
-                            max_value=1
+                            max_value=100
                         )
                     if 'Facturado actual' in df_mostrar.columns:
-                        config_columnas['Facturado actual_ratio'] = st.column_config.ProgressColumn(
+                        config_columnas['Facturado actual_pct'] = st.column_config.ProgressColumn(
                             "Facturado Actual",
-                            format="%.1f%%",
+                            format="%.0f%%",
                             min_value=0,
-                            max_value=1
+                            max_value=100
                         )
 
                     cols_disp = [mes_col] + [c for c in cols_moneda if c in df_mostrar.columns]
-                    if '%_ratio' in df_mostrar.columns: cols_disp.append('%_ratio')
-                    if 'Facturado actual_ratio' in df_mostrar.columns: cols_disp.append('Facturado actual_ratio')
+                    if '%_pct' in df_mostrar.columns: cols_disp.append('%_pct')
+                    if 'Facturado actual_pct' in df_mostrar.columns: cols_disp.append('Facturado actual_pct')
 
                     st.dataframe(
                         df_mostrar[cols_disp],
@@ -530,6 +531,53 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 * **Consumo y Farma**: Representan los motores principales del negocio, alcanzando un **55%** y **57%** de avance sobre sus metas y proyectando cerrar al **91%** ($2.100M y $2.013M respectivamente).
                 * **Terceros**: Presenta un desempeño rezagado con un **28%** facturado y una proyección total del **35%** respecto a su meta ($14.4M proyectados de $41.0M).
                 """)
+
+                # Nueva Sección: Tabla Proyecciones Metas por Mes
+                st.divider()
+                st.markdown("#### 🗓️ Proyecciones Metas por Mes (2026)")
+
+                df_raw_proy = hojas[nombre_hoja]
+                
+                hdr_indices = []
+                for idx_r in range(len(df_raw_proy)):
+                    r_vals = [str(x).lower().strip() for x in df_raw_proy.iloc[idx_r].values if pd.notna(x)]
+                    r_str = " ".join(r_vals)
+                    if "ene-26" in r_str and "feb-26" in r_str:
+                        hdr_indices.append(idx_r)
+                
+                if hdr_indices:
+                    last_hdr = hdr_indices[-1]
+                    df_meses_raw = df_raw_proy.iloc[last_hdr:].copy()
+                    
+                    headers_mes = [str(c).strip() for c in df_meses_raw.iloc[0].values]
+                    df_meses = df_meses_raw.iloc[1:].copy()
+                    df_meses.columns = headers_mes
+                    
+                    valid_cols = [c for c in headers_mes if any(m in c.lower() for m in ['div', '-26', '-25', '-27'])]
+                    if not valid_cols:
+                        valid_cols = [c for c in headers_mes if c and not c.startswith('Unnamed')]
+                    
+                    df_meses = df_meses[valid_cols].copy()
+                    col_div_mes = valid_cols[0]
+                    
+                    df_meses = df_meses[df_meses[col_div_mes].notna() & (df_meses[col_div_mes].astype(str).str.strip() != '')]
+                    
+                    cols_meses_num = valid_cols[1:]
+                    for cm in cols_meses_num:
+                        df_meses[cm] = df_meses[cm].apply(limpiar_numero)
+                    
+                    cfg_meses = {col_div_mes: st.column_config.TextColumn("División")}
+                    for cm in cols_meses_num:
+                        cfg_meses[cm] = st.column_config.NumberColumn(cm, format="$%,.0f")
+                    
+                    st.dataframe(
+                        df_meses,
+                        column_config=cfg_meses,
+                        hide_index=True,
+                        use_container_width=True
+                    )
+                else:
+                    st.info("No se encontró el bloque mensual en la hoja original.")
 
         # =================================================================
         # DASHBOARD DE STOCK / CADUCIDAD
