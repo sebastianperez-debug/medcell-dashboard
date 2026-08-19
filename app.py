@@ -807,6 +807,92 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 * **Terceros**: Presenta un desempeño rezagado con un **28%** facturado y una proyección total del **35%** respecto a su meta ($14.4M proyectados de $41.0M).
                 """)
 
+        # =================================================================
+        # NUEVA SECCIÓN: TABLA DETALLE OC VIGENTE Y PROYECCIÓN COMPRA
+        # =================================================================
+        st.divider()
+        st.markdown("#### 📦 Detalle OC Vigente y Proyección Compra")
+
+        datos_oc_proyeccion = [
+            {
+                "Concepto": "OC vigente",
+                "Canal": "Consumo SB",
+                "Monto OC": 433720962,
+                "FR": 82,
+                "Proyección salida": 355651189,
+                "OC extra": 0,
+            },
+            {
+                "Concepto": "OC vigente",
+                "Canal": "Farma SB",
+                "Monto OC": 391807703,
+                "FR": 87,
+                "Proyección salida": 340872702,
+                "OC extra": 0,
+            },
+            {
+                "Concepto": "OC vigente",
+                "Canal": "PU",
+                "Monto OC": 93238077,
+                "FR": 70,
+                "Proyección salida": 65266654,
+                "OC extra": 0,
+            },
+            {
+                "Concepto": "Proyección Compra",
+                "Canal": "Terceros",
+                "Monto OC": 5137936,
+                "FR": 60,
+                "Proyección salida": 3082762,
+                "OC extra": 0,
+            },
+            {
+                "Concepto": "Proyección Compra",
+                "Canal": "Consumo SB",
+                "Monto OC": 420000000,
+                "FR": 82,
+                "Proyección salida": 344400000,
+                "OC extra": 0,
+            },
+            {
+                "Concepto": "Proyección Compra",
+                "Canal": "Farma SB",
+                "Monto OC": 480000000,
+                "FR": 87,
+                "Proyección salida": 417600000,
+                "OC extra": 0,
+            },
+            {
+                "Concepto": "Proyección Compra",
+                "Canal": "PU",
+                "Monto OC": 105000000,
+                "FR": 70,
+                "Proyección salida": 73500000,
+                "OC extra": 0,
+            },
+        ]
+        df_oc_tab = pd.DataFrame(datos_oc_proyeccion)
+
+        st.dataframe(
+            df_oc_tab,
+            column_config={
+                "Concepto": st.column_config.TextColumn("Categoría / Estado"),
+                "Canal": st.column_config.TextColumn("Canal"),
+                "Monto OC": st.column_config.NumberColumn(
+                    "Monto OC", format="$%,.0f"
+                ),
+                "FR": st.column_config.NumberColumn("FR", format="%d%%"),
+                "Proyección salida": st.column_config.NumberColumn(
+                    "Proyección salida", format="$%,.0f"
+                ),
+                "OC extra": st.column_config.NumberColumn(
+                    "OC extra", format="$%,.0f"
+                ),
+            },
+            hide_index=True,
+            use_container_width=True,
+        )
+
         # Sección: Tabla Proyecciones Metas por Mes
         st.divider()
         st.markdown("#### 🗓️ Proyecciones Metas por Mes (2026)")
