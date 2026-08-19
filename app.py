@@ -98,6 +98,18 @@ def limpiar_numero(val):
     except (ValueError, TypeError):
         return 0.0
 
+def limpiar_nombre_mes(col):
+    """Normaliza las cabeceras de fechas a formato corto tipo ene-26."""
+    s = str(col).strip()
+    if "00:00:00" in s or (len(s) >= 10 and s[0:4].isdigit()):
+        try:
+            dt = pd.to_datetime(s)
+            meses_es = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sept', 'oct', 'nov', 'dic']
+            return f"{meses_es[dt.month - 1]}-{str(dt.year)[-2:]}"
+        except:
+            pass
+    return s
+
 def fmt_sem(val):
     if pd.isna(val) or val == "" or val is None:
         return ""
@@ -465,7 +477,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                     st.markdown("#### 📈 Detalle por Canal de Ventas")
                     df_mostrar = df_resumen.copy()
                     
-                    # Corrección: Escalar porcentajes a base 0-100 para mostrar 91% en lugar de 0.9%
                     for c in cols_pct:
                         if c in df_mostrar.columns:
                             df_mostrar[c + '_pct'] = df_mostrar[c].apply(lambda x: x * 100.0 if 0 <= x <= 1.0 else x)
@@ -532,52 +543,53 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 * **Terceros**: Presenta un desempeño rezagado con un **28%** facturado y una proyección total del **35%** respecto a su meta ($14.4M proyectados de $41.0M).
                 """)
 
-                # Nueva Sección: Tabla Proyecciones Metas por Mes
+                # Sección: Tabla Proyecciones Metas por Mes (Extracción Robusta de la Zona Marcarada)
                 st.divider()
                 st.markdown("#### 🗓️ Proyecciones Metas por Mes (2026)")
 
-                df_raw_proy = hojas[nombre_hoja]
-                
-                hdr_indices = []
-                for idx_r in range(len(df_raw_proy)):
-                    r_vals = [str(x).lower().strip() for x in df_raw_proy.iloc[idx_r].values if pd.notna(x)]
-                    r_str = " ".join(r_vals)
-                    if "ene-26" in r_str and "feb-26" in r_str:
-                        hdr_indices.append(idx_r)
-                
-                if hdr_indices:
-                    last_hdr = hdr_indices[-1]
-                    df_meses_raw = df_raw_proy.iloc[last_hdr:].copy()
+                try:
+                    df_grid = pd.read_excel(ruta_final, sheet_name=nombre_hoja, header=None, dtype=str)
                     
-                    headers_mes = [str(c).strip() for c in df_meses_raw.iloc[0].values]
-                    df_meses = df_meses_raw.iloc[1:].copy()
-                    df_meses.columns = headers_mes
+                    # Identificar la posición exacta de la tabla inferior (FARMA / CONSUMO)
+                    farma_indices = []
+                    for r_idx in range(len(df_grid)):
+                        vals = [str(x).strip().lower() for x in df_grid.iloc[r_idx].values if pd.notna(x)]
+                        if "farma" in vals:
+                            farma_indices.append(r_idx)
                     
-                    valid_cols = [c for c in headers_mes if any(m in c.lower() for m in ['div', '-26', '-25', '-27'])]
-                    if not valid_cols:
-                        valid_cols = [c for c in headers_mes if c and not c.startswith('Unnamed')]
-                    
-                    df_meses = df_meses[valid_cols].copy()
-                    col_div_mes = valid_cols[0]
-                    
-                    df_meses = df_meses[df_meses[col_div_mes].notna() & (df_meses[col_div_mes].astype(str).str.strip() != '')]
-                    
-                    cols_meses_num = valid_cols[1:]
-                    for cm in cols_meses_num:
-                        df_meses[cm] = df_meses[cm].apply(limpiar_numero)
-                    
-                    cfg_meses = {col_div_mes: st.column_config.TextColumn("División")}
-                    for cm in cols_meses_num:
-                        cfg_meses[cm] = st.column_config.NumberColumn(cm, format="$%,.0f")
-                    
-                    st.dataframe(
-                        df_meses,
-                        column_config=cfg_meses,
-                        hide_index=True,
-                        use_container_width=True
-                    )
-                else:
-                    st.info("No se encontró el bloque mensual en la hoja original.")
+                    if farma_indices:
+                        idx_farma_last = farma_indices[-1]
+                        idx_hdr = idx_farma_last - 1 # Fila de encabezado DIV. | ene-26 | ...
+                        
+                        df_block = df_grid.iloc[idx_hdr : idx_farma_last + 4].copy()
+                        df_block = df_block.dropna(how='all', axis=1)
+                        
+                        headers_mes = [limpiar_nombre_mes(x) for x in df_block.iloc[0].values]
+                        df_meses = df_block.iloc[1:].copy()
+                        df_meses.columns = headers_mes
+                        
+                        first_col = df_meses.columns[0]
+                        df_meses = df_meses.rename(columns={first_col: "División"})
+                        df_meses = df_meses[df_meses["División"].notna() & (df_meses["División"].astype(str).str.strip() != "nan") & (df_meses["División"].astype(str).str.strip() != "")]
+                        
+                        cols_num = [c for c in df_meses.columns if c != "División"]
+                        for cm in cols_num:
+                            df_meses[cm] = df_meses[cm].apply(limpiar_numero)
+                        
+                        cfg_meses = {"División": st.column_config.TextColumn("División")}
+                        for cm in cols_num:
+                            cfg_meses[cm] = st.column_config.NumberColumn(cm, format="$%,.0f")
+                        
+                        st.dataframe(
+                            df_meses,
+                            column_config=cfg_meses,
+                            hide_index=True,
+                            use_container_width=True
+                        )
+                    else:
+                        st.info("No se encontró el bloque mensual en la hoja original.")
+                except Exception as e_proy:
+                    st.warning(f"No se pudo cargar la tabla de proyecciones mensuales: {e_proy}")
 
         # =================================================================
         # DASHBOARD DE STOCK / CADUCIDAD
