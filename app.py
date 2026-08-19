@@ -193,6 +193,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         is_pu = (nombre_clean == "PU")
         is_stock = (nombre_clean == "STOCK")
         is_si = (nombre_clean == "SI")
+        is_si_proy = (nombre_clean == "SI PROYECCION")
 
         # =================================================================
         # PESTAÑA VENTA SI (REDISEÑADA, VISUAL Y DINÁMICA)
@@ -387,6 +388,79 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             
             st.caption(f"Mostrando {len(df_si_det)} registros.")
             st.dataframe(df_si_det, hide_index=True, use_container_width=True)
+
+        # =================================================================
+        # DASHBOARD DE SI PROYECCION
+        # =================================================================
+        elif is_si_proy:
+            st.markdown("### 📊 Dashboard de Proyección SI")
+
+            if df.empty:
+                st.info("No hay datos disponibles en SI PROYECCION.")
+            else:
+                # 1. Identificar el mes en curso (la primera columna del Excel)
+                mes_col = df.columns[0]
+                mes_actual = mes_col if str(mes_col).lower() not in ['unnamed: 0', 'canal', 'index'] else "Mes Actual"
+
+                # 2. Limpieza de datos
+                df_proy = df.copy()
+                df_proy = df_proy[df_proy[mes_col].notna() & (df_proy[mes_col].astype(str).str.lower() != 'none')]
+                
+                # Definir columnas numéricas de la tabla
+                cols_moneda = ['Facturado x canal', 'Proyección x canal', 'Meta']
+                cols_pct = ['%', 'Facturado actual']
+                
+                for c in cols_moneda + cols_pct:
+                    if c in df_proy.columns:
+                        df_proy[c] = pd.to_numeric(df_proy[c], errors='coerce').fillna(0)
+
+                # 3. Extraer KPIs de los canales principales (Consumo, Farma, Terceros)
+                canales_principales = ['Consumo', 'Farma', 'Terceros']
+                df_resumen = df_proy[df_proy[mes_col].astype(str).str.strip().isin(canales_principales)]
+                
+                meta_total = df_resumen['Meta'].sum() if 'Meta' in df_resumen.columns else 0
+                proyeccion_total = df_resumen['Proyección x canal'].sum() if 'Proyección x canal' in df_resumen.columns else 0
+                facturado_total = df_resumen['Facturado x canal'].sum() if 'Facturado x canal' in df_resumen.columns else 0
+                
+                cumplimiento_proy = (proyeccion_total / meta_total * 100) if meta_total > 0 else 0
+                cumplimiento_actual = (facturado_total / meta_total * 100) if meta_total > 0 else 0
+
+                # 4. Mostrar KPIs en la parte superior
+                st.markdown("#### 🎯 Resumen de Cumplimiento Meta")
+                k1, k2, k3, k4 = st.columns(4)
+                
+                k1.metric("🗓️ Mes en Curso", str(mes_actual).upper())
+                k2.metric("🎯 Meta Total", formato_moneda(meta_total))
+                k3.metric("💰 Facturado Actual", formato_moneda(facturado_total), delta=f"{cumplimiento_actual:.1f}% Meta")
+                k4.metric("🚀 Cumplimiento Proyectado", f"{cumplimiento_proy:.1f}%")
+                
+                # Barra de progreso visual para la Proyección
+                pct_barra = min(max(float(cumplimiento_proy) / 100.0, 0.0), 1.0)
+                st.progress(pct_barra, text=f"Avance de Proyección sobre la Meta: {cumplimiento_proy:.1f}%")
+
+                st.divider()
+
+                # 5. Formatear y mostrar la tabla estilo Excel
+                st.markdown("#### 📈 Detalle por Canal de Ventas")
+                
+                df_mostrar = df_proy.copy()
+                
+                # Configurar la presentación visual de columnas
+                config_columnas = {mes_col: st.column_config.TextColumn("Canal / Concepto")}
+                
+                for c in cols_moneda:
+                    if c in df_mostrar.columns:
+                        config_columnas[c] = st.column_config.NumberColumn(c, format="$%,.0f")
+                for c in cols_pct:
+                    if c in df_mostrar.columns:
+                        config_columnas[c] = st.column_config.NumberColumn(c, format="%.2f%%")
+
+                st.dataframe(
+                    df_mostrar,
+                    column_config=config_columnas,
+                    hide_index=True,
+                    use_container_width=True
+                )
 
         # =================================================================
         # DASHBOARD DE STOCK / CADUCIDAD
