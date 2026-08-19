@@ -582,11 +582,23 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                         
                         raw_headers = df_block.iloc[0].values
                         headers = []
+                        
+                        # --- NUEVO: Mapeo de meses y detección de mes actual ---
+                        meses_map = {
+                            'ene': 'Enero', 'feb': 'Febrero', 'mar': 'Marzo', 'abr': 'Abril',
+                            'may': 'Mayo', 'jun': 'Junio', 'jul': 'Julio', 'ago': 'Agosto',
+                            'sept': 'Septiembre', 'sep': 'Septiembre', 'oct': 'Octubre', 
+                            'nov': 'Noviembre', 'dic': 'Diciembre'
+                        }
+                        
                         for idx_h, h in enumerate(raw_headers):
                             if idx_h == 0:
                                 headers.append("División")
                             else:
-                                headers.append(limpiar_nombre_mes(h))
+                                cleaned_h = limpiar_nombre_mes(h)
+                                mes_prefix = cleaned_h.split('-')[0].lower() if '-' in cleaned_h else str(cleaned_h).lower()
+                                mes_nombre = meses_map.get(mes_prefix, cleaned_h.capitalize())
+                                headers.append(mes_nombre)
                         
                         df_rows = df_block.iloc[1:].copy()
                         df_rows.columns = headers
@@ -626,8 +638,20 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                             for cm in cols_num_meses:
                                 cfg_meses[cm] = st.column_config.NumberColumn(cm, format="$%,.0f")
                             
+                            # --- NUEVO: Estilar el DataFrame para resaltar el mes actual ---
+                            nombres_meses_lista = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+                            # datetime.now().month devuelve un número entre 1 y 12
+                            mes_actual_nombre = nombres_meses_lista[datetime.now().month - 1]
+                            
+                            def resaltar_mes_actual(df_to_style):
+                                df_styles = pd.DataFrame('', index=df_to_style.index, columns=df_to_style.columns)
+                                if mes_actual_nombre in df_to_style.columns:
+                                    # Aplicar color de fondo al mes actual que combine con la UI
+                                    df_styles[mes_actual_nombre] = 'background-color: rgba(0, 112, 243, 0.4); color: #ffffff; font-weight: bold;'
+                                return df_styles
+                            
                             st.dataframe(
-                                df_res_meses,
+                                df_res_meses.style.apply(resaltar_mes_actual, axis=None),
                                 column_config=cfg_meses,
                                 hide_index=True,
                                 use_container_width=True
