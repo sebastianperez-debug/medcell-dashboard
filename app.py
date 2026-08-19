@@ -99,13 +99,38 @@ def formato_unidades(valor):
         return "0"
 
 def parse_num(v):
-    if pd.isna(v) or v is None or str(v).lower() in ['none', 'nan', '']:
+    if pd.isna(v) or v is None:
         return 0.0
+    if isinstance(v, (int, float)):
+        return float(v)
+    
+    v_str = str(v).strip().replace('$', '')
+    if not v_str or v_str.lower() in ['none', 'nan', 'null', '']:
+        return 0.0
+    
+    # Manejo de formato numérico preservando decimales
+    if '.' in v_str and ',' in v_str:
+        if v_str.rfind('.') > v_str.rfind(','):
+            v_str = v_str.replace(',', '')
+        else:
+            v_str = v_str.replace('.', '').replace(',', '.')
+    elif ',' in v_str:
+        v_str = v_str.replace(',', '.')
+    elif '.' in v_str:
+        if v_str.count('.') > 1:
+            v_str = v_str.replace('.', '')
+
     try:
-        v_str = str(v).replace('$', '').replace('.', '').replace(',', '.').strip()
         return float(v_str)
     except (ValueError, TypeError):
         return 0.0
+
+def parse_num_si(v):
+    val = parse_num(v)
+    # Si la cifra está expresada en millones de pesos (ej: 4424.078 -> $4.424.078.342 CLP)
+    if 0 < abs(val) < 1_000_000:
+        return val * 1_000_000.0
+    return val
 
 def aplicar_criticidad(column):
     is_total = column.index == (len(column) - 1)
@@ -217,9 +242,9 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             col_inflamable = next((c for c in df.columns if 'inflamable' in c.lower()), 'es_inflamable')
             col_factura = next((c for c in df.columns if 'factura' in c.lower() or 'orden' in c.lower()), 'Factura')
 
-            df[col_monto] = pd.to_numeric(df[col_monto], errors='coerce').fillna(0) if col_monto in df.columns else 0
-            df[col_unid] = pd.to_numeric(df[col_unid], errors='coerce').fillna(0) if col_unid in df.columns else 0
-            df[col_pmp] = pd.to_numeric(df[col_pmp], errors='coerce').fillna(0) if col_pmp in df.columns else 0
+            df[col_monto] = df[col_monto].apply(parse_num_si) if col_monto in df.columns else 0
+            df[col_unid] = df[col_unid].apply(parse_num) if col_unid in df.columns else 0
+            df[col_pmp] = df[col_pmp].apply(parse_num) if col_pmp in df.columns else 0
 
             st.markdown("#### 🎛️ Filtros de Control")
             f_col1, f_col2, f_col3 = st.columns(3)
@@ -386,7 +411,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             st.dataframe(df_si_det, hide_index=True, use_container_width=True)
 
         # =================================================================
-        # DASHBOARD DE SI PROYECCION (CORREGIDO PARA EVITAR DUPLICACIONES Y SUMAS ERRÓNEAS)
+        # DASHBOARD DE SI PROYECCION (TABLA CORREGIDA Y ESCALADA)
         # =================================================================
         elif is_si_proy:
             st.markdown("### 📊 Dashboard de Proyección SI")
@@ -401,29 +426,21 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 cols_raw = df_proy.columns
                 col_canal = cols_raw[0]
 
-                col_fact = next((c for c in cols_raw if 'fact' in c.lower()), cols_raw[1] if len(cols_raw) > 1 else None)
-                col_proy = next((c for c in cols_raw if 'proyecc' in c.lower() or 'proyecci' in c.lower()), cols_raw[2] if len(cols_raw) > 2 else None)
+                col_fact = next((c for c in cols_raw if 'facturado' in c.lower() or 'fact' in c.lower()), cols_raw[1] if len(cols_raw) > 1 else None)
+                col_proy = next((c for c in cols_raw if 'proyección' in c.lower() or 'proyeccion' in c.lower() or 'proy' in c.lower()), cols_raw[2] if len(cols_raw) > 2 else None)
                 col_meta = next((c for c in cols_raw if 'meta' in c.lower()), cols_raw[3] if len(cols_raw) > 3 else None)
 
                 canales_principales = ['consumo', 'farma', 'terceros']
                 df_main = df_proy[df_proy[col_canal].astype(str).str.strip().str.lower().isin(canales_principales)].copy()
 
                 if not df_main.empty:
-                    df_main['fact_num'] = df_main[col_fact].apply(parse_num) if col_fact else 0.0
-                    df_main['proy_num'] = df_main[col_proy].apply(parse_num) if col_proy else 0.0
-                    df_main['meta_num'] = df_main[col_meta].apply(parse_num) if col_meta else 0.0
+                    df_main['fact_num'] = df_main[col_fact].apply(parse_num_si) if col_fact else 0.0
+                    df_main['proy_num'] = df_main[col_proy].apply(parse_num_si) if col_proy else 0.0
+                    df_main['meta_num'] = df_main[col_meta].apply(parse_num_si) if col_meta else 0.0
 
-                    # Desduplicación/Agregación por Canal para corregir duplicaciones de Meta/Facturado en el Excel
-                    df_main['canal_clean'] = df_main[col_canal].astype(str).str.strip().str.title()
-                    df_main_grp = df_main.groupby('canal_clean', as_index=False).agg({
-                        'fact_num': 'sum',
-                        'proy_num': 'sum',
-                        'meta_num': 'max'  # Evita duplicar la Meta si la fila viene duplicada por SQL
-                    })
-
-                    meta_total = df_main_grp['meta_num'].sum()
-                    proyeccion_total = df_main_grp['proy_num'].sum()
-                    facturado_total = df_main_grp['fact_num'].sum()
+                    meta_total = df_main['meta_num'].sum()
+                    proyeccion_total = df_main['proy_num'].sum()
+                    facturado_total = df_main['fact_num'].sum()
 
                     cumplimiento_proy = (proyeccion_total / meta_total * 100) if meta_total > 0 else 0
                     cumplimiento_actual = (facturado_total / meta_total * 100) if meta_total > 0 else 0
@@ -444,13 +461,13 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                     st.markdown("#### 📈 Detalle por Canal de Ventas")
 
                     df_tabla_main = pd.DataFrame()
-                    df_tabla_main["Canal / Concepto"] = df_main_grp['canal_clean']
-                    df_tabla_main["Facturado ($)"] = df_main_grp['fact_num']
-                    df_tabla_main["Proyección ($)"] = df_main_grp['proy_num']
-                    df_tabla_main["Meta ($)"] = df_main_grp['meta_num']
+                    df_tabla_main["Canal / Concepto"] = df_main[col_canal].astype(str).str.strip().str.title()
+                    df_tabla_main["Facturado ($)"] = df_main['fact_num']
+                    df_tabla_main["Proyección ($)"] = df_main['proy_num']
+                    df_tabla_main["Meta ($)"] = df_main['meta_num']
 
-                    df_tabla_main["% Cumplimiento Proyección"] = (df_main_grp['proy_num'] / df_main_grp['meta_num'] * 100).fillna(0)
-                    df_tabla_main["% Avance Facturado"] = (df_main_grp['fact_num'] / df_main_grp['meta_num'] * 100).fillna(0)
+                    df_tabla_main["% Cumplimiento Proyección"] = (df_main['proy_num'] / df_main['meta_num'] * 100).fillna(0)
+                    df_tabla_main["% Avance Facturado"] = (df_main['fact_num'] / df_main['meta_num'] * 100).fillna(0)
 
                     total_row = pd.DataFrame([{
                         "Canal / Concepto": "TOTAL",
@@ -470,12 +487,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                             "Facturado ($)": st.column_config.NumberColumn("Facturado ($)", format="$%,.0f"),
                             "Proyección ($)": st.column_config.NumberColumn("Proyección ($)", format="$%,.0f"),
                             "Meta ($)": st.column_config.NumberColumn("Meta ($)", format="$%,.0f"),
-                            "% Cumplimiento Proyección": st.column_config.ProgressColumn(
-                                "% Cumplimiento Proyección",
-                                format="%.1f%%",
-                                min_value=0,
-                                max_value=100
-                            ),
+                            "% Cumplimiento Proyección": st.column_config.NumberColumn("% Cumplimiento Proyección", format="%.1f%%"),
                             "% Avance Facturado": st.column_config.NumberColumn("% Avance Facturado", format="%.2f%%")
                         },
                         hide_index=True,
@@ -498,7 +510,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                     for col_s in df_sub_clean.columns:
                         col_lower = str(col_s).lower()
                         if any(k in col_lower for k in ['monto', 'facturado', 'proyección', 'proyeccion', 'meta', 'total', 'venta']):
-                            df_sub_clean[col_s] = df_sub_clean[col_s].apply(parse_num)
+                            df_sub_clean[col_s] = df_sub_clean[col_s].apply(parse_num_si)
                             config_sub[col_s] = st.column_config.NumberColumn(col_s, format="$%,.0f")
                         elif '%' in col_s or 'pct' in col_lower or 'cumplimiento' in col_lower:
                             df_sub_clean[col_s] = df_sub_clean[col_s].apply(parse_num)
@@ -704,7 +716,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
             cols_a_num = [c for c in [col_u_compra, col_u_recib, col_m_compra, col_m_recib, col_precio, col_quiebre, col_rechazado] if c and c in df.columns]
             for c_num in cols_a_num:
-                df[c_num] = pd.to_numeric(df[c_num], errors='coerce').fillna(0)
+                df[c_num] = df[c_num].apply(parse_num)
 
             if not col_m_compra or col_m_compra not in df.columns:
                 df["monto_compra_calc"] = df[col_u_compra] * df[col_precio]
