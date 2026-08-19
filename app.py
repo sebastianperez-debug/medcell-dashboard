@@ -386,7 +386,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             st.dataframe(df_si_det, hide_index=True, use_container_width=True)
 
         # =================================================================
-        # DASHBOARD DE SI PROYECCION (TABLA CORREGIDA)
+        # DASHBOARD DE SI PROYECCION (CORREGIDO PARA EVITAR DUPLICACIONES Y SUMAS ERRÓNEAS)
         # =================================================================
         elif is_si_proy:
             st.markdown("### 📊 Dashboard de Proyección SI")
@@ -401,8 +401,8 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 cols_raw = df_proy.columns
                 col_canal = cols_raw[0]
 
-                col_fact = next((c for c in cols_raw if 'facturado' in c.lower() and 'canal' in c.lower()), cols_raw[1] if len(cols_raw) > 1 else None)
-                col_proy = next((c for c in cols_raw if 'proyección' in c.lower() or 'proyeccion' in c.lower()), cols_raw[2] if len(cols_raw) > 2 else None)
+                col_fact = next((c for c in cols_raw if 'fact' in c.lower()), cols_raw[1] if len(cols_raw) > 1 else None)
+                col_proy = next((c for c in cols_raw if 'proyecc' in c.lower() or 'proyecci' in c.lower()), cols_raw[2] if len(cols_raw) > 2 else None)
                 col_meta = next((c for c in cols_raw if 'meta' in c.lower()), cols_raw[3] if len(cols_raw) > 3 else None)
 
                 canales_principales = ['consumo', 'farma', 'terceros']
@@ -413,9 +413,17 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                     df_main['proy_num'] = df_main[col_proy].apply(parse_num) if col_proy else 0.0
                     df_main['meta_num'] = df_main[col_meta].apply(parse_num) if col_meta else 0.0
 
-                    meta_total = df_main['meta_num'].sum()
-                    proyeccion_total = df_main['proy_num'].sum()
-                    facturado_total = df_main['fact_num'].sum()
+                    # Desduplicación/Agregación por Canal para corregir duplicaciones de Meta/Facturado en el Excel
+                    df_main['canal_clean'] = df_main[col_canal].astype(str).str.strip().str.title()
+                    df_main_grp = df_main.groupby('canal_clean', as_index=False).agg({
+                        'fact_num': 'sum',
+                        'proy_num': 'sum',
+                        'meta_num': 'max'  # Evita duplicar la Meta si la fila viene duplicada por SQL
+                    })
+
+                    meta_total = df_main_grp['meta_num'].sum()
+                    proyeccion_total = df_main_grp['proy_num'].sum()
+                    facturado_total = df_main_grp['fact_num'].sum()
 
                     cumplimiento_proy = (proyeccion_total / meta_total * 100) if meta_total > 0 else 0
                     cumplimiento_actual = (facturado_total / meta_total * 100) if meta_total > 0 else 0
@@ -436,13 +444,13 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                     st.markdown("#### 📈 Detalle por Canal de Ventas")
 
                     df_tabla_main = pd.DataFrame()
-                    df_tabla_main["Canal / Concepto"] = df_main[col_canal].astype(str).str.strip().str.title()
-                    df_tabla_main["Facturado ($)"] = df_main['fact_num']
-                    df_tabla_main["Proyección ($)"] = df_main['proy_num']
-                    df_tabla_main["Meta ($)"] = df_main['meta_num']
+                    df_tabla_main["Canal / Concepto"] = df_main_grp['canal_clean']
+                    df_tabla_main["Facturado ($)"] = df_main_grp['fact_num']
+                    df_tabla_main["Proyección ($)"] = df_main_grp['proy_num']
+                    df_tabla_main["Meta ($)"] = df_main_grp['meta_num']
 
-                    df_tabla_main["% Cumplimiento Proyección"] = (df_main['proy_num'] / df_main['meta_num'] * 100).fillna(0)
-                    df_tabla_main["% Avance Facturado"] = (df_main['fact_num'] / df_main['meta_num'] * 100).fillna(0)
+                    df_tabla_main["% Cumplimiento Proyección"] = (df_main_grp['proy_num'] / df_main_grp['meta_num'] * 100).fillna(0)
+                    df_tabla_main["% Avance Facturado"] = (df_main_grp['fact_num'] / df_main_grp['meta_num'] * 100).fillna(0)
 
                     total_row = pd.DataFrame([{
                         "Canal / Concepto": "TOTAL",
