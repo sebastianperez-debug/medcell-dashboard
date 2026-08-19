@@ -808,7 +808,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 """)
 
         # =================================================================
-        # SECCIÓN VISUALIZADA: TABLA Y GRÁFICO DETALLE OC VIGENTE Y PROYECCIÓN COMPRA
+        # SECCIÓN REDISEÑADA: TABLA Y GRÁFICO MEJORADO DE OC Y PROYECCIÓN COMPRA
         # =================================================================
         st.divider()
         st.markdown("#### 📦 Detalle OC Vigente y Proyección Compra")
@@ -916,40 +916,64 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
         with col_oc_grafico:
           st.markdown("##### 📊 Comparativo Monto OC vs Proyección Salida")
-          df_oc_tab["Canal_Etiqueta"] = (
-              df_oc_tab["Canal"] + " (" + df_oc_tab["Concepto"] + ")"
+
+          # Modelo limpio: Barras Verticales Agrupadas por Canal y Categoría con valores formateados en Millones ($M)
+          df_oc_plot = df_oc_tab.copy()
+          df_oc_plot["Etiqueta"] = (
+              df_oc_plot["Canal"]
+              + "<br><sub>("
+              + df_oc_plot["Concepto"]
+              + ")</sub>"
           )
 
           fig_oc = go.Figure()
+
+          # Barra Monto OC
           fig_oc.add_trace(
               go.Bar(
-                  y=df_oc_tab["Canal_Etiqueta"],
-                  x=df_oc_tab["Monto OC"],
+                  x=df_oc_plot["Etiqueta"],
+                  y=df_oc_plot["Monto OC"],
                   name="Monto OC",
-                  orientation="h",
                   marker_color="#0070f3",
+                  text=[
+                      f"${v/1e6:.1f}M" if v > 0 else "$0"
+                      for v in df_oc_plot["Monto OC"]
+                  ],
+                  textposition="outside",
+                  textfont=dict(size=10, color="#ffffff"),
               )
           )
+
+          # Barra Proyección Salida
           fig_oc.add_trace(
               go.Bar(
-                  y=df_oc_tab["Canal_Etiqueta"],
-                  x=df_oc_tab["Proyección salida"],
+                  x=df_oc_plot["Etiqueta"],
+                  y=df_oc_plot["Proyección salida"],
                   name="Proyección Salida",
-                  orientation="h",
                   marker_color="#109618",
+                  text=[
+                      f"${v/1e6:.1f}M" if v > 0 else "$0"
+                      for v in df_oc_plot["Proyección salida"]
+                  ],
+                  textposition="outside",
+                  textfont=dict(size=10, color="#ffffff"),
               )
           )
 
           fig_oc.update_layout(
               barmode="group",
-              height=330,
+              height=360,
               paper_bgcolor="rgba(0,0,0,0)",
               plot_bgcolor="rgba(0,0,0,0)",
               font=dict(color="#ffffff"),
-              margin=dict(t=10, b=10, l=10, r=10),
-              xaxis=dict(gridcolor="#222222"),
-              yaxis=dict(gridcolor="#222222", autorange="reversed"),
-              legend=dict(orientation="h", y=1.15),
+              margin=dict(t=30, b=10, l=10, r=10),
+              xaxis=dict(gridcolor="#222222", tickangle=0),
+              yaxis=dict(
+                  gridcolor="#222222",
+                  showticklabels=False,
+                  range=[0, df_oc_plot["Monto OC"].max() * 1.22],
+              ),
+              legend=dict(orientation="h", y=1.15, x=0.2),
           )
           st.plotly_chart(
               fig_oc, use_container_width=True, key=f"bar_oc_comp_{i}"
