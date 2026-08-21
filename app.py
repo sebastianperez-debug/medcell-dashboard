@@ -812,6 +812,14 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         # =================================================================
         st.divider()
         st.markdown("#### 📦 Detalle OC Vigente y Proyección Compra")
+        
+        # ---> NUEVO FILTRO TIPO BOTÓN (RADIO) AÑADIDO AQUÍ <---
+        vista_oc = st.radio(
+            "Seleccionar Vista:",
+            options=["Ambos", "OC vigente", "Proyección Compra"],
+            horizontal=True,
+            key=f"radio_vista_oc_{i}"
+        )
 
         datos_oc_proyeccion = [
             {
@@ -871,7 +879,12 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 "OC extra": 0,
             },
         ]
+        
         df_oc_tab = pd.DataFrame(datos_oc_proyeccion)
+        
+        # Filtramos la tabla dependiendo del valor del radio button
+        if vista_oc != "Ambos":
+            df_oc_tab = df_oc_tab[df_oc_tab["Concepto"] == vista_oc]
 
         # KPIs Resumen de la sección OC
         tot_monto_oc = df_oc_tab["Monto OC"].sum()
@@ -971,7 +984,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
               yaxis=dict(
                   gridcolor="#222222",
                   showticklabels=False,
-                  range=[0, df_oc_plot["Monto OC"].max() * 1.22],
+                  range=[0, df_oc_plot["Monto OC"].max() * 1.22] if not df_oc_plot.empty else [0, 100],
               ),
               legend=dict(orientation="h", y=1.15, x=0.2),
           )
