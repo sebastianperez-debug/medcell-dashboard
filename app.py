@@ -1859,6 +1859,36 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         df_filt = df_filt[df_filt[col_semana] == semana_sel]
       st.divider()
 
+      # =================================================================
+      # NUEVO BLOQUE: MÉTRICAS DE OC Y MONTOS EN LA ZONA SUPERIOR (SOLO SB)
+      # =================================================================
+      if is_sb and col_div and col_oc:
+        st.markdown("#### 📊 Resumen de Órdenes y Montos")
+        
+        # Filtros de División
+        mask_farma = df_filt[col_div].astype(str).str.upper().str.contains("FARMA", na=False)
+        mask_consumo = df_filt[col_div].astype(str).str.upper().str.contains("CONSUMO", na=False)
+        
+        # Cálculos de OC
+        oc_farma = df_filt[mask_farma][col_oc].nunique()
+        oc_consumo = df_filt[mask_consumo][col_oc].nunique()
+        
+        # Cálculos de Monto
+        monto_farma = df_filt[mask_farma][col_m_compra].sum()
+        monto_consumo = df_filt[mask_consumo][col_m_compra].sum()
+        monto_total = df_filt[col_m_compra].sum()
+        
+        # UI (5 Columnas)
+        km1, km2, km3, km4, km5 = st.columns(5)
+        km1.metric("📦 OC Farma", str(oc_farma))
+        km2.metric("💊 Monto Farma", formato_moneda(monto_farma))
+        km3.metric("🛒 OC Consumo", str(oc_consumo))
+        km4.metric("🛍️ Monto Consumo", formato_moneda(monto_consumo))
+        km5.metric("💰 Monto Total", formato_moneda(monto_total))
+        
+        st.divider()
+      # =================================================================
+
       if col_semana:
         sem_actual = (
             semana_sel
