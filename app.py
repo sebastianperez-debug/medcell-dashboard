@@ -1728,6 +1728,37 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
       st.divider()
 
+      if col_estado_lote and col_estado_lote in df_dash_alerta.columns:
+        st.markdown("##### 🏷️ Cantidad de Unidades por Estado de Lote")
+        df_est_grp = (
+            df_dash_alerta.groupby(col_estado_lote, dropna=False)[col_cant]
+            .sum()
+            .reset_index()
+            if col_cant
+            else df_dash_alerta[col_estado_lote].value_counts().reset_index()
+        )
+
+        if not df_est_grp.empty:
+          c_e, c_q = df_est_grp.columns[0], df_est_grp.columns[1]
+          num_items = len(df_est_grp)
+          cols_est = st.columns(min(num_items, 6))
+          for idx_e, row_e in df_est_grp.iterrows():
+            nombre_est = (
+                str(row_e[c_e]) if pd.notna(row_e[c_e]) else "Sin Estado"
+            )
+            cant_est = row_e[c_q]
+
+            with cols_est[idx_e % min(num_items, 6)]:
+              st.markdown(
+                  f"""<div style="background-color: #141414; border: 1px solid #0070f3; border-radius: 8px; padding: 10px; text-align: center; margin-bottom: 15px;">
+                                    <div style="font-size: 12px; color: #aaaaaa; font-weight: 600; text-transform: uppercase;">{nombre_est}</div>
+                                    <div style="font-size: 20px; font-weight: bold; color: #ffffff; margin-top: 3px;">{formato_unidades(cant_est)}</div>
+                                </div>""",
+                  unsafe_allow_html=True,
+              )
+
+        st.divider()
+
       # TOP LOCALIZADORES CON MÁS STOCK POR VENCER (Vencido + < 6 meses,
       # o la categoría seleccionada en las tarjetas de arriba).
       if col_loc and col_loc in df_dash.columns:
@@ -1825,35 +1856,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
           )
 
         st.divider()
-
-      if col_estado_lote and col_estado_lote in df_dash_alerta.columns:
-        st.markdown("##### 🏷️ Cantidad de Unidades por Estado de Lote")
-        df_est_grp = (
-            df_dash_alerta.groupby(col_estado_lote, dropna=False)[col_cant]
-            .sum()
-            .reset_index()
-            if col_cant
-            else df_dash_alerta[col_estado_lote].value_counts().reset_index()
-        )
-
-        if not df_est_grp.empty:
-          c_e, c_q = df_est_grp.columns[0], df_est_grp.columns[1]
-          num_items = len(df_est_grp)
-          cols_est = st.columns(min(num_items, 6))
-          for idx_e, row_e in df_est_grp.iterrows():
-            nombre_est = (
-                str(row_e[c_e]) if pd.notna(row_e[c_e]) else "Sin Estado"
-            )
-            cant_est = row_e[c_q]
-
-            with cols_est[idx_e % min(num_items, 6)]:
-              st.markdown(
-                  f"""<div style="background-color: #141414; border: 1px solid #0070f3; border-radius: 8px; padding: 10px; text-align: center; margin-bottom: 15px;">
-                                    <div style="font-size: 12px; color: #aaaaaa; font-weight: 600; text-transform: uppercase;">{nombre_est}</div>
-                                    <div style="font-size: 20px; font-weight: bold; color: #ffffff; margin-top: 3px;">{formato_unidades(cant_est)}</div>
-                                </div>""",
-                  unsafe_allow_html=True,
-              )
 
       detalle_filtro = "(General)"
       partes_filtro = []
