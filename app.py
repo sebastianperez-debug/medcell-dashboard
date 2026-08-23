@@ -1860,24 +1860,24 @@ for i, nombre_hoja in enumerate(nombres_hojas):
       st.divider()
 
       # =================================================================
-      # NUEVO BLOQUE: MÉTRICAS DE OC Y MONTOS EN LA ZONA SUPERIOR (SOLO SB)
+      # MÉTRICAS DE OC Y MONTOS EN LA ZONA SUPERIOR
       # =================================================================
       if is_sb and col_div and col_oc:
         st.markdown("#### 📊 Resumen de Órdenes y Montos")
-        
+
         # Filtros de División
         mask_farma = df_filt[col_div].astype(str).str.upper().str.contains("FARMA", na=False)
         mask_consumo = df_filt[col_div].astype(str).str.upper().str.contains("CONSUMO", na=False)
-        
+
         # Cálculos de OC
         oc_farma = df_filt[mask_farma][col_oc].nunique()
         oc_consumo = df_filt[mask_consumo][col_oc].nunique()
-        
+
         # Cálculos de Monto
         monto_farma = df_filt[mask_farma][col_m_compra].sum()
         monto_consumo = df_filt[mask_consumo][col_m_compra].sum()
         monto_total = df_filt[col_m_compra].sum()
-        
+
         # UI (5 Columnas)
         km1, km2, km3, km4, km5 = st.columns(5)
         km1.metric("📦 OC Farma", str(oc_farma))
@@ -1885,7 +1885,24 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         km3.metric("🛒 OC Consumo", str(oc_consumo))
         km4.metric("🛍️ Monto Consumo", formato_moneda(monto_consumo))
         km5.metric("💰 Monto Total", formato_moneda(monto_total))
-        
+
+        st.divider()
+
+      # =================================================================
+      # NUEVO BLOQUE: MÉTRICAS DE OC Y MONTO TOTAL PARA PU (SIN DIVISIÓN)
+      # =================================================================
+      if is_pu and col_oc and col_m_compra:
+        st.markdown("#### 📊 Resumen General de Órdenes y Compras PU")
+
+        # En PU se consideran todas las divisiones juntas.
+        cantidad_oc_pu = df_filt[col_oc].nunique()
+        monto_total_pu = df_filt[col_m_compra].sum()
+
+        # UI (2 KPIs, sin separar por división)
+        kpu1, kpu2 = st.columns(2)
+        kpu1.metric("📦 Cantidad de OC", str(cantidad_oc_pu))
+        kpu2.metric("💰 Monto Total de Compra", formato_moneda(monto_total_pu))
+
         st.divider()
       # =================================================================
 
