@@ -1416,7 +1416,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         df["Alerta_Caducidad"] = "Sin Fecha"
         df[col_fecha] = "N/A"
 
-      col_dash1, col_dash2, col_dash3 = st.columns([1, 1.2, 2])
+      col_dash1, col_dash2 = st.columns([1, 2.3])
 
       # Filtros de STOCK: Código, SKU SB (columna B) y SKU PU (columna C).
       # Son mutuamente excluyentes: al elegir uno, los otros dos vuelven a "Todos".
@@ -1429,8 +1429,11 @@ for i, nombre_hoja in enumerate(nombres_hojas):
           if k in st.session_state:
             st.session_state[k] = "Todos"
 
-      with col_dash3:
-        filtro_codigo_col, filtro_sku_sb_col, filtro_sku_pu_col = st.columns(3)
+      with col_dash2:
+        # Los filtros se centran dejando márgenes livianos a los costados.
+        _pad_izq, filtro_codigo_col, filtro_sku_sb_col, filtro_sku_pu_col, _pad_der = (
+            st.columns([0.3, 1, 1, 1, 0.3])
+        )
 
         with filtro_codigo_col:
           if col_cod:
@@ -1642,20 +1645,23 @@ for i, nombre_hoja in enumerate(nombres_hojas):
               ]
           )
           fig_pie.update_layout(
-              height=300,
-              margin=dict(t=0, b=0, l=0, r=0),
+              height=320,
+              margin=dict(t=10, b=0, l=0, r=0),
               paper_bgcolor="rgba(0,0,0,0)",
               font=dict(color="#ffffff"),
               showlegend=True,
               legend=dict(orientation="h", y=-0.1),
           )
-          st.plotly_chart(
-              fig_pie, use_container_width=True, key=f"pie_stock_{i}"
-          )
+          # Se centra el gráfico dentro de la columna para que no quede
+          # estirado a lo ancho ni deje espacio vacío desbalanceado.
+          _pad_chart_izq, col_chart, _pad_chart_der = st.columns([0.5, 2, 0.5])
+          with col_chart:
+            st.plotly_chart(
+                fig_pie, use_container_width=True, key=f"pie_stock_{i}"
+            )
         else:
           st.info("Sin registros para mostrar.")
 
-      with col_dash3:
         if prod_sel != "Seleccione...":
           stock_actual = df_dash[col_cant].sum() if col_cant else 0
           prox_vencer = (
