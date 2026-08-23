@@ -1235,94 +1235,27 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         df[col_cod] = df[col_cod].apply(fmt_code)
 
       # ---------------------------------------------------------------
-      # MAESTRA DE SKU
-      # La hoja "sku" contiene: columna A = código de artículo,
-      # columna B = codigo_sb y columna C = codigo_pu.
-      # En STOCK se muestran ambos SKU y se pueden usar como filtro.
-      # Las columnas B y C se toman SIEMPRE por POSICIÓN (no por nombre),
-      # para que funcione aunque el encabezado de la hoja "sku" cambie.
+      # SKU (columnas B y C de la propia hoja STOCK)
+      # La hoja STOCK ya trae: A=codigo_articulo, B=codigo_sb, C=codigo_pu.
+      # No hace falta cruzar con ninguna otra hoja: se usan directo.
       # ---------------------------------------------------------------
-      def _norm_key(val):
-        """Normaliza un valor para cruzar códigos (case-insensitive, sin espacios extra)."""
-        s = fmt_code(val)
-        if s == "S/N":
-          return ""
-        return s.strip().upper()
+      col_sku_sb = next(
+          (c for c in df.columns if c.strip().lower() == "codigo_sb"), None
+      )
+      col_sku_pu = next(
+          (c for c in df.columns if c.strip().lower() == "codigo_pu"), None
+      )
+      # Respaldo por posición: si por algún motivo no calzan los nombres,
+      # se usan la columna B (índice 1) y C (índice 2) tal cual.
+      if not col_sku_sb and len(df.columns) > 1:
+        col_sku_sb = df.columns[1]
+      if not col_sku_pu and len(df.columns) > 2:
+        col_sku_pu = df.columns[2]
 
-      col_sku_sb = None
-      col_sku_pu = None
-      lista_skus_sb_raw = []
-      lista_skus_pu_raw = []
-      sku_debug_msg = None
-      try:
-        # Búsqueda flexible de la hoja "sku" (exacta o que la contenga en el nombre).
-        hoja_sku = next(
-            (h for h in hojas.keys() if h.strip().lower() == "sku"), None
-        )
-        if not hoja_sku:
-          hoja_sku = next(
-              (h for h in hojas.keys() if "sku" in h.strip().lower()), None
-          )
-
-        if not hoja_sku:
-          sku_debug_msg = "No se encontró una hoja llamada 'SKU' en el Excel."
-        elif not col_cod or col_cod not in df.columns:
-          sku_debug_msg = "No se identificó la columna de Código de Artículo en la hoja Stock."
-        else:
-          df_maestra_sku = hojas[hoja_sku].copy()
-          if len(df_maestra_sku.columns) < 3:
-            sku_debug_msg = (
-                f"La hoja '{hoja_sku}' tiene menos de 3 columnas "
-                "(se esperan A=Código, B=codigo_sb, C=codigo_pu)."
-            )
-          else:
-            # Columnas por posición: A=0 (código), B=1 (codigo_sb), C=2 (codigo_pu)
-            col_maestra_codigo = df_maestra_sku.columns[0]
-            col_maestra_sb = df_maestra_sku.columns[1]
-            col_maestra_pu = df_maestra_sku.columns[2]
-
-            df_maestra_sku["__codigo_key"] = df_maestra_sku[col_maestra_codigo].apply(_norm_key)
-            df_maestra_sku["__sku_sb_key"] = df_maestra_sku[col_maestra_sb].apply(_norm_key)
-            df_maestra_sku["__sku_pu_key"] = df_maestra_sku[col_maestra_pu].apply(_norm_key)
-            df_maestra_sku["__sku_sb_show"] = df_maestra_sku[col_maestra_sb].apply(fmt_code)
-            df_maestra_sku["__sku_pu_show"] = df_maestra_sku[col_maestra_pu].apply(fmt_code)
-
-            mapa_sku_sb = (
-                df_maestra_sku[df_maestra_sku["__codigo_key"] != ""]
-                .drop_duplicates(subset=["__codigo_key"], keep="first")
-                .set_index("__codigo_key")["__sku_sb_show"]
-                .to_dict()
-            )
-            mapa_sku_pu = (
-                df_maestra_sku[df_maestra_sku["__codigo_key"] != ""]
-                .drop_duplicates(subset=["__codigo_key"], keep="first")
-                .set_index("__codigo_key")["__sku_pu_show"]
-                .to_dict()
-            )
-
-            col_sku_sb = "SKU SB"
-            col_sku_pu = "SKU PU"
-            df["__codigo_key_join"] = df[col_cod].apply(_norm_key)
-            df[col_sku_sb] = df["__codigo_key_join"].map(mapa_sku_sb).fillna("")
-            df[col_sku_pu] = df["__codigo_key_join"].map(mapa_sku_pu).fillna("")
-            df.drop(columns="__codigo_key_join", inplace=True)
-
-            # Valores para poblar el filtro: se toman directo de las columnas B y C
-            # de la hoja maestra, así el desplegable nunca queda vacío aunque
-            # el cruce por código no encuentre coincidencias para todas las filas.
-            lista_skus_sb_raw = sorted(
-                {v for v in df_maestra_sku["__sku_sb_show"] if v and v != "S/N"}
-            )
-            lista_skus_pu_raw = sorted(
-                {v for v in df_maestra_sku["__sku_pu_show"] if v and v != "S/N"}
-            )
-      except Exception as e:
-        col_sku_sb = None
-        col_sku_pu = None
-        sku_debug_msg = f"Error al cruzar la maestra de SKU: {e}"
-
-      if sku_debug_msg:
-        st.caption(f"⚠️ SKU: {sku_debug_msg}")
+      if col_sku_sb and col_sku_sb in df.columns:
+        df[col_sku_sb] = df[col_sku_sb].apply(fmt_code)
+      if col_sku_pu and col_sku_pu in df.columns:
+        df[col_sku_pu] = df[col_sku_pu].apply(fmt_code)
 
       if col_cant:
         df[col_cant] = df[col_cant].apply(limpiar_numero)
@@ -1349,11 +1282,11 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         df["Alerta_Caducidad"] = "Sin Fecha"
         df[col_fecha] = "N/A"
 
-      col_dash1, col_dash2, col_dash3 = st.columns([1, 1.5, 1.5])
+      col_dash1, col_dash2, col_dash3 = st.columns([1, 1.2, 2])
 
-      # Filtros de STOCK: Código y SKU quedan juntos para facilitar la búsqueda.
+      # Filtros de STOCK: Código, SKU SB (columna B) y SKU PU (columna C).
       with col_dash3:
-        filtro_codigo_col, filtro_sku_col = st.columns(2)
+        filtro_codigo_col, filtro_sku_sb_col, filtro_sku_pu_col = st.columns(3)
 
         with filtro_codigo_col:
           if col_cod:
@@ -1368,47 +1301,51 @@ for i, nombre_hoja in enumerate(nombres_hojas):
           else:
             codigo_sel = "Todos"
 
-        with filtro_sku_col:
-          # Las opciones del filtro salen directo de las columnas B (codigo_sb)
-          # y C (codigo_pu) de la hoja "sku", así el desplegable siempre tiene
-          # valores aunque el cruce por código de artículo no encuentre match
-          # para alguna fila puntual de Stock.
-          valores_sku = set(lista_skus_sb_raw) | set(lista_skus_pu_raw)
-          if not valores_sku and col_sku_sb and col_sku_sb in df.columns:
-            valores_sku |= {str(x) for x in df[col_sku_sb].dropna().unique() if str(x).strip() != ""}
-          if not valores_sku and col_sku_pu and col_sku_pu in df.columns:
-            valores_sku |= {str(x) for x in df[col_sku_pu].dropna().unique() if str(x).strip() != ""}
+        with filtro_sku_sb_col:
+          if col_sku_sb and col_sku_sb in df.columns:
+            lista_sku_sb = sorted(
+                [str(x) for x in df[col_sku_sb].dropna().unique() if str(x).strip() != "" and str(x) != "S/N"]
+            )
+            sku_sb_sel = st.selectbox(
+                "SKU SB (col. B):",
+                ["Todos"] + lista_sku_sb,
+                key=f"sel_sku_sb_stock_{i}",
+            )
+          else:
+            sku_sb_sel = "Todos"
 
-          lista_skus = sorted(valores_sku)
-          sku_sel = st.selectbox(
-              "SKU:",
-              ["Todos"] + lista_skus,
-              key=f"sel_sku_stock_{i}",
-          )
+        with filtro_sku_pu_col:
+          if col_sku_pu and col_sku_pu in df.columns:
+            lista_sku_pu = sorted(
+                [str(x) for x in df[col_sku_pu].dropna().unique() if str(x).strip() != "" and str(x) != "S/N"]
+            )
+            sku_pu_sel = st.selectbox(
+                "SKU PU (col. C):",
+                ["Todos"] + lista_sku_pu,
+                key=f"sel_sku_pu_stock_{i}",
+            )
+          else:
+            sku_pu_sel = "Todos"
 
       df_dash = df.copy()
       if codigo_sel != "Todos" and col_cod:
         df_dash = df_dash[df_dash[col_cod].astype(str) == codigo_sel].copy()
 
-      if sku_sel != "Todos":
-        sku_sel_norm = sku_sel.strip().upper()
-        mask_sku = pd.Series(False, index=df_dash.index)
-        if col_sku_sb and col_sku_sb in df_dash.columns:
-          mask_sku = mask_sku | (
-              df_dash[col_sku_sb].astype(str).str.strip().str.upper() == sku_sel_norm
-          )
-        if col_sku_pu and col_sku_pu in df_dash.columns:
-          mask_sku = mask_sku | (
-              df_dash[col_sku_pu].astype(str).str.strip().str.upper() == sku_sel_norm
-          )
-        df_dash = df_dash[mask_sku].copy()
+      if sku_sb_sel != "Todos" and col_sku_sb and col_sku_sb in df_dash.columns:
+        df_dash = df_dash[df_dash[col_sku_sb].astype(str) == sku_sb_sel].copy()
+
+      if sku_pu_sel != "Todos" and col_sku_pu and col_sku_pu in df_dash.columns:
+        df_dash = df_dash[df_dash[col_sku_pu].astype(str) == sku_pu_sel].copy()
 
       if codigo_sel != "Todos":
         prod_sel = codigo_sel
-      elif sku_sel != "Todos":
-        prod_sel = sku_sel
+      elif sku_sb_sel != "Todos":
+        prod_sel = sku_sb_sel
+      elif sku_pu_sel != "Todos":
+        prod_sel = sku_pu_sel
       else:
         prod_sel = "Seleccione..."
+
 
       if col_cant:
         total_unidades = df_dash[col_cant].sum()
@@ -1579,12 +1516,15 @@ for i, nombre_hoja in enumerate(nombres_hojas):
               )
 
       detalle_filtro = "(General)"
-      if codigo_sel != "Todos" and sku_sel != "Todos":
-        detalle_filtro = f"(Código: {codigo_sel} | SKU: {sku_sel})"
-      elif codigo_sel != "Todos":
-        detalle_filtro = f"(Código: {codigo_sel})"
-      elif sku_sel != "Todos":
-        detalle_filtro = f"(SKU: {sku_sel})"
+      partes_filtro = []
+      if codigo_sel != "Todos":
+        partes_filtro.append(f"Código: {codigo_sel}")
+      if sku_sb_sel != "Todos":
+        partes_filtro.append(f"SKU SB: {sku_sb_sel}")
+      if sku_pu_sel != "Todos":
+        partes_filtro.append(f"SKU PU: {sku_pu_sel}")
+      if partes_filtro:
+        detalle_filtro = f"({' | '.join(partes_filtro)})"
 
       st.subheader(f"📋 Detalle de Stock y Lotes {detalle_filtro}")
 
