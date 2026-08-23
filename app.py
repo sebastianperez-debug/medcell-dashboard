@@ -397,16 +397,17 @@ for i, nombre_hoja in enumerate(nombres_hojas):
           ),
           "Factura",
       )
+      # Prioridad: 1) columna con "descripcion" en el nombre (ej. "med0_descripcion"),
+      # 2) columna con "producto" en el nombre, 3) columna J por posición.
+      # Se separan en dos búsquedas para que "id_producto_sb"/"id_producto_pu"
+      # (que traen códigos numéricos) no le ganen a la descripción real.
       col_producto = next(
-          (
-              c
-              for c in df.columns
-              if "descripcion" in c.lower() or "producto" in c.lower()
-          ),
-          None,
+          (c for c in df.columns if "descripcion" in c.lower()), None
       )
-      # Respaldo directo por posición: columna J (índice 9) es la
-      # descripción del producto según la tabla del usuario.
+      if not col_producto:
+        col_producto = next(
+            (c for c in df.columns if "producto" in c.lower()), None
+        )
       if not col_producto and len(df.columns) > 9:
         col_producto = df.columns[9]
       col_sku_si = next(
