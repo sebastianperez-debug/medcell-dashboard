@@ -1940,7 +1940,18 @@ for i, nombre_hoja in enumerate(nombres_hojas):
           if col_semana
           else []
       )
-      ultimas_4_semanas = semanas_todas[-4:] if semanas_todas else []
+      # Se excluye del "Últimas 4 Semanas" la semana en curso / incompleta:
+      # aquella que todavía no registra recepciones (Monto y Unidades Recibidas = 0),
+      # ya que mostrarla en 0% distorsiona la visualización de Fill Rate.
+      semanas_con_datos = list(semanas_todas)
+      if semanas_con_datos and col_m_recib and col_u_recib:
+        ultima_sem = semanas_con_datos[-1]
+        df_ultima_sem = df[df[col_semana] == ultima_sem]
+        recib_monto = df_ultima_sem[col_m_recib].sum() if col_m_recib in df.columns else 0
+        recib_unds = df_ultima_sem[col_u_recib].sum() if col_u_recib in df.columns else 0
+        if recib_monto == 0 and recib_unds == 0:
+          semanas_con_datos = semanas_con_datos[:-1]
+      ultimas_4_semanas = semanas_con_datos[-4:] if semanas_con_datos else []
 
       st.markdown("### 📅 Seleccionar Semana")
       opciones_semanas = {"Todas": "Todas"}
