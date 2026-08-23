@@ -1397,6 +1397,8 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         def calcular_alerta(fecha):
           if pd.isna(fecha):
             return "Sin Fecha"
+          if fecha < hoy:
+            return "Vencido"
           if fecha < limite_6m:
             return "Menos de 6 meses"
           elif fecha <= limite_13m:
@@ -1492,6 +1494,9 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
       if col_cant:
         total_unidades = df_dash[col_cant].sum()
+        total_vencido = df_dash[
+            df_dash["Alerta_Caducidad"] == "Vencido"
+        ][col_cant].sum()
         total_menos_6m = df_dash[
             df_dash["Alerta_Caducidad"] == "Menos de 6 meses"
         ][col_cant].sum()
@@ -1503,6 +1508,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         ][col_cant].sum()
       else:
         total_unidades = len(df_dash)
+        total_vencido = len(df_dash[df_dash["Alerta_Caducidad"] == "Vencido"])
         total_menos_6m = len(
             df_dash[df_dash["Alerta_Caducidad"] == "Menos de 6 meses"]
         )
@@ -1512,6 +1518,36 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         total_vigentes = len(
             df_dash[df_dash["Alerta_Caducidad"] == "Vigente (> 13m)"]
         )
+
+      # % de Stock Crítico: unidades ya vencidas + que vencen en menos de 6 meses,
+      # sobre el total de unidades registradas (con la selección de filtros activa).
+      total_critico = total_vencido + total_menos_6m
+      pct_critico = (
+          (total_critico / total_unidades * 100) if total_unidades > 0 else 0.0
+      )
+
+      st.markdown(
+          """
+              <style>
+              .critico-card { border-radius: 8px; padding: 14px 18px; margin-bottom: 15px;
+                border: 1px solid #333; display: flex; justify-content: space-between; align-items: center; }
+              </style>
+              """,
+          unsafe_allow_html=True,
+      )
+      color_pct_critico = (
+          "#e74c3c" if pct_critico >= 15
+          else "#f1c40f" if pct_critico >= 5
+          else "#2ecc71"
+      )
+      st.markdown(
+          '<div class="critico-card" style="background-color: #141414;">'
+          '<span style="color:#aaaaaa; font-weight:600; text-transform:uppercase; font-size:13px;">'
+          '⚠️ % de Stock Crítico (vencido + vence en &lt; 6 meses)</span>'
+          f'<span style="color:{color_pct_critico}; font-size:26px; font-weight:bold;">{pct_critico:.2f}%</span>'
+          "</div>",
+          unsafe_allow_html=True,
+      )
 
       with col_dash1:
         st.markdown(
@@ -1531,7 +1567,13 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         )
         st.markdown(
             '<div class="stock-card" style="background-color:'
-            ' #e74c3c;">Unidades < 6 meses<br><span'
+            ' #8b0000;">Vencido<br><span'
+            f' style="font-size:24px;">{formato_unidades(total_vencido)}</span></div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            '<div class="stock-card" style="background-color:'
+            ' #e74c3c;">Vence en &lt; 6 meses<br><span'
             f' style="font-size:24px;">{formato_unidades(total_menos_6m)}</span></div>',
             unsafe_allow_html=True,
         )
@@ -1550,9 +1592,9 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
       with col_dash2:
         st.markdown("#### Estado de caducidad")
-        labels = ["< 6 meses", "6 a 13 meses", "Vigente (> 13m)"]
-        values = [total_menos_6m, total_pronto, total_vigentes]
-        colors = ["#e74c3c", "#f1c40f", "#2ecc71"]
+        labels = ["Vencido", "< 6 meses", "6 a 13 meses", "Vigente (> 13m)"]
+        values = [total_vencido, total_menos_6m, total_pronto, total_vigentes]
+        colors = ["#8b0000", "#e74c3c", "#f1c40f", "#2ecc71"]
 
         if sum(values) > 0:
           fig_pie = go.Figure(
@@ -1628,6 +1670,78 @@ for i, nombre_hoja in enumerate(nombres_hojas):
           )
 
       st.divider()
+
+      # TOP LOCALIZADORES CON MÁS STOCK POR VENCER (Vencido + < 6 meses)
+      if col_loc and col_loc in df_dash.columns:
+        st.markdown("##### 📍 Top Localizadores con más Stock por Vencer")
+        df_critico = df_dash[
+            df_dash["Alerta_Caducidad"].isin(["Vencido", "Menos de 6 meses"])
+        ].copy()
+
+        if not df_critico.empty and (col_cant or True):
+          if col_cant:
+            grp_loc = (
+                df_critico.groupby(col_loc, dropna=False)[col_cant]
+                .sum()
+                .reset_index()
+                .rename(columns={col_cant: "Cantidad"})
+            )
+          else:
+            grp_loc = (
+                df_critico[col_loc]
+                .value_counts()
+                .reset_index()
+            )
+            grp_loc.columns = [col_loc, "Cantidad"]
+
+          grp_loc[col_loc] = grp_loc[col_loc].apply(
+              lambda x: str(x) if pd.notna(x) and str(x).strip() != "" else "Sin Localizador"
+          )
+          grp_loc = grp_loc.sort_values(by="Cantidad", ascending=False).head(10)
+
+          grp_loc_sorted = grp_loc.sort_values(by="Cantidad", ascending=True)
+          fig_loc = px.bar(
+              grp_loc_sorted,
+              x="Cantidad",
+              y=col_loc,
+              orientation="h",
+              text_auto=",.0f",
+              color_discrete_sequence=["#e74c3c"],
+          )
+          fig_loc.update_traces(
+              textfont_size=11, textposition="outside", cliponaxis=False
+          )
+          fig_loc.update_layout(
+              template="plotly_dark",
+              paper_bgcolor="rgba(0,0,0,0)",
+              plot_bgcolor="rgba(0,0,0,0)",
+              margin=dict(t=10, b=10, l=10, r=10),
+              height=280,
+              xaxis_title="",
+              yaxis_title="",
+          )
+          st.plotly_chart(
+              fig_loc, use_container_width=True, key=f"top_loc_stock_{i}"
+          )
+
+          grp_loc_disp = grp_loc.rename(columns={col_loc: "Localizador"})
+          st.dataframe(
+              grp_loc_disp,
+              column_config={
+                  "Cantidad": st.column_config.NumberColumn(
+                      "Cantidad", format="%,d"
+                  ),
+              },
+              hide_index=True,
+              use_container_width=True,
+          )
+        else:
+          st.info(
+              "No hay stock vencido ni por vencer en menos de 6 meses para"
+              " los filtros seleccionados."
+          )
+
+        st.divider()
 
       if col_estado_lote and col_estado_lote in df_dash.columns:
         st.markdown("##### 🏷️ Cantidad de Unidades por Estado de Lote")
