@@ -3,6 +3,7 @@ from datetime import datetime
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import streamlit as st
 
 # 1. Configuración de la página
@@ -396,6 +397,24 @@ for i, nombre_hoja in enumerate(nombres_hojas):
           ),
           "Factura",
       )
+      col_producto = next(
+          (
+              c
+              for c in df.columns
+              if "descripcion" in c.lower() or "producto" in c.lower()
+          ),
+          None,
+      )
+      col_sku_si = next(
+          (
+              c
+              for c in df.columns
+              if c.strip().lower()
+              in ["sku", "codigo_articulo", "codigo", "cod_articulo"]
+          ),
+          None,
+      )
+      col_prod_label = col_producto or col_sku_si
 
       df[col_monto] = (
           df[col_monto].apply(limpiar_numero) if col_monto in df.columns else 0
@@ -547,44 +566,77 @@ for i, nombre_hoja in enumerate(nombres_hojas):
           st.info("No hay datos de división disponibles.")
 
       with c_cli_view:
-        st.markdown("#### 🏆 Top Clientes por Facturación")
+        st.markdown("#### 🏆 Top Clientes por Facturación (Pareto)")
         if col_cliente in df_si_filt.columns and not df_si_filt.empty:
           grp_cli = (
               df_si_filt.groupby(col_cliente, as_index=False)
               .agg({col_monto: "sum", col_unid: "sum"})
               .sort_values(by=col_monto, ascending=False)
               .head(10)
+              .reset_index(drop=True)
           )
 
-          grp_cli_sorted = grp_cli.sort_values(by=col_monto, ascending=True)
-          fig_bars = px.bar(
-              grp_cli_sorted,
-              x=col_monto,
-              y=col_cliente,
-              orientation="h",
-              text_auto=".2s",
-              color_discrete_sequence=["#00CC96"],
+          total_monto_cli = df_si_filt[col_monto].sum()
+          grp_cli["Pct_Acumulado"] = (
+              (grp_cli[col_monto].cumsum() / total_monto_cli * 100)
+              if total_monto_cli > 0
+              else 0
           )
-          fig_bars.update_traces(
-              textfont_size=11, textposition="outside", cliponaxis=False
+
+          fig_pareto = make_subplots(specs=[[{"secondary_y": True}]])
+          fig_pareto.add_trace(
+              go.Bar(
+                  x=grp_cli[col_cliente],
+                  y=grp_cli[col_monto],
+                  name="Monto ($)",
+                  marker_color="#00CC96",
+                  text=grp_cli[col_monto].apply(formato_moneda),
+                  textposition="outside",
+              ),
+              secondary_y=False,
           )
-          fig_bars.update_layout(
+          fig_pareto.add_trace(
+              go.Scatter(
+                  x=grp_cli[col_cliente],
+                  y=grp_cli["Pct_Acumulado"],
+                  name="% Acumulado",
+                  mode="lines+markers+text",
+                  line=dict(color="#ffffff", width=2),
+                  marker=dict(size=6, color="#ffffff"),
+                  text=grp_cli["Pct_Acumulado"].apply(lambda x: f"{x:.0f}%"),
+                  textposition="top center",
+                  textfont=dict(color="#ffffff", size=10),
+              ),
+              secondary_y=True,
+          )
+          fig_pareto.update_layout(
               template="plotly_dark",
               paper_bgcolor="rgba(0,0,0,0)",
               plot_bgcolor="rgba(0,0,0,0)",
               margin=dict(t=10, b=10, l=10, r=10),
-              height=220,
-              xaxis_title="",
-              yaxis_title="",
+              height=280,
+              showlegend=False,
+              xaxis=dict(tickangle=-30),
+          )
+          fig_pareto.update_yaxes(
+              secondary_y=False, showgrid=False, title_text=""
+          )
+          fig_pareto.update_yaxes(
+              secondary_y=True,
+              range=[0, 110],
+              ticksuffix="%",
+              showgrid=False,
+              title_text="",
           )
           st.plotly_chart(
-              fig_bars, use_container_width=True, key=f"bars_cli_{i}"
+              fig_pareto, use_container_width=True, key=f"pareto_cli_{i}"
           )
 
           grp_cli_disp = pd.DataFrame({
               "Cliente": grp_cli[col_cliente],
               "Monto Total ($)": grp_cli[col_monto],
               "Unidades": grp_cli[col_unid],
+              "% Acumulado": grp_cli["Pct_Acumulado"],
           })
 
           st.dataframe(
@@ -596,12 +648,76 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                   "Unidades": st.column_config.NumberColumn(
                       "Unidades", format="%,d"
                   ),
+                  "% Acumulado": st.column_config.ProgressColumn(
+                      "% Acumulado", format="%.1f%%", min_value=0, max_value=100
+                  ),
               },
               hide_index=True,
               use_container_width=True,
           )
         else:
           st.info("No hay datos de clientes disponibles.")
+
+      st.divider()
+
+      st.markdown("#### 📦 Top Productos por Venta")
+      if col_prod_label and col_prod_label in df_si_filt.columns and not df_si_filt.empty:
+        grp_prod = (
+            df_si_filt.groupby(col_prod_label, as_index=False)
+            .agg({col_monto: "sum", col_unid: "sum"})
+            .sort_values(by=col_monto, ascending=False)
+            .head(10)
+        )
+
+        grp_prod_sorted = grp_prod.sort_values(by=col_monto, ascending=True)
+        fig_prod = px.bar(
+            grp_prod_sorted,
+            x=col_monto,
+            y=col_prod_label,
+            orientation="h",
+            text_auto=".2s",
+            color_discrete_sequence=["#0070f3"],
+        )
+        fig_prod.update_traces(
+            textfont_size=11, textposition="outside", cliponaxis=False
+        )
+        fig_prod.update_layout(
+            template="plotly_dark",
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            margin=dict(t=10, b=10, l=10, r=10),
+            height=280,
+            xaxis_title="",
+            yaxis_title="",
+        )
+        st.plotly_chart(
+            fig_prod, use_container_width=True, key=f"bars_prod_{i}"
+        )
+
+        grp_prod_disp = pd.DataFrame({
+            "Producto": grp_prod[col_prod_label],
+            "Monto Total ($)": grp_prod[col_monto],
+            "Unidades": grp_prod[col_unid],
+        })
+
+        st.dataframe(
+            grp_prod_disp,
+            column_config={
+                "Monto Total ($)": st.column_config.NumberColumn(
+                    "Monto Total ($)", format="$%,d"
+                ),
+                "Unidades": st.column_config.NumberColumn(
+                    "Unidades", format="%,d"
+                ),
+            },
+            hide_index=True,
+            use_container_width=True,
+        )
+      else:
+        st.info(
+            "No se encontró una columna de producto/SKU en esta hoja para"
+            " calcular el Top Productos."
+        )
 
       st.divider()
 
