@@ -1759,6 +1759,65 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
         st.divider()
 
+      detalle_filtro = "(General)"
+      partes_filtro = []
+      if codigo_sel != "Todos":
+        partes_filtro.append(f"Código: {codigo_sel}")
+      if sku_sb_sel != "Todos":
+        partes_filtro.append(f"SKU SB: {sku_sb_sel}")
+      if sku_pu_sel != "Todos":
+        partes_filtro.append(f"SKU PU: {sku_pu_sel}")
+      if filtro_actual != "Todos":
+        partes_filtro.append(f"Caducidad: {filtro_actual}")
+      if partes_filtro:
+        detalle_filtro = f"({' | '.join(partes_filtro)})"
+
+      st.subheader(f"📋 Detalle de Stock y Lotes {detalle_filtro}")
+
+      cols_mostrar = []
+      nombres_amigables = {}
+      if col_cod:
+        cols_mostrar.append(col_cod)
+        nombres_amigables[col_cod] = "Código Artículo"
+      if col_sku_sb and col_sku_sb in df_dash_alerta.columns:
+        cols_mostrar.append(col_sku_sb)
+        nombres_amigables[col_sku_sb] = "SKU SB"
+      if col_sku_pu and col_sku_pu in df_dash_alerta.columns:
+        cols_mostrar.append(col_sku_pu)
+        nombres_amigables[col_sku_pu] = "SKU PU"
+      if col_estado_sub:
+        cols_mostrar.append(col_estado_sub)
+        nombres_amigables[col_estado_sub] = "Estado Sub-Inv"
+      if col_estado_lote:
+        cols_mostrar.append(col_estado_lote)
+        nombres_amigables[col_estado_lote] = "Estado Lote"
+      if col_lote:
+        cols_mostrar.append(col_lote)
+        nombres_amigables[col_lote] = "Lote Proveedor"
+      if col_loc:
+        cols_mostrar.append(col_loc)
+        nombres_amigables[col_loc] = "Localizador"
+      if col_cant:
+        cols_mostrar.append(col_cant)
+        nombres_amigables[col_cant] = "Cantidad"
+      if col_fecha:
+        cols_mostrar.append(col_fecha)
+        nombres_amigables[col_fecha] = "Fecha Expiración"
+      cols_mostrar.append("Alerta_Caducidad")
+      nombres_amigables["Alerta_Caducidad"] = "Rango Caducidad"
+
+      df_vista_stock = df_dash_alerta[cols_mostrar].copy()
+      df_vista_stock = df_vista_stock.rename(columns=nombres_amigables)
+
+      if "Fecha Expiración" in df_vista_stock.columns:
+        df_vista_stock["Fecha Expiración"] = pd.to_datetime(
+            df_vista_stock["Fecha Expiración"], errors="coerce"
+        ).dt.strftime("%d-%m-%Y")
+
+      st.dataframe(df_vista_stock, hide_index=True, use_container_width=True)
+
+      st.divider()
+
       # TOP LOCALIZADORES CON MÁS STOCK POR VENCER (Vencido + < 6 meses,
       # o la categoría seleccionada en las tarjetas de arriba).
       if col_loc and col_loc in df_dash.columns:
@@ -1855,64 +1914,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
               " seleccionada."
           )
 
-        st.divider()
 
-      detalle_filtro = "(General)"
-      partes_filtro = []
-      if codigo_sel != "Todos":
-        partes_filtro.append(f"Código: {codigo_sel}")
-      if sku_sb_sel != "Todos":
-        partes_filtro.append(f"SKU SB: {sku_sb_sel}")
-      if sku_pu_sel != "Todos":
-        partes_filtro.append(f"SKU PU: {sku_pu_sel}")
-      if filtro_actual != "Todos":
-        partes_filtro.append(f"Caducidad: {filtro_actual}")
-      if partes_filtro:
-        detalle_filtro = f"({' | '.join(partes_filtro)})"
-
-      st.subheader(f"📋 Detalle de Stock y Lotes {detalle_filtro}")
-
-      cols_mostrar = []
-      nombres_amigables = {}
-      if col_cod:
-        cols_mostrar.append(col_cod)
-        nombres_amigables[col_cod] = "Código Artículo"
-      if col_sku_sb and col_sku_sb in df_dash_alerta.columns:
-        cols_mostrar.append(col_sku_sb)
-        nombres_amigables[col_sku_sb] = "SKU SB"
-      if col_sku_pu and col_sku_pu in df_dash_alerta.columns:
-        cols_mostrar.append(col_sku_pu)
-        nombres_amigables[col_sku_pu] = "SKU PU"
-      if col_estado_sub:
-        cols_mostrar.append(col_estado_sub)
-        nombres_amigables[col_estado_sub] = "Estado Sub-Inv"
-      if col_estado_lote:
-        cols_mostrar.append(col_estado_lote)
-        nombres_amigables[col_estado_lote] = "Estado Lote"
-      if col_lote:
-        cols_mostrar.append(col_lote)
-        nombres_amigables[col_lote] = "Lote Proveedor"
-      if col_loc:
-        cols_mostrar.append(col_loc)
-        nombres_amigables[col_loc] = "Localizador"
-      if col_cant:
-        cols_mostrar.append(col_cant)
-        nombres_amigables[col_cant] = "Cantidad"
-      if col_fecha:
-        cols_mostrar.append(col_fecha)
-        nombres_amigables[col_fecha] = "Fecha Expiración"
-      cols_mostrar.append("Alerta_Caducidad")
-      nombres_amigables["Alerta_Caducidad"] = "Rango Caducidad"
-
-      df_vista_stock = df_dash_alerta[cols_mostrar].copy()
-      df_vista_stock = df_vista_stock.rename(columns=nombres_amigables)
-
-      if "Fecha Expiración" in df_vista_stock.columns:
-        df_vista_stock["Fecha Expiración"] = pd.to_datetime(
-            df_vista_stock["Fecha Expiración"], errors="coerce"
-        ).dt.strftime("%d-%m-%Y")
-
-      st.dataframe(df_vista_stock, hide_index=True, use_container_width=True)
 
     # =================================================================
     # LÓGICA ORIGINAL PARA SB Y PU
