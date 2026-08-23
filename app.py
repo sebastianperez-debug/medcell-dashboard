@@ -1303,6 +1303,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
       col_dash1, col_dash2, col_dash3 = st.columns([1, 1.5, 1.5])
 
       # Filtros independientes de Código y SKU.
+      # El filtro SKU queda inmediatamente debajo del filtro Código.
       # El usuario puede filtrar por uno, por el otro o dejar ambos en general.
       with col_dash3:
         if col_cod:
@@ -1317,7 +1318,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         else:
           codigo_sel = "Todos"
 
-      with col_dash2:
+        # Nuevo filtro SKU: se muestra justo debajo del filtro Código.
         if col_sku_stock and col_sku_stock in df.columns:
           lista_skus = sorted(
               [str(x) for x in df[col_sku_stock].dropna().unique() if str(x).strip() != ""]
@@ -1512,10 +1513,15 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                   unsafe_allow_html=True,
               )
 
-      st.subheader(
-          "📋 Detalle de Stock y Lotes"
-          f" {f'(SKU: {prod_sel})' if prod_sel != 'Seleccione...' else '(General)'}"
-      )
+      detalle_filtro = "(General)"
+      if codigo_sel != "Todos" and sku_sel != "Todos":
+        detalle_filtro = f"(Código: {codigo_sel} | SKU: {sku_sel})"
+      elif codigo_sel != "Todos":
+        detalle_filtro = f"(Código: {codigo_sel})"
+      elif sku_sel != "Todos":
+        detalle_filtro = f"(SKU: {sku_sel})"
+
+      st.subheader(f"📋 Detalle de Stock y Lotes {detalle_filtro}")
 
       cols_mostrar = []
       nombres_amigables = {}
