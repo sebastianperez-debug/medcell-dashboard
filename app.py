@@ -405,6 +405,10 @@ for i, nombre_hoja in enumerate(nombres_hojas):
           ),
           None,
       )
+      # Respaldo directo por posición: columna J (índice 9) es la
+      # descripción del producto según la tabla del usuario.
+      if not col_producto and len(df.columns) > 9:
+        col_producto = df.columns[9]
       col_sku_si = next(
           (
               c
