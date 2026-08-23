@@ -1554,73 +1554,75 @@ for i, nombre_hoja in enumerate(nombres_hojas):
           unsafe_allow_html=True,
       )
 
-      # Filtro por categoría de caducidad, activado al hacer clic en una tarjeta.
-      key_alerta = f"filtro_alerta_stock_{i}"
-      if key_alerta not in st.session_state:
-        st.session_state[key_alerta] = "Todos"
+      # Filtro por categoría de caducidad: un selector simple y confiable
+      # (los botones coloreados con CSS no se pintaban bien en todos los casos).
+      label_map_alerta = {
+          "Todos": "Todos",
+          "Vencido": "Vencido",
+          "Vence en < 6 meses": "Menos de 6 meses",
+          "Pronto vence (6-13m)": "Pronto vence (6-13m)",
+          "Vigente (> 13m)": "Vigente (> 13m)",
+      }
+      key_alerta = f"radio_alerta_stock_{i}"
+      etiqueta_sel = st.radio(
+          "🔍 Filtrar por categoría de caducidad:",
+          list(label_map_alerta.keys()),
+          horizontal=True,
+          key=key_alerta,
+      )
+      filtro_actual = label_map_alerta[etiqueta_sel]
 
-      def _set_filtro_alerta(valor, k=key_alerta):
-        st.session_state[k] = valor
+      # df_dash filtrado por la categoría de caducidad seleccionada arriba.
+      # Se usa en las secciones de abajo (localizadores, estado de lote, detalle).
+      if filtro_actual != "Todos":
+        df_dash_alerta = df_dash[df_dash["Alerta_Caducidad"] == filtro_actual].copy()
+      else:
+        df_dash_alerta = df_dash.copy()
 
       with col_dash1:
         st.markdown(
             """
                 <style>
                 .stock-card { border-radius: 5px; padding: 15px; margin-bottom: 10px; text-align: center; color: white; font-weight: bold; }
-                div.card-marker { height: 0; margin: 0; padding: 0; }
-                div.card-marker + div.stButton { margin-bottom: 10px; }
-                div.card-marker + div.stButton > button {
-                  width: 100%; border-radius: 5px; padding: 15px; text-align: center;
-                  font-weight: bold; border: 2px solid transparent; white-space: pre-line;
-                }
-                div.marker-todos + div.stButton > button { background-color: #333; color: #ffffff; }
-                div.marker-vencido + div.stButton > button { background-color: #8b0000; color: #ffffff; }
-                div.marker-6m + div.stButton > button { background-color: #e74c3c; color: #ffffff; }
-                div.marker-pronto + div.stButton > button { background-color: #f1c40f; color: #000000; }
-                div.marker-vigente + div.stButton > button { background-color: #2ecc71; color: #000000; }
-                div.marker-todos.activo + div.stButton > button,
-                div.marker-vencido.activo + div.stButton > button,
-                div.marker-6m.activo + div.stButton > button,
-                div.marker-pronto.activo + div.stButton > button,
-                div.marker-vigente.activo + div.stButton > button {
-                  border: 2px solid #ffffff;
-                }
                 </style>
                 """,
             unsafe_allow_html=True,
         )
 
-        filtro_actual = st.session_state[key_alerta]
-        tarjetas = [
-            ("todos", "Todos", f"Unidades Registradas\n{formato_unidades(total_unidades)}"),
-            ("vencido", "Vencido", f"Vencido\n{formato_unidades(total_vencido)}"),
-            ("6m", "Menos de 6 meses", f"Vence en < 6 meses\n{formato_unidades(total_menos_6m)}"),
-            ("pronto", "Pronto vence (6-13m)", f"Pronto vence (6 a 13 meses)\n{formato_unidades(total_pronto)}"),
-            ("vigente", "Vigente (> 13m)", f"Vigentes (> 13 meses)\n{formato_unidades(total_vigentes)}"),
-        ]
-        for clase, valor_filtro, texto in tarjetas:
-          activa = " activo" if filtro_actual == valor_filtro else ""
-          st.markdown(
-              f'<div class="card-marker marker-{clase}{activa}"></div>',
-              unsafe_allow_html=True,
-          )
-          st.button(
-              texto,
-              key=f"btn_{clase}_stock_{i}",
-              use_container_width=True,
-              on_click=_set_filtro_alerta,
-              args=(valor_filtro,),
-          )
+        def _borde(valor):
+          return "border: 2px solid #ffffff;" if filtro_actual == valor else ""
 
-        if filtro_actual != "Todos":
-          st.caption(f"🔍 Filtrando por: **{filtro_actual}** — clic en \"Todos\" para quitar.")
-
-      # df_dash filtrado por la categoría de caducidad seleccionada (tarjetas).
-      # Se usa en las secciones de abajo (localizadores, estado de lote, detalle).
-      if filtro_actual != "Todos":
-        df_dash_alerta = df_dash[df_dash["Alerta_Caducidad"] == filtro_actual].copy()
-      else:
-        df_dash_alerta = df_dash.copy()
+        st.markdown(
+            '<div class="stock-card" style="background-color: #333; color:'
+            f' white; {_borde("Todos")}">Unidades Registradas<br><span'
+            f' style="font-size:24px;">{formato_unidades(total_unidades)}</span></div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            '<div class="stock-card" style="background-color:'
+            f' #8b0000; {_borde("Vencido")}">Vencido<br><span'
+            f' style="font-size:24px;">{formato_unidades(total_vencido)}</span></div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            '<div class="stock-card" style="background-color:'
+            f' #e74c3c; {_borde("Menos de 6 meses")}">Vence en &lt; 6 meses<br><span'
+            f' style="font-size:24px;">{formato_unidades(total_menos_6m)}</span></div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            '<div class="stock-card" style="background-color: #f1c40f; color:'
+            f' black; {_borde("Pronto vence (6-13m)")}">Pronto vence (6 a 13'
+            ' meses)<br><span'
+            f' style="font-size:24px;">{formato_unidades(total_pronto)}</span></div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            '<div class="stock-card" style="background-color:'
+            f' #2ecc71; {_borde("Vigente (> 13m)")}">Vigentes (> 13 meses)<br><span'
+            f' style="font-size:24px;">{formato_unidades(total_vigentes)}</span></div>',
+            unsafe_allow_html=True,
+        )
 
       with col_dash2:
         st.markdown("#### Estado de caducidad")
@@ -1628,58 +1630,28 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         values = [total_vencido, total_menos_6m, total_pronto, total_vigentes]
         colors = ["#8b0000", "#e74c3c", "#f1c40f", "#2ecc71"]
 
-        total_gral = sum(values)
-        if total_gral > 0:
-          porcentajes = [v / total_gral * 100 for v in values]
-          fig_barra = go.Figure()
-          for lbl, val, pct, color in zip(labels, values, porcentajes, colors):
-            texto_seg = f"{pct:.1f}%" if pct >= 3 else ""
-            fig_barra.add_trace(
-                go.Bar(
-                    y=["Stock"],
-                    x=[val],
-                    name=lbl,
-                    orientation="h",
-                    marker=dict(color=color),
-                    text=texto_seg,
-                    textposition="inside",
-                    insidetextanchor="middle",
-                    textfont=dict(
-                        color="#ffffff" if lbl != "6 a 13 meses" else "#000000",
-                        size=13,
-                    ),
-                    hovertemplate=f"{lbl}: %{{x:,.0f}} ({pct:.2f}%)<extra></extra>",
-                )
-            )
-          fig_barra.update_layout(
-              barmode="stack",
-              height=140,
-              margin=dict(t=10, b=10, l=10, r=10),
+        if sum(values) > 0:
+          fig_pie = go.Figure(
+              data=[
+                  go.Pie(
+                      labels=labels,
+                      values=values,
+                      hole=0.5,
+                      marker=dict(colors=colors),
+                  )
+              ]
+          )
+          fig_pie.update_layout(
+              height=300,
+              margin=dict(t=0, b=0, l=0, r=0),
               paper_bgcolor="rgba(0,0,0,0)",
-              plot_bgcolor="rgba(0,0,0,0)",
               font=dict(color="#ffffff"),
               showlegend=True,
-              legend=dict(orientation="h", y=-0.35),
-              xaxis=dict(visible=False),
-              yaxis=dict(visible=False),
+              legend=dict(orientation="h", y=-0.1),
           )
           st.plotly_chart(
-              fig_barra, use_container_width=True, key=f"pie_stock_{i}"
+              fig_pie, use_container_width=True, key=f"pie_stock_{i}"
           )
-
-          # Tarjetas pequeñas con el detalle de cada segmento, para que los
-          # porcentajes muy chicos (que no caben en la barra) igual se vean.
-          cols_pct = st.columns(4)
-          for col_p, lbl, val, pct, color in zip(cols_pct, labels, values, porcentajes, colors):
-            with col_p:
-              st.markdown(
-                  f'<div style="text-align:center; padding:6px; border-radius:6px; background-color:#1a1a1a;">'
-                  f'<div style="width:10px; height:10px; border-radius:50%; background-color:{color}; margin:0 auto 4px auto;"></div>'
-                  f'<div style="font-size:12px; color:#aaaaaa;">{lbl}</div>'
-                  f'<div style="font-size:15px; font-weight:bold; color:#ffffff;">{pct:.2f}%</div>'
-                  "</div>",
-                  unsafe_allow_html=True,
-              )
         else:
           st.info("Sin registros para mostrar.")
 
