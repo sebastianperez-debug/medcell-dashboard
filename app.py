@@ -1234,6 +1234,47 @@ for i, nombre_hoja in enumerate(nombres_hojas):
       if col_cod and col_cod in df.columns:
         df[col_cod] = df[col_cod].apply(fmt_code)
 
+      # ---------------------------------------------------------------
+      # MAESTRA DE SKU
+      # La hoja "sku" contiene: columna A = código de artículo,
+      # columna B = codigo_sb y columna C = codigo_pu.
+      # Se utiliza para agregar un filtro independiente de SKU en STOCK.
+      # ---------------------------------------------------------------
+      col_sku_stock = None
+      mapa_sku_stock = {}
+      try:
+        hoja_sku = next(
+            (h for h in hojas.keys() if h.strip().lower() == "sku"), None
+        )
+        if hoja_sku and col_cod and col_cod in df.columns:
+          df_maestra_sku = hojas[hoja_sku].copy()
+          if len(df_maestra_sku.columns) >= 3:
+            col_maestra_codigo = df_maestra_sku.columns[0]
+            col_maestra_sb = next(
+                (c for c in df_maestra_sku.columns if c.strip().lower() == "codigo_sb"),
+                df_maestra_sku.columns[1],
+            )
+            col_maestra_pu = next(
+                (c for c in df_maestra_sku.columns if c.strip().lower() == "codigo_pu"),
+                df_maestra_sku.columns[2],
+            )
+
+            # Normalizamos código de artículo y SKU como texto para no perder ceros.
+            df_maestra_sku["__codigo_key"] = df_maestra_sku[col_maestra_codigo].apply(fmt_code)
+            col_sku_maestra = col_maestra_sb if nombre_clean == "SB" else col_maestra_pu
+            col_sku_stock = "SKU"
+            df_maestra_sku["__sku_val"] = df_maestra_sku[col_sku_maestra].apply(fmt_code)
+            mapa_sku_stock = (
+                df_maestra_sku.dropna(subset=["__codigo_key"])
+                .drop_duplicates(subset=["__codigo_key"], keep="first")
+                .set_index("__codigo_key")["__sku_val"]
+                .to_dict()
+            )
+            df[col_sku_stock] = df[col_cod].map(mapa_sku_stock).fillna("")
+      except Exception:
+        # Si la maestra no está disponible, STOCK continúa funcionando normalmente.
+        col_sku_stock = None
+
       if col_cant:
         df[col_cant] = df[col_cant].apply(limpiar_numero)
 
@@ -1261,21 +1302,47 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
       col_dash1, col_dash2, col_dash3 = st.columns([1, 1.5, 1.5])
 
+      # Filtros independientes de Código y SKU.
+      # El usuario puede filtrar por uno, por el otro o dejar ambos en general.
       with col_dash3:
         if col_cod:
-          lista_prods = sorted([str(x) for x in df[col_cod].dropna().unique()])
-          prod_sel = st.selectbox(
-              "Elija un producto (Código / SKU):",
-              ["Seleccione..."] + lista_prods,
-              key=f"sel_prod_{i}",
+          lista_codigos = sorted(
+              [str(x) for x in df[col_cod].dropna().unique() if str(x).strip() != ""]
+          )
+          codigo_sel = st.selectbox(
+              "Código:",
+              ["Todos"] + lista_codigos,
+              key=f"sel_codigo_stock_{i}",
           )
         else:
-          prod_sel = "Seleccione..."
+          codigo_sel = "Todos"
 
-      if prod_sel != "Seleccione...":
-        df_dash = df[df[col_cod].astype(str) == prod_sel].copy()
+      with col_dash2:
+        if col_sku_stock and col_sku_stock in df.columns:
+          lista_skus = sorted(
+              [str(x) for x in df[col_sku_stock].dropna().unique() if str(x).strip() != ""]
+          )
+          sku_sel = st.selectbox(
+              "SKU:",
+              ["Todos"] + lista_skus,
+              key=f"sel_sku_stock_{i}",
+          )
+        else:
+          sku_sel = "Todos"
+
+      df_dash = df.copy()
+      if codigo_sel != "Todos" and col_cod:
+        df_dash = df_dash[df_dash[col_cod].astype(str) == codigo_sel].copy()
+      if sku_sel != "Todos" and col_sku_stock and col_sku_stock in df_dash.columns:
+        df_dash = df_dash[df_dash[col_sku_stock].astype(str) == sku_sel].copy()
+
+      # Texto para mantener compatibilidad con el resto del dashboard.
+      if codigo_sel != "Todos":
+        prod_sel = codigo_sel
+      elif sku_sel != "Todos":
+        prod_sel = sku_sel
       else:
-        df_dash = df.copy()
+        prod_sel = "Seleccione..."
 
       if col_cant:
         total_unidades = df_dash[col_cant].sum()
@@ -1455,6 +1522,9 @@ for i, nombre_hoja in enumerate(nombres_hojas):
       if col_cod:
         cols_mostrar.append(col_cod)
         nombres_amigables[col_cod] = "Código Artículo"
+      if col_sku_stock and col_sku_stock in df_dash.columns:
+        cols_mostrar.append(col_sku_stock)
+        nombres_amigables[col_sku_stock] = "SKU"
       if col_estado_sub:
         cols_mostrar.append(col_estado_sub)
         nombres_amigables[col_estado_sub] = "Estado Sub-Inv"
