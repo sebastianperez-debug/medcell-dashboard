@@ -1285,6 +1285,16 @@ for i, nombre_hoja in enumerate(nombres_hojas):
       col_dash1, col_dash2, col_dash3 = st.columns([1, 1.2, 2])
 
       # Filtros de STOCK: Código, SKU SB (columna B) y SKU PU (columna C).
+      # Son mutuamente excluyentes: al elegir uno, los otros dos vuelven a "Todos".
+      key_codigo = f"sel_codigo_stock_{i}"
+      key_sku_sb = f"sel_sku_sb_stock_{i}"
+      key_sku_pu = f"sel_sku_pu_stock_{i}"
+
+      def _limpiar_otros_filtros(keys_a_limpiar):
+        for k in keys_a_limpiar:
+          if k in st.session_state:
+            st.session_state[k] = "Todos"
+
       with col_dash3:
         filtro_codigo_col, filtro_sku_sb_col, filtro_sku_pu_col = st.columns(3)
 
@@ -1296,7 +1306,9 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             codigo_sel = st.selectbox(
                 "Código:",
                 ["Todos"] + lista_codigos,
-                key=f"sel_codigo_stock_{i}",
+                key=key_codigo,
+                on_change=_limpiar_otros_filtros,
+                args=([key_sku_sb, key_sku_pu],),
             )
           else:
             codigo_sel = "Todos"
@@ -1309,7 +1321,9 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             sku_sb_sel = st.selectbox(
                 "SKU SB:",
                 ["Todos"] + lista_sku_sb,
-                key=f"sel_sku_sb_stock_{i}",
+                key=key_sku_sb,
+                on_change=_limpiar_otros_filtros,
+                args=([key_codigo, key_sku_pu],),
             )
           else:
             sku_sb_sel = "Todos"
@@ -1322,7 +1336,9 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             sku_pu_sel = st.selectbox(
                 "SKU PU:",
                 ["Todos"] + lista_sku_pu,
-                key=f"sel_sku_pu_stock_{i}",
+                key=key_sku_pu,
+                on_change=_limpiar_otros_filtros,
+                args=([key_codigo, key_sku_sb],),
             )
           else:
             sku_pu_sel = "Todos"
