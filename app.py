@@ -1307,7 +1307,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 [str(x) for x in df[col_sku_sb].dropna().unique() if str(x).strip() != "" and str(x) != "S/N"]
             )
             sku_sb_sel = st.selectbox(
-                "SKU SB (col. B):",
+                "SKU SB:",
                 ["Todos"] + lista_sku_sb,
                 key=f"sel_sku_sb_stock_{i}",
             )
@@ -1320,7 +1320,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 [str(x) for x in df[col_sku_pu].dropna().unique() if str(x).strip() != "" and str(x) != "S/N"]
             )
             sku_pu_sel = st.selectbox(
-                "SKU PU (col. C):",
+                "SKU PU:",
                 ["Todos"] + lista_sku_pu,
                 key=f"sel_sku_pu_stock_{i}",
             )
@@ -1535,10 +1535,10 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         nombres_amigables[col_cod] = "Código Artículo"
       if col_sku_sb and col_sku_sb in df_dash.columns:
         cols_mostrar.append(col_sku_sb)
-        nombres_amigables[col_sku_sb] = "SKU SB (col. B)"
+        nombres_amigables[col_sku_sb] = "SKU SB"
       if col_sku_pu and col_sku_pu in df_dash.columns:
         cols_mostrar.append(col_sku_pu)
-        nombres_amigables[col_sku_pu] = "SKU PU (col. C)"
+        nombres_amigables[col_sku_pu] = "SKU PU"
       if col_estado_sub:
         cols_mostrar.append(col_estado_sub)
         nombres_amigables[col_estado_sub] = "Estado Sub-Inv"
