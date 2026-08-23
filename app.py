@@ -1633,28 +1633,45 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         values = [total_vencido, total_menos_6m, total_pronto, total_vigentes]
         colors = ["#8b0000", "#e74c3c", "#f1c40f", "#2ecc71"]
 
-        if sum(values) > 0:
+        total_donut = sum(values)
+        if total_donut > 0:
+          # Texto propio con 2 decimales para que los segmentos muy chicos
+          # (ej. 0.00%) también se alcancen a leer bien, afuera de la dona.
+          textos_pct = [
+              f"{lbl}<br>{(v / total_donut * 100):.2f}%"
+              for lbl, v in zip(labels, values)
+          ]
           fig_pie = go.Figure(
               data=[
                   go.Pie(
                       labels=labels,
                       values=values,
-                      hole=0.5,
-                      marker=dict(colors=colors),
+                      hole=0.55,
+                      marker=dict(colors=colors, line=dict(color="#0e1117", width=2)),
+                      text=textos_pct,
+                      texttemplate="%{text}",
+                      textposition="outside",
+                      textfont=dict(size=12, color="#ffffff"),
                   )
               ]
           )
           fig_pie.update_layout(
-              height=320,
-              margin=dict(t=10, b=0, l=0, r=0),
+              height=380,
+              margin=dict(t=20, b=60, l=60, r=60),
               paper_bgcolor="rgba(0,0,0,0)",
               font=dict(color="#ffffff"),
               showlegend=True,
-              legend=dict(orientation="h", y=-0.1),
+              legend=dict(
+                  orientation="h",
+                  y=-0.15,
+                  x=0.5,
+                  xanchor="center",
+                  yanchor="top",
+              ),
           )
           # Se centra el gráfico dentro de la columna para que no quede
           # estirado a lo ancho ni deje espacio vacío desbalanceado.
-          _pad_chart_izq, col_chart, _pad_chart_der = st.columns([0.5, 2, 0.5])
+          _pad_chart_izq, col_chart, _pad_chart_der = st.columns([0.3, 2, 0.3])
           with col_chart:
             st.plotly_chart(
                 fig_pie, use_container_width=True, key=f"pie_stock_{i}"
