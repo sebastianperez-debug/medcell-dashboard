@@ -203,19 +203,25 @@ def aplicar_criticidad(column):
   is_total = column.index == (len(column) - 1)
   styles = []
   for i, val in enumerate(column):
+    # Acepta tanto números como strings ya formateados (ej. "18.16%"),
+    # así la columna puede exportarse a CSV como texto sin romper el color.
+    try:
+      val_num = float(str(val).replace("%", "").replace(",", ".").strip())
+    except (ValueError, TypeError):
+      val_num = 0.0
     if is_total[i]:
       styles.append("font-weight: bold; background-color: #1a1a1a;")
-    elif val >= 15.0:
+    elif val_num >= 15.0:
       styles.append(
           "background-color: #8b0000; color: #ffffff; font-weight: bold;"
       )
-    elif val >= 10.0:
+    elif val_num >= 10.0:
       styles.append(
           "background-color: #b91c1c; color: #ffffff; font-weight: bold;"
       )
-    elif val >= 5.0:
+    elif val_num >= 5.0:
       styles.append("background-color: #c2410c; color: #ffffff;")
-    elif val > 0:
+    elif val_num > 0:
       styles.append("background-color: #27272a; color: #d4d4d8;")
     else:
       styles.append("")
@@ -2617,7 +2623,9 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             grp_m_disp["MONTO QUIEBRE"] = grp_m["quiebre_monto_calc"].apply(
                 lambda x: f"-{formato_moneda(abs(x))}"
             )
-            grp_m_disp["QUIEBRE %"] = grp_m["pct_quiebre"]
+            grp_m_disp["QUIEBRE %"] = grp_m["pct_quiebre"].apply(
+                lambda x: f"{x:.2f}%"
+            )
 
             total_compra_div = grp_m[col_m_compra].sum()
             fila_total = pd.DataFrame([{
@@ -2626,15 +2634,15 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 "MONTO QUIEBRE": (
                     f"-{formato_moneda(abs(total_quiebre_div))}"
                 ),
-                "QUIEBRE %": 100.0,
+                "QUIEBRE %": "100.00%",
             }])
             grp_m_final = pd.concat(
                 [grp_m_disp, fila_total], ignore_index=True
             )
 
-            styled_df = grp_m_final.style.format(
-                {"QUIEBRE %": "{:.2f}%"}
-            ).apply(aplicar_criticidad, subset=["QUIEBRE %"])
+            styled_df = grp_m_final.style.apply(
+                aplicar_criticidad, subset=["QUIEBRE %"]
+            )
             st.dataframe(styled_df, hide_index=True, use_container_width=True)
           else:
             st.info(
@@ -2678,7 +2686,9 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 grp_m_disp["MONTO QUIEBRE"] = grp_m["quiebre_monto_calc"].apply(
                     lambda x: f"-{formato_moneda(abs(x))}"
                 )
-                grp_m_disp["QUIEBRE %"] = grp_m["pct_quiebre"]
+                grp_m_disp["QUIEBRE %"] = grp_m["pct_quiebre"].apply(
+                    lambda x: f"{x:.2f}%"
+                )
 
                 total_compra_div = grp_m[col_m_compra].sum()
                 fila_total = pd.DataFrame([{
@@ -2687,15 +2697,15 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                     "MONTO QUIEBRE": (
                         f"-{formato_moneda(abs(total_quiebre_div))}"
                     ),
-                    "QUIEBRE %": 100.0,
+                    "QUIEBRE %": "100.00%",
                 }])
                 grp_m_final = pd.concat(
                     [grp_m_disp, fila_total], ignore_index=True
                 )
 
-                styled_df = grp_m_final.style.format(
-                    {"QUIEBRE %": "{:.2f}%"}
-                ).apply(aplicar_criticidad, subset=["QUIEBRE %"])
+                styled_df = grp_m_final.style.apply(
+                    aplicar_criticidad, subset=["QUIEBRE %"]
+                )
                 st.dataframe(
                     styled_df, hide_index=True, use_container_width=True
                 )
