@@ -2487,11 +2487,37 @@ for i, nombre_hoja in enumerate(nombres_hojas):
               lbl_metric = "Fill Rate General (Unidades)"
 
             st.markdown(f"#### 📌 RESUMEN GENERAL PU (Sem {fmt_sem(sem_top)})")
-            st.metric(
-                label=lbl_metric,
-                value=f"{fr_div_pct:.1f}%",
-                delta=delta_str,
-            )
+            col_metric_fr, col_metric_oc = st.columns(2)
+            with col_metric_fr:
+              st.metric(
+                  label=lbl_metric,
+                  value=f"{fr_div_pct:.1f}%",
+                  delta=delta_str,
+              )
+
+            # % de OC cumplidas al 100% (sin quiebre en ninguna de sus líneas)
+            # vs OC que tuvieron algún quiebre, para la semana seleccionada.
+            if col_oc and col_oc in df_sem_top.columns:
+              grp_oc_cumpl = df_sem_top.groupby(col_oc)[
+                  "quiebre_unid_calc"
+              ].sum()
+              total_oc_sem = grp_oc_cumpl.shape[0]
+              oc_cumplidas = int((grp_oc_cumpl <= 0).sum())
+              oc_con_quiebre = total_oc_sem - oc_cumplidas
+              pct_oc_cumplidas = (
+                  (oc_cumplidas / total_oc_sem * 100) if total_oc_sem > 0 else 0.0
+              )
+
+              with col_metric_oc:
+                st.metric(
+                    label="OC Cumplidas al 100%",
+                    value=f"{pct_oc_cumplidas:.1f}%",
+                    delta=(
+                        f"{oc_cumplidas} de {total_oc_sem} OC"
+                        f" ({oc_con_quiebre} con quiebre)"
+                    ),
+                    delta_color="off",
+                )
 
             grp_top = df_sem_top.groupby(
                 [col_sku, col_desc], as_index=False
