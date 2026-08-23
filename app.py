@@ -1335,6 +1335,11 @@ for i, nombre_hoja in enumerate(nombres_hojas):
           ),
           None,
       )
+      col_desc_stock = next(
+          (c for c in df.columns if "descripcion" in c.lower()), None
+      )
+      if not col_desc_stock and len(df.columns) > 3:
+        col_desc_stock = df.columns[3]  # Columna D
       col_fecha = next(
           (
               c
@@ -1549,46 +1554,73 @@ for i, nombre_hoja in enumerate(nombres_hojas):
           unsafe_allow_html=True,
       )
 
+      # Filtro por categoría de caducidad, activado al hacer clic en una tarjeta.
+      key_alerta = f"filtro_alerta_stock_{i}"
+      if key_alerta not in st.session_state:
+        st.session_state[key_alerta] = "Todos"
+
+      def _set_filtro_alerta(valor, k=key_alerta):
+        st.session_state[k] = valor
+
       with col_dash1:
         st.markdown(
             """
                 <style>
                 .stock-card { border-radius: 5px; padding: 15px; margin-bottom: 10px; text-align: center; color: white; font-weight: bold; }
+                div.card-marker { height: 0; margin: 0; padding: 0; }
+                div.card-marker + div.stButton { margin-bottom: 10px; }
+                div.card-marker + div.stButton > button {
+                  width: 100%; border-radius: 5px; padding: 15px; text-align: center;
+                  font-weight: bold; border: 2px solid transparent; white-space: pre-line;
+                }
+                div.marker-todos + div.stButton > button { background-color: #333; color: #ffffff; }
+                div.marker-vencido + div.stButton > button { background-color: #8b0000; color: #ffffff; }
+                div.marker-6m + div.stButton > button { background-color: #e74c3c; color: #ffffff; }
+                div.marker-pronto + div.stButton > button { background-color: #f1c40f; color: #000000; }
+                div.marker-vigente + div.stButton > button { background-color: #2ecc71; color: #000000; }
+                div.marker-todos.activo + div.stButton > button,
+                div.marker-vencido.activo + div.stButton > button,
+                div.marker-6m.activo + div.stButton > button,
+                div.marker-pronto.activo + div.stButton > button,
+                div.marker-vigente.activo + div.stButton > button {
+                  border: 2px solid #ffffff;
+                }
                 </style>
                 """,
             unsafe_allow_html=True,
         )
 
-        st.markdown(
-            '<div class="stock-card" style="background-color: #333; color:'
-            ' white;">Unidades Registradas<br><span'
-            f' style="font-size:24px;">{formato_unidades(total_unidades)}</span></div>',
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            '<div class="stock-card" style="background-color:'
-            ' #8b0000;">Vencido<br><span'
-            f' style="font-size:24px;">{formato_unidades(total_vencido)}</span></div>',
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            '<div class="stock-card" style="background-color:'
-            ' #e74c3c;">Vence en &lt; 6 meses<br><span'
-            f' style="font-size:24px;">{formato_unidades(total_menos_6m)}</span></div>',
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            '<div class="stock-card" style="background-color: #f1c40f; color:'
-            ' black;">Pronto vence (6 a 13 meses)<br><span'
-            f' style="font-size:24px;">{formato_unidades(total_pronto)}</span></div>',
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            '<div class="stock-card" style="background-color:'
-            ' #2ecc71;">Vigentes (> 13 meses)<br><span'
-            f' style="font-size:24px;">{formato_unidades(total_vigentes)}</span></div>',
-            unsafe_allow_html=True,
-        )
+        filtro_actual = st.session_state[key_alerta]
+        tarjetas = [
+            ("todos", "Todos", f"Unidades Registradas\n{formato_unidades(total_unidades)}"),
+            ("vencido", "Vencido", f"Vencido\n{formato_unidades(total_vencido)}"),
+            ("6m", "Menos de 6 meses", f"Vence en < 6 meses\n{formato_unidades(total_menos_6m)}"),
+            ("pronto", "Pronto vence (6-13m)", f"Pronto vence (6 a 13 meses)\n{formato_unidades(total_pronto)}"),
+            ("vigente", "Vigente (> 13m)", f"Vigentes (> 13 meses)\n{formato_unidades(total_vigentes)}"),
+        ]
+        for clase, valor_filtro, texto in tarjetas:
+          activa = " activo" if filtro_actual == valor_filtro else ""
+          st.markdown(
+              f'<div class="card-marker marker-{clase}{activa}"></div>',
+              unsafe_allow_html=True,
+          )
+          st.button(
+              texto,
+              key=f"btn_{clase}_stock_{i}",
+              use_container_width=True,
+              on_click=_set_filtro_alerta,
+              args=(valor_filtro,),
+          )
+
+        if filtro_actual != "Todos":
+          st.caption(f"🔍 Filtrando por: **{filtro_actual}** — clic en \"Todos\" para quitar.")
+
+      # df_dash filtrado por la categoría de caducidad seleccionada (tarjetas).
+      # Se usa en las secciones de abajo (localizadores, estado de lote, detalle).
+      if filtro_actual != "Todos":
+        df_dash_alerta = df_dash[df_dash["Alerta_Caducidad"] == filtro_actual].copy()
+      else:
+        df_dash_alerta = df_dash.copy()
 
       with col_dash2:
         st.markdown("#### Estado de caducidad")
@@ -1596,28 +1628,58 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         values = [total_vencido, total_menos_6m, total_pronto, total_vigentes]
         colors = ["#8b0000", "#e74c3c", "#f1c40f", "#2ecc71"]
 
-        if sum(values) > 0:
-          fig_pie = go.Figure(
-              data=[
-                  go.Pie(
-                      labels=labels,
-                      values=values,
-                      hole=0.5,
-                      marker=dict(colors=colors),
-                  )
-              ]
-          )
-          fig_pie.update_layout(
-              height=300,
-              margin=dict(t=0, b=0, l=0, r=0),
+        total_gral = sum(values)
+        if total_gral > 0:
+          porcentajes = [v / total_gral * 100 for v in values]
+          fig_barra = go.Figure()
+          for lbl, val, pct, color in zip(labels, values, porcentajes, colors):
+            texto_seg = f"{pct:.1f}%" if pct >= 3 else ""
+            fig_barra.add_trace(
+                go.Bar(
+                    y=["Stock"],
+                    x=[val],
+                    name=lbl,
+                    orientation="h",
+                    marker=dict(color=color),
+                    text=texto_seg,
+                    textposition="inside",
+                    insidetextanchor="middle",
+                    textfont=dict(
+                        color="#ffffff" if lbl != "6 a 13 meses" else "#000000",
+                        size=13,
+                    ),
+                    hovertemplate=f"{lbl}: %{{x:,.0f}} ({pct:.2f}%)<extra></extra>",
+                )
+            )
+          fig_barra.update_layout(
+              barmode="stack",
+              height=140,
+              margin=dict(t=10, b=10, l=10, r=10),
               paper_bgcolor="rgba(0,0,0,0)",
+              plot_bgcolor="rgba(0,0,0,0)",
               font=dict(color="#ffffff"),
               showlegend=True,
-              legend=dict(orientation="h", y=-0.1),
+              legend=dict(orientation="h", y=-0.35),
+              xaxis=dict(visible=False),
+              yaxis=dict(visible=False),
           )
           st.plotly_chart(
-              fig_pie, use_container_width=True, key=f"pie_stock_{i}"
+              fig_barra, use_container_width=True, key=f"pie_stock_{i}"
           )
+
+          # Tarjetas pequeñas con el detalle de cada segmento, para que los
+          # porcentajes muy chicos (que no caben en la barra) igual se vean.
+          cols_pct = st.columns(4)
+          for col_p, lbl, val, pct, color in zip(cols_pct, labels, values, porcentajes, colors):
+            with col_p:
+              st.markdown(
+                  f'<div style="text-align:center; padding:6px; border-radius:6px; background-color:#1a1a1a;">'
+                  f'<div style="width:10px; height:10px; border-radius:50%; background-color:{color}; margin:0 auto 4px auto;"></div>'
+                  f'<div style="font-size:12px; color:#aaaaaa;">{lbl}</div>'
+                  f'<div style="font-size:15px; font-weight:bold; color:#ffffff;">{pct:.2f}%</div>'
+                  "</div>",
+                  unsafe_allow_html=True,
+              )
         else:
           st.info("Sin registros para mostrar.")
 
@@ -1671,39 +1733,62 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
       st.divider()
 
-      # TOP LOCALIZADORES CON MÁS STOCK POR VENCER (Vencido + < 6 meses)
+      # TOP LOCALIZADORES CON MÁS STOCK POR VENCER (Vencido + < 6 meses,
+      # o la categoría seleccionada en las tarjetas de arriba).
       if col_loc and col_loc in df_dash.columns:
-        st.markdown("##### 📍 Top Localizadores con más Stock por Vencer")
-        df_critico = df_dash[
-            df_dash["Alerta_Caducidad"].isin(["Vencido", "Menos de 6 meses"])
+        if filtro_actual != "Todos":
+          titulo_loc = f"##### 📍 Top Localizadores — {filtro_actual}"
+          df_critico = df_dash_alerta.copy()
+        else:
+          titulo_loc = "##### 📍 Top Localizadores con más Stock por Vencer"
+          df_critico = df_dash[
+              df_dash["Alerta_Caducidad"].isin(["Vencido", "Menos de 6 meses"])
+          ].copy()
+
+        st.markdown(titulo_loc)
+
+        # Se excluyen las filas sin localizador registrado.
+        df_critico = df_critico[
+            df_critico[col_loc].notna()
+            & (df_critico[col_loc].astype(str).str.strip() != "")
         ].copy()
 
-        if not df_critico.empty and (col_cant or True):
+        if not df_critico.empty:
+          cols_group = [col_loc]
+          if col_desc_stock and col_desc_stock in df_critico.columns:
+            cols_group.append(col_desc_stock)
+
           if col_cant:
             grp_loc = (
-                df_critico.groupby(col_loc, dropna=False)[col_cant]
+                df_critico.groupby(cols_group, dropna=False)[col_cant]
                 .sum()
                 .reset_index()
                 .rename(columns={col_cant: "Cantidad"})
             )
           else:
             grp_loc = (
-                df_critico[col_loc]
-                .value_counts()
-                .reset_index()
+                df_critico.groupby(cols_group, dropna=False)
+                .size()
+                .reset_index(name="Cantidad")
             )
-            grp_loc.columns = [col_loc, "Cantidad"]
 
-          grp_loc[col_loc] = grp_loc[col_loc].apply(
-              lambda x: str(x) if pd.notna(x) and str(x).strip() != "" else "Sin Localizador"
-          )
           grp_loc = grp_loc.sort_values(by="Cantidad", ascending=False).head(10)
 
-          grp_loc_sorted = grp_loc.sort_values(by="Cantidad", ascending=True)
+          etiqueta_barra = (
+              grp_loc[col_loc].astype(str)
+              + (
+                  " — " + grp_loc[col_desc_stock].astype(str)
+                  if col_desc_stock and col_desc_stock in grp_loc.columns
+                  else ""
+              )
+          )
+          grp_loc_sorted = grp_loc.assign(_etiqueta=etiqueta_barra).sort_values(
+              by="Cantidad", ascending=True
+          )
           fig_loc = px.bar(
               grp_loc_sorted,
               x="Cantidad",
-              y=col_loc,
+              y="_etiqueta",
               orientation="h",
               text_auto=",.0f",
               color_discrete_sequence=["#e74c3c"],
@@ -1716,7 +1801,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
               paper_bgcolor="rgba(0,0,0,0)",
               plot_bgcolor="rgba(0,0,0,0)",
               margin=dict(t=10, b=10, l=10, r=10),
-              height=280,
+              height=320,
               xaxis_title="",
               yaxis_title="",
           )
@@ -1724,7 +1809,10 @@ for i, nombre_hoja in enumerate(nombres_hojas):
               fig_loc, use_container_width=True, key=f"top_loc_stock_{i}"
           )
 
-          grp_loc_disp = grp_loc.rename(columns={col_loc: "Localizador"})
+          rename_cols = {col_loc: "Localizador"}
+          if col_desc_stock and col_desc_stock in grp_loc.columns:
+            rename_cols[col_desc_stock] = "Descripción Producto"
+          grp_loc_disp = grp_loc.rename(columns=rename_cols)
           st.dataframe(
               grp_loc_disp,
               column_config={
@@ -1737,20 +1825,20 @@ for i, nombre_hoja in enumerate(nombres_hojas):
           )
         else:
           st.info(
-              "No hay stock vencido ni por vencer en menos de 6 meses para"
-              " los filtros seleccionados."
+              "No hay stock (con localizador registrado) para la categoría"
+              " seleccionada."
           )
 
         st.divider()
 
-      if col_estado_lote and col_estado_lote in df_dash.columns:
+      if col_estado_lote and col_estado_lote in df_dash_alerta.columns:
         st.markdown("##### 🏷️ Cantidad de Unidades por Estado de Lote")
         df_est_grp = (
-            df_dash.groupby(col_estado_lote, dropna=False)[col_cant]
+            df_dash_alerta.groupby(col_estado_lote, dropna=False)[col_cant]
             .sum()
             .reset_index()
             if col_cant
-            else df_dash[col_estado_lote].value_counts().reset_index()
+            else df_dash_alerta[col_estado_lote].value_counts().reset_index()
         )
 
         if not df_est_grp.empty:
@@ -1780,6 +1868,8 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         partes_filtro.append(f"SKU SB: {sku_sb_sel}")
       if sku_pu_sel != "Todos":
         partes_filtro.append(f"SKU PU: {sku_pu_sel}")
+      if filtro_actual != "Todos":
+        partes_filtro.append(f"Caducidad: {filtro_actual}")
       if partes_filtro:
         detalle_filtro = f"({' | '.join(partes_filtro)})"
 
@@ -1790,10 +1880,10 @@ for i, nombre_hoja in enumerate(nombres_hojas):
       if col_cod:
         cols_mostrar.append(col_cod)
         nombres_amigables[col_cod] = "Código Artículo"
-      if col_sku_sb and col_sku_sb in df_dash.columns:
+      if col_sku_sb and col_sku_sb in df_dash_alerta.columns:
         cols_mostrar.append(col_sku_sb)
         nombres_amigables[col_sku_sb] = "SKU SB"
-      if col_sku_pu and col_sku_pu in df_dash.columns:
+      if col_sku_pu and col_sku_pu in df_dash_alerta.columns:
         cols_mostrar.append(col_sku_pu)
         nombres_amigables[col_sku_pu] = "SKU PU"
       if col_estado_sub:
@@ -1817,7 +1907,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
       cols_mostrar.append("Alerta_Caducidad")
       nombres_amigables["Alerta_Caducidad"] = "Rango Caducidad"
 
-      df_vista_stock = df_dash[cols_mostrar].copy()
+      df_vista_stock = df_dash_alerta[cols_mostrar].copy()
       df_vista_stock = df_vista_stock.rename(columns=nombres_amigables)
 
       if "Fecha Expiración" in df_vista_stock.columns:
