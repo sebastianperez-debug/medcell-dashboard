@@ -952,7 +952,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             {
                 "Concepto": "OC vigente",
                 "Canal": "Consumo SB",
-                "Monto OC": sheet["C18"].value,
+                "Monto OC": 433720962,
                 "FR": 82,
                 "Proyección salida": 355651189,
                 "OC extra": 0,
