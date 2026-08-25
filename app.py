@@ -948,66 +948,80 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             key=f"radio_vista_oc_{i}"
         )
 
-        datos_oc_proyeccion = [
-            {
-                "Concepto": "OC vigente",
-                "Canal": "Consumo SB",
-                "Monto OC": 433720962,
-                "FR": 82,
-                "Proyección salida": 355651189,
-                "OC extra": 0,
-            },
-            {
-                "Concepto": "OC vigente",
-                "Canal": "Farma SB",
-                "Monto OC": 391807703,
-                "FR": 87,
-                "Proyección salida": 340872702,
-                "OC extra": 0,
-            },
-            {
-                "Concepto": "OC vigente",
-                "Canal": "PU",
-                "Monto OC": 93238077,
-                "FR": 70,
-                "Proyección salida": 65266654,
-                "OC extra": 0,
-            },
-            {
-                "Concepto": "Proyección Compra",
-                "Canal": "Terceros",
-                "Monto OC": 5137936,
-                "FR": 60,
-                "Proyección salida": 3082762,
-                "OC extra": 0,
-            },
-            {
-                "Concepto": "Proyección Compra",
-                "Canal": "Consumo SB",
-                "Monto OC": 420000000,
-                "FR": 82,
-                "Proyección salida": 344400000,
-                "OC extra": 0,
-            },
-            {
-                "Concepto": "Proyección Compra",
-                "Canal": "Farma SB",
-                "Monto OC": 480000000,
-                "FR": 87,
-                "Proyección salida": 417600000,
-                "OC extra": 0,
-            },
-            {
-                "Concepto": "Proyección Compra",
-                "Canal": "PU",
-                "Monto OC": 105000000,
-                "FR": 70,
-                "Proyección salida": 73500000,
-                "OC extra": 0,
-            },
-        ]
-        
-        df_oc_tab = pd.DataFrame(datos_oc_proyeccion)
+        def _norm_txt(s):
+          s = str(s).strip().lower()
+          for a, b in [("á", "a"), ("é", "e"), ("í", "i"), ("ó", "o"), ("ú", "u")]:
+            s = s.replace(a, b)
+          return s
+
+        def _parse_pct(val):
+          v = limpiar_numero(val)
+          if 0 <= v <= 1.0:
+            v = v * 100.0
+          return round(v)
+
+        datos_oc_proyeccion = []
+
+        try:
+          df_grid_oc = pd.read_excel(
+              ruta_final, sheet_name=nombre_hoja, header=None, dtype=str
+          )
+
+          header_r, header_c = None, None
+          for r in range(len(df_grid_oc)):
+            for c in range(len(df_grid_oc.columns) - 1):
+              if _norm_txt(df_grid_oc.iloc[r, c]) == "canal" and "monto" in _norm_txt(
+                  df_grid_oc.iloc[r, c + 1]
+              ):
+                header_r, header_c = r, c
+                break
+            if header_r is not None:
+              break
+
+          if header_r is not None:
+            col_concepto = header_c - 1
+            col_canal = header_c
+            col_monto = header_c + 1
+            col_fr = header_c + 2
+            col_proy = header_c + 3
+            col_extra = header_c + 4
+
+            concepto_actual = None
+            r = header_r + 1
+            while r < len(df_grid_oc):
+              canal_val = df_grid_oc.iloc[r, col_canal] if col_canal < len(df_grid_oc.columns) else None
+              canal_txt = str(canal_val).strip() if pd.notna(canal_val) else ""
+
+              if col_concepto >= 0:
+                concepto_val = df_grid_oc.iloc[r, col_concepto]
+                if pd.notna(concepto_val) and str(concepto_val).strip() != "":
+                  txt_concepto = _norm_txt(concepto_val)
+                  if "vigente" in txt_concepto:
+                    concepto_actual = "OC vigente"
+                  elif "proyec" in txt_concepto:
+                    concepto_actual = "Proyección Compra"
+                  else:
+                    concepto_actual = str(concepto_val).strip()
+
+              if canal_txt == "" or canal_txt.lower() == "nan":
+                break
+
+              datos_oc_proyeccion.append({
+                  "Concepto": concepto_actual or "",
+                  "Canal": canal_txt,
+                  "Monto OC": limpiar_numero(df_grid_oc.iloc[r, col_monto]) if col_monto < len(df_grid_oc.columns) else 0.0,
+                  "FR": _parse_pct(df_grid_oc.iloc[r, col_fr]) if col_fr < len(df_grid_oc.columns) else 0,
+                  "Proyección salida": limpiar_numero(df_grid_oc.iloc[r, col_proy]) if col_proy < len(df_grid_oc.columns) else 0.0,
+                  "OC extra": limpiar_numero(df_grid_oc.iloc[r, col_extra]) if col_extra < len(df_grid_oc.columns) else 0.0,
+              })
+              r += 1
+        except Exception as e:
+          st.warning(f"No se pudo leer la tabla OC directamente del Excel ({e}). Se muestra vacío.")
+
+        df_oc_tab = pd.DataFrame(
+            datos_oc_proyeccion,
+            columns=["Concepto", "Canal", "Monto OC", "FR", "Proyección salida", "OC extra"],
+        )
         
         # Filtramos la tabla dependiendo del valor del radio button
         if vista_oc != "Ambos":
