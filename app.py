@@ -840,7 +840,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
           for c in cols_pct:
             if c in df_mostrar.columns:
               df_mostrar[c + "_pct"] = df_mostrar[c].apply(
-                  lambda x: x * 100.0 if 0 <= x <= 1.0 else x
+                  lambda x: x * 100.0 if 0 <= x <= 3.0 else x
               )
 
           config_columnas = {mes_col: st.column_config.TextColumn("Canal / Concepto")}
@@ -856,7 +856,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 "Proyección vs Meta",
                 format="%.0f%%",
                 min_value=0,
-                max_value=100,
+                max_value=150,
             )
           if "Facturado actual" in df_mostrar.columns:
             config_columnas["Facturado actual_pct"] = (
