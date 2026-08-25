@@ -1006,6 +1006,14 @@ for i, nombre_hoja in enumerate(nombres_hojas):
               if canal_txt == "" or canal_txt.lower() == "nan":
                 break
 
+              # Detiene la lectura al llegar a filas de totales (Cierre, Meta, Resultado, Cumplimiento)
+              canal_norm = _norm_txt(canal_txt)
+              if any(
+                  kw in canal_norm
+                  for kw in ["cierre", "meta", "resultado", "cumplimiento"]
+              ):
+                break
+
               datos_oc_proyeccion.append({
                   "Concepto": concepto_actual or "",
                   "Canal": canal_txt,
@@ -1030,16 +1038,12 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         # KPIs Resumen de la sección OC
         tot_monto_oc = df_oc_tab["Monto OC"].sum()
         tot_proy_salida = df_oc_tab["Proyección salida"].sum()
-        fr_prom_pond = (
-            (tot_proy_salida / tot_monto_oc * 100) if tot_monto_oc > 0 else 0
-        )
 
-        col_k1, col_k2, col_k3 = st.columns(3)
+        col_k1, col_k2 = st.columns(2)
         col_k1.metric("📦 Monto Total OC", formato_moneda(tot_monto_oc))
         col_k2.metric(
             "🚚 Total Proyección Salida", formato_moneda(tot_proy_salida)
         )
-        col_k3.metric("🎯 Fill Rate Prom. Ponderado", f"{fr_prom_pond:.1f}%")
 
         st.markdown("---")
 
