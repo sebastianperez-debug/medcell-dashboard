@@ -503,7 +503,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
       st.divider()
 
-      c_div_view, c_cli_view = st.columns([1, 1.2], gap="large")
+      c_div_view, c_cli_view = st.columns([1, 1.6], gap="large")
 
       with c_div_view:
         st.markdown("#### 🏢 Venta por División")
@@ -589,21 +589,32 @@ for i, nombre_hoja in enumerate(nombres_hojas):
               else 0
           )
 
+          # Nombres cortos solo para el eje del gráfico (la tabla de abajo
+          # sigue mostrando el nombre completo del cliente).
+          def _truncar_nombre(nombre, largo=16):
+            nombre = str(nombre)
+            return nombre if len(nombre) <= largo else nombre[: largo - 1] + "…"
+
+          etiquetas_cli_cortas = grp_cli[col_cliente].apply(_truncar_nombre)
+
           fig_pareto = make_subplots(specs=[[{"secondary_y": True}]])
           fig_pareto.add_trace(
               go.Bar(
-                  x=grp_cli[col_cliente],
+                  x=etiquetas_cli_cortas,
                   y=grp_cli[col_monto],
                   name="Monto ($)",
                   marker_color="#00CC96",
                   text=grp_cli[col_monto].apply(formato_moneda),
                   textposition="outside",
+                  textfont=dict(size=10),
+                  customdata=grp_cli[col_cliente],
+                  hovertemplate="%{customdata}<br>%{text}<extra></extra>",
               ),
               secondary_y=False,
           )
           fig_pareto.add_trace(
               go.Scatter(
-                  x=grp_cli[col_cliente],
+                  x=etiquetas_cli_cortas,
                   y=grp_cli["Pct_Acumulado"],
                   name="% Acumulado",
                   mode="lines+markers+text",
@@ -612,6 +623,8 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                   text=grp_cli["Pct_Acumulado"].apply(lambda x: f"{x:.0f}%"),
                   textposition="top center",
                   textfont=dict(color="#ffffff", size=10),
+                  customdata=grp_cli[col_cliente],
+                  hovertemplate="%{customdata}<br>%{y:.1f}%<extra></extra>",
               ),
               secondary_y=True,
           )
@@ -619,17 +632,22 @@ for i, nombre_hoja in enumerate(nombres_hojas):
               template="plotly_dark",
               paper_bgcolor="rgba(0,0,0,0)",
               plot_bgcolor="rgba(0,0,0,0)",
-              margin=dict(t=10, b=10, l=10, r=10),
-              height=280,
+              margin=dict(t=30, b=110, l=10, r=10),
+              height=380,
               showlegend=False,
-              xaxis=dict(tickangle=-30),
+              xaxis=dict(
+                  tickangle=-45,
+                  tickfont=dict(size=10),
+                  automargin=True,
+              ),
+              uniformtext_minsize=8,
           )
           fig_pareto.update_yaxes(
               secondary_y=False, showgrid=False, title_text=""
           )
           fig_pareto.update_yaxes(
               secondary_y=True,
-              range=[0, 110],
+              range=[0, 115],
               ticksuffix="%",
               showgrid=False,
               title_text="",
