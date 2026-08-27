@@ -337,6 +337,7 @@ HOJAS_A_EXCLUIR = [
     "nivel de servicio sb",
     "venta perdida sb",
     "nivel de servicio pu",
+    "hoja1",
 ]
 nombres_hojas = [
     h for h in hojas.keys() if h.strip().lower() not in HOJAS_A_EXCLUIR
@@ -2759,6 +2760,134 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                     grp_top_disp, hide_index=True, use_container_width=True
                 )
 
+      # =================================================================
+      # DETALLE DE PRODUCTOS SOLARES (justo debajo de "TOP 15 Quiebres
+      # (Por División)")
+      # =================================================================
+      if is_sb and col_div and col_oc and col_glosa and col_glosa in df_filt.columns:
+        st.divider()
+        st.markdown("#### ☀️ Detalle de Productos Solares")
+
+        # Indicadores de Fill Rate para Solares, en el mismo estilo que
+        # los indicadores de "TOP 15 Quiebres (Por División)" (Fill Rate
+        # + variación en $ / Unds respecto de lo comprado).
+        mask_solares_ind = (
+            df_filt[col_glosa].astype(str).str.upper().str.contains("SOLARES", na=False)
+        )
+        df_solares_ind = df_filt[mask_solares_ind].copy()
+
+        etiqueta_sem_ind = (
+            f"Sem {fmt_sem(semana_sel)}" if semana_sel != "Todas" else "Todas"
+        )
+
+        st.markdown("#### 📌 SOLARES")
+        ind_s1, ind_s2 = st.columns(2)
+        with ind_s1:
+          tot_compra_sol = df_solares_ind[col_m_compra].sum() if col_m_compra else 0
+          tot_recib_sol = df_solares_ind[col_m_recib].sum() if col_m_recib else 0
+          fr_sol_monto = (
+              (tot_recib_sol / tot_compra_sol * 100) if tot_compra_sol > 0 else 0.0
+          )
+          delta_sol_monto = f"{tot_recib_sol - tot_compra_sol:,.0f} $ (Dif)".replace(
+              ",", "."
+          )
+          st.metric(
+              label=f"Fill Rate Monto ({etiqueta_sem_ind})",
+              value=f"{fr_sol_monto:.1f}%",
+              delta=delta_sol_monto,
+          )
+        with ind_s2:
+          tot_compra_sol_u = (
+              df_solares_ind[col_u_compra].sum() if col_u_compra else 0
+          )
+          tot_recib_sol_u = df_solares_ind[col_u_recib].sum() if col_u_recib else 0
+          fr_sol_unds = (
+              (tot_recib_sol_u / tot_compra_sol_u * 100)
+              if tot_compra_sol_u > 0
+              else 0.0
+          )
+          delta_sol_unds = (
+              f"{tot_recib_sol_u - tot_compra_sol_u:,.0f} Unds (Dif)".replace(
+                  ",", "."
+              )
+          )
+          st.metric(
+              label=f"Fill Rate Unidades ({etiqueta_sem_ind})",
+              value=f"{fr_sol_unds:.1f}%",
+              delta=delta_sol_unds,
+          )
+
+        st.divider()
+
+        df_solares = df_solares_ind.copy()
+
+        if not df_solares.empty:
+          col_det_s1, col_det_s2 = st.columns(2)
+          with col_det_s1:
+            ocs_solares_disp = ["Todas"] + sorted(
+                [str(x) for x in df_solares[col_oc].dropna().unique()]
+            )
+            oc_solar_sel = st.selectbox(
+                "Filtrar Solares por OC:",
+                ocs_solares_disp,
+                key=f"det_oc_solares_{nombre_hoja}_{i}",
+            )
+          with col_det_s2:
+            skus_solares_disp = ["Todos"] + sorted(
+                [str(x) for x in df_solares[col_sku].dropna().unique()]
+            )
+            sku_solar_sel = st.selectbox(
+                "Filtrar Solares por SKU:",
+                skus_solares_disp,
+                key=f"det_sku_solares_{nombre_hoja}_{i}",
+            )
+
+          if oc_solar_sel != "Todas":
+            df_solares = df_solares[
+                df_solares[col_oc].astype(str) == oc_solar_sel
+            ]
+          if sku_solar_sel != "Todos":
+            df_solares = df_solares[
+                df_solares[col_sku].astype(str) == sku_solar_sel
+            ]
+
+          if col_rechazado and col_rechazado in df_solares.columns:
+            idx_corte_s = list(df_solares.columns).index(col_rechazado) + 1
+            df_solares_final = df_solares.iloc[:, :idx_corte_s].copy()
+          else:
+            df_solares_final = df_solares.copy()
+
+          renombrar_columnas_solares = {
+              "id_producto": "SKU",
+              "id_prod": "SKU",
+              "numero_orden": "OC",
+              "num_oc": "OC",
+              "orden_compra": "OC",
+              "descripcion": "Descripción",
+              "unidades_compra": "Unidades Compra",
+              "unidades_recibidas": "Unidades Recibidas",
+              "unidades_rechazadas": "Unidades Rechazadas",
+              "cantidad": "Unidades Compra",
+              "cantidad_recibida": "Unidades Recibidas",
+              "fecha_hora_despacho_default": "Fecha Despacho",
+              "precio_final": "Precio Final",
+              "precio_total": "Precio Total",
+          }
+          nuevas_columnas_s = {}
+          for col in df_solares_final.columns:
+            col_lower = str(col).strip().lower()
+            if col_lower in renombrar_columnas_solares:
+              nuevas_columnas_s[col] = renombrar_columnas_solares[col_lower]
+            else:
+              nuevas_columnas_s[col] = str(col).replace("_", " ").strip().title()
+          df_solares_final = df_solares_final.rename(columns=nuevas_columnas_s)
+
+          st.dataframe(
+              df_solares_final, hide_index=True, use_container_width=True
+          )
+        else:
+          st.info("No hay productos Solares registrados para la semana seleccionada.")
+
       st.divider()
 
       # RESUMEN 4 SEMANAS
@@ -3197,134 +3326,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
       df_corte_final = df_corte_final.rename(columns=nuevas_columnas)
 
       st.dataframe(df_corte_final, hide_index=True, use_container_width=True)
-
-      # =================================================================
-      # DETALLE DE PRODUCTOS SOLARES (al final del dashboard, solo debajo
-      # de "Detalle de Registro de Compras")
-      # =================================================================
-      if is_sb and col_div and col_oc and col_glosa and col_glosa in df_filt.columns:
-        st.divider()
-        st.markdown("#### ☀️ Detalle de Productos Solares")
-
-        # Indicadores de Fill Rate para Solares, en el mismo estilo que
-        # los indicadores de "TOP 15 Quiebres (Por División)" (Fill Rate
-        # + variación en $ / Unds respecto de lo comprado).
-        mask_solares_ind = (
-            df_filt[col_glosa].astype(str).str.upper().str.contains("SOLARES", na=False)
-        )
-        df_solares_ind = df_filt[mask_solares_ind].copy()
-
-        etiqueta_sem_ind = (
-            f"Sem {fmt_sem(semana_sel)}" if semana_sel != "Todas" else "Todas"
-        )
-
-        st.markdown("#### 📌 SOLARES")
-        ind_s1, ind_s2 = st.columns(2)
-        with ind_s1:
-          tot_compra_sol = df_solares_ind[col_m_compra].sum() if col_m_compra else 0
-          tot_recib_sol = df_solares_ind[col_m_recib].sum() if col_m_recib else 0
-          fr_sol_monto = (
-              (tot_recib_sol / tot_compra_sol * 100) if tot_compra_sol > 0 else 0.0
-          )
-          delta_sol_monto = f"{tot_recib_sol - tot_compra_sol:,.0f} $ (Dif)".replace(
-              ",", "."
-          )
-          st.metric(
-              label=f"Fill Rate Monto ({etiqueta_sem_ind})",
-              value=f"{fr_sol_monto:.1f}%",
-              delta=delta_sol_monto,
-          )
-        with ind_s2:
-          tot_compra_sol_u = (
-              df_solares_ind[col_u_compra].sum() if col_u_compra else 0
-          )
-          tot_recib_sol_u = df_solares_ind[col_u_recib].sum() if col_u_recib else 0
-          fr_sol_unds = (
-              (tot_recib_sol_u / tot_compra_sol_u * 100)
-              if tot_compra_sol_u > 0
-              else 0.0
-          )
-          delta_sol_unds = (
-              f"{tot_recib_sol_u - tot_compra_sol_u:,.0f} Unds (Dif)".replace(
-                  ",", "."
-              )
-          )
-          st.metric(
-              label=f"Fill Rate Unidades ({etiqueta_sem_ind})",
-              value=f"{fr_sol_unds:.1f}%",
-              delta=delta_sol_unds,
-          )
-
-        st.divider()
-
-        df_solares = df_solares_ind.copy()
-
-        if not df_solares.empty:
-          col_det_s1, col_det_s2 = st.columns(2)
-          with col_det_s1:
-            ocs_solares_disp = ["Todas"] + sorted(
-                [str(x) for x in df_solares[col_oc].dropna().unique()]
-            )
-            oc_solar_sel = st.selectbox(
-                "Filtrar Solares por OC:",
-                ocs_solares_disp,
-                key=f"det_oc_solares_{nombre_hoja}_{i}",
-            )
-          with col_det_s2:
-            skus_solares_disp = ["Todos"] + sorted(
-                [str(x) for x in df_solares[col_sku].dropna().unique()]
-            )
-            sku_solar_sel = st.selectbox(
-                "Filtrar Solares por SKU:",
-                skus_solares_disp,
-                key=f"det_sku_solares_{nombre_hoja}_{i}",
-            )
-
-          if oc_solar_sel != "Todas":
-            df_solares = df_solares[
-                df_solares[col_oc].astype(str) == oc_solar_sel
-            ]
-          if sku_solar_sel != "Todos":
-            df_solares = df_solares[
-                df_solares[col_sku].astype(str) == sku_solar_sel
-            ]
-
-          if col_rechazado and col_rechazado in df_solares.columns:
-            idx_corte_s = list(df_solares.columns).index(col_rechazado) + 1
-            df_solares_final = df_solares.iloc[:, :idx_corte_s].copy()
-          else:
-            df_solares_final = df_solares.copy()
-
-          renombrar_columnas_solares = {
-              "id_producto": "SKU",
-              "id_prod": "SKU",
-              "numero_orden": "OC",
-              "num_oc": "OC",
-              "orden_compra": "OC",
-              "descripcion": "Descripción",
-              "unidades_compra": "Unidades Compra",
-              "unidades_recibidas": "Unidades Recibidas",
-              "unidades_rechazadas": "Unidades Rechazadas",
-              "cantidad": "Unidades Compra",
-              "cantidad_recibida": "Unidades Recibidas",
-              "fecha_hora_despacho_default": "Fecha Despacho",
-              "precio_final": "Precio Final",
-              "precio_total": "Precio Total",
-          }
-          nuevas_columnas_s = {}
-          for col in df_solares_final.columns:
-            col_lower = str(col).strip().lower()
-            if col_lower in renombrar_columnas_solares:
-              nuevas_columnas_s[col] = renombrar_columnas_solares[col_lower]
-            else:
-              nuevas_columnas_s[col] = str(col).replace("_", " ").strip().title()
-          df_solares_final = df_solares_final.rename(columns=nuevas_columnas_s)
-
-          st.dataframe(
-              df_solares_final, hide_index=True, use_container_width=True
-          )
-        else:
-          st.info("No hay productos Solares registrados para la semana seleccionada.")
 
     else:
       busqueda = st.text_input(
