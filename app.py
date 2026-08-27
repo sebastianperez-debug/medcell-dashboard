@@ -2057,6 +2057,13 @@ for i, nombre_hoja in enumerate(nombres_hojas):
           ),
           None,
       )
+      col_glosa = next(
+          (c for c in df.columns if c.strip().lower() == "glosa"),
+          None,
+      ) or next(
+          (c for c in df.columns if "glosa" in c.lower()),
+          None,
+      )
       col_u_compra = next(
           (
               c
@@ -2337,13 +2344,28 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         monto_consumo = df_filt[mask_consumo][col_m_compra].sum()
         monto_total = df_filt[col_m_compra].sum()
 
-        # UI (5 Columnas)
+        # Cálculos de Solares (filtrando por la columna "glosa" que contenga "SOLARES")
+        if col_glosa and col_glosa in df_filt.columns:
+          mask_solares = (
+              df_filt[col_glosa].astype(str).str.upper().str.contains("SOLARES", na=False)
+          )
+          oc_solares = df_filt[mask_solares][col_oc].nunique()
+          monto_solares = df_filt[mask_solares][col_m_compra].sum()
+        else:
+          oc_solares = 0
+          monto_solares = 0
+
+        # UI (5 Columnas + fila adicional para Solares)
         km1, km2, km3, km4, km5 = st.columns(5)
         km1.metric("📦 OC Farma", str(oc_farma))
         km2.metric("💊 Monto Farma", formato_moneda(monto_farma))
         km3.metric("🛒 OC Consumo", str(oc_consumo))
         km4.metric("🛍️ Monto Consumo", formato_moneda(monto_consumo))
         km5.metric("💰 Monto Total", formato_moneda(monto_total))
+
+        ks1, ks2 = st.columns(2)
+        ks1.metric("☀️ OC Solares", str(oc_solares))
+        ks2.metric("💵 Monto Solares", formato_moneda(monto_solares))
 
         st.divider()
 
@@ -3139,29 +3161,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
       else:
         df_corte_final = df_detalle.copy()
 
-      # Ocultar columnas auxiliares/calculadas que no deben mostrarse en el detalle
-      def _es_columna_oculta(nombre_col):
-        c = str(nombre_col).strip().lower()
-        if c.startswith("semana."):
-          return True
-        if c == "(todas)":
-          return True
-        if c.startswith("revision") or c.startswith("revisión"):
-          return True
-        if c in (
-            "monto_recibido_calc",
-            "quiebre_monto_calc",
-            "quiebre_unid_calc",
-        ):
-          return True
-        return False
-
-      columnas_ocultas = [
-          c for c in df_corte_final.columns if _es_columna_oculta(c)
-      ]
-      if columnas_ocultas:
-        df_corte_final = df_corte_final.drop(columns=columnas_ocultas)
-
       renombrar_columnas = {
           "id_producto": "SKU",
           "id_prod": "SKU",
@@ -3188,25 +3187,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
           nuevas_columnas[col] = str(col).replace("_", " ").strip().title()
 
       df_corte_final = df_corte_final.rename(columns=nuevas_columnas)
-
-      # Formatear columnas monetarias como $ (miles con punto, sin decimales)
-      def _fmt_moneda(val):
-        if pd.isna(val):
-          return val
-        try:
-          num = float(val)
-        except (TypeError, ValueError):
-          return val
-        signo = "-" if num < 0 else ""
-        return f"{signo}${abs(num):,.0f}".replace(",", ".")
-
-      columnas_moneda = [
-          c
-          for c in ["Precio Final", "Precio Total", "Quiebre"]
-          if c in df_corte_final.columns
-      ]
-      for col_m in columnas_moneda:
-        df_corte_final[col_m] = df_corte_final[col_m].apply(_fmt_moneda)
 
       st.dataframe(df_corte_final, hide_index=True, use_container_width=True)
 
