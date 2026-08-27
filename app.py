@@ -3139,6 +3139,29 @@ for i, nombre_hoja in enumerate(nombres_hojas):
       else:
         df_corte_final = df_detalle.copy()
 
+      # Ocultar columnas auxiliares/calculadas que no deben mostrarse en el detalle
+      def _es_columna_oculta(nombre_col):
+        c = str(nombre_col).strip().lower()
+        if c.startswith("semana."):
+          return True
+        if c == "(todas)":
+          return True
+        if c.startswith("revision") or c.startswith("revisión"):
+          return True
+        if c in (
+            "monto_recibido_calc",
+            "quiebre_monto_calc",
+            "quiebre_unid_calc",
+        ):
+          return True
+        return False
+
+      columnas_ocultas = [
+          c for c in df_corte_final.columns if _es_columna_oculta(c)
+      ]
+      if columnas_ocultas:
+        df_corte_final = df_corte_final.drop(columns=columnas_ocultas)
+
       renombrar_columnas = {
           "id_producto": "SKU",
           "id_prod": "SKU",
@@ -3165,6 +3188,25 @@ for i, nombre_hoja in enumerate(nombres_hojas):
           nuevas_columnas[col] = str(col).replace("_", " ").strip().title()
 
       df_corte_final = df_corte_final.rename(columns=nuevas_columnas)
+
+      # Formatear columnas monetarias como $ (miles con punto, sin decimales)
+      def _fmt_moneda(val):
+        if pd.isna(val):
+          return val
+        try:
+          num = float(val)
+        except (TypeError, ValueError):
+          return val
+        signo = "-" if num < 0 else ""
+        return f"{signo}${abs(num):,.0f}".replace(",", ".")
+
+      columnas_moneda = [
+          c
+          for c in ["Precio Final", "Precio Total", "Quiebre"]
+          if c in df_corte_final.columns
+      ]
+      for col_m in columnas_moneda:
+        df_corte_final[col_m] = df_corte_final[col_m].apply(_fmt_moneda)
 
       st.dataframe(df_corte_final, hide_index=True, use_container_width=True)
 
