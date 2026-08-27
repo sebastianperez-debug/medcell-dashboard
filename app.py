@@ -503,7 +503,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
       st.divider()
 
-      c_div_view, c_cli_view = st.columns([1, 1.6], gap="large")
+      c_cli_view, c_div_view = st.columns([1.6, 1], gap="large")
 
       with c_div_view:
         st.markdown("#### 🏢 Venta por División")
