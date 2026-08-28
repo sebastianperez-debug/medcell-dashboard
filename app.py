@@ -281,9 +281,6 @@ st.markdown(
                 <div class="medcell-subtitle">ANÁLISIS DE OPERACIÓN</div>
                 <div class="medcell-author">Desarrollado por Sebastián Alexis Pérez López</div>
             </div>
-            <div style="font-size: 28px; font-weight: 800; color: #ffffff; white-space: nowrap; padding-bottom: 2px;">
-                💊 Cadena Operaciones
-            </div>
         </div>
     </div>
 """,
