@@ -70,8 +70,13 @@ st.markdown(
     @media (max-width: 768px) {
         div[data-testid="stRadio"] {
             width: 100% !important;
+            max-width: none !important;
             margin-top: 0 !important;
             margin-bottom: 8px !important;
+        }
+        div[data-testid="stRadio"] > div {
+            width: 100% !important;
+            max-width: none !important;
         }
         div[data-testid="stRadio"] [role="radiogroup"] {
             display: grid !important;
@@ -79,6 +84,7 @@ st.markdown(
             column-gap: 10px !important;
             row-gap: 10px !important;
             width: 100% !important;
+            max-width: none !important;
             margin-top: 0 !important;
         }
         div[data-testid="stRadio"] [role="radiogroup"] > label {
@@ -2376,6 +2382,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
           index=idx_defecto,
           horizontal=True,
           label_visibility="collapsed",
+          width="stretch",
           key=f"semana_sel_{nombre_hoja}_{i}",
       )
       semana_sel = opciones_semanas[semana_sel_raw]
