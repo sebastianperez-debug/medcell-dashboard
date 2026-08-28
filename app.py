@@ -253,8 +253,6 @@ def aplicar_criticidad(column):
   is_total = column.index == (len(column) - 1)
   styles = []
   for i, val in enumerate(column):
-    # Acepta tanto números como strings ya formateados (ej. "18.16%"),
-    # así la columna puede exportarse a CSV como texto sin romper el color.
     try:
       val_num = float(str(val).replace("%", "").replace(",", ".").strip())
     except (ValueError, TypeError):
@@ -444,10 +442,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
           ),
           "Factura",
       )
-      # Prioridad: 1) columna con "descripcion" en el nombre (ej. "med0_descripcion"),
-      # 2) columna con "producto" en el nombre, 3) columna J por posición.
-      # Se separan en dos búsquedas para que "id_producto_sb"/"id_producto_pu"
-      # (que traen códigos numéricos) no le ganen a la descripción real.
       col_producto = next(
           (c for c in df.columns if "descripcion" in c.lower()), None
       )
@@ -635,8 +629,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
               else 0
           )
 
-          # Nombres cortos solo para el eje del gráfico (la tabla de abajo
-          # sigue mostrando el nombre completo del cliente).
           def _truncar_nombre(nombre, largo=16):
             nombre = str(nombre)
             return nombre if len(nombre) <= largo else nombre[: largo - 1] + "…"
@@ -799,7 +791,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
       df_si_det = df_si_filt.copy()
 
-      # CORTE HASTA ES_INFLAMABLE
       if col_inflamable in df_si_det.columns:
         idx_corte = list(df_si_det.columns).index(col_inflamable) + 1
         df_si_det = df_si_det.iloc[:, :idx_corte]
@@ -999,13 +990,9 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 * **Terceros**: Presenta un desempeño rezagado con un **28%** facturado y una proyección total del **35%** respecto a su meta ($14.4M proyectados de $41.0M).
                 """)
 
-        # =================================================================
-        # SECCIÓN REDISEÑADA: TABLA Y GRÁFICO MEJORADO DE OC Y PROYECCIÓN COMPRA
-        # =================================================================
         st.divider()
         st.markdown("#### 📦 Detalle OC Vigente y Proyección Compra")
         
-        # ---> NUEVO FILTRO TIPO BOTÓN (RADIO) AÑADIDO AQUÍ <---
         vista_oc = st.radio(
             "Seleccionar Vista:",
             options=["Ambos", "OC vigente", "Proyección Compra"],
@@ -1071,7 +1058,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
               if canal_txt == "" or canal_txt.lower() == "nan":
                 break
 
-              # Detiene la lectura al llegar a filas de totales (Cierre, Meta, Resultado, Cumplimiento)
               canal_norm = _norm_txt(canal_txt)
               if any(
                   kw in canal_norm
@@ -1096,11 +1082,9 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             columns=["Concepto", "Canal", "Monto OC", "FR", "Proyección salida", "OC extra"],
         )
         
-        # Filtramos la tabla dependiendo del valor del radio button
         if vista_oc != "Ambos":
             df_oc_tab = df_oc_tab[df_oc_tab["Concepto"] == vista_oc]
 
-        # KPIs Resumen de la sección OC
         tot_monto_oc = df_oc_tab["Monto OC"].sum()
         tot_proy_salida = df_oc_tab["Proyección salida"].sum()
 
@@ -1112,7 +1096,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
         st.markdown("---")
 
-        # Disposición en 2 columnas: Tabla a la izquierda, Gráfico a la derecha
         col_oc_tabla, col_oc_grafico = st.columns([1.1, 1], gap="medium")
 
         with col_oc_tabla:
@@ -1140,7 +1123,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         with col_oc_grafico:
           st.markdown("##### 📊 Comparativo Monto OC vs Proyección Salida")
 
-          # Modelo limpio: Barras Verticales Agrupadas por Canal y Categoría con valores formateados en Millones ($M)
           df_oc_plot = df_oc_tab.copy()
           df_oc_plot["Etiqueta"] = (
               df_oc_plot["Canal"]
@@ -1151,7 +1133,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
           fig_oc = go.Figure()
 
-          # Barra Monto OC
           fig_oc.add_trace(
               go.Bar(
                   x=df_oc_plot["Etiqueta"],
@@ -1167,7 +1148,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
               )
           )
 
-          # Barra Proyección Salida
           fig_oc.add_trace(
               go.Bar(
                   x=df_oc_plot["Etiqueta"],
@@ -1202,7 +1182,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
               fig_oc, use_container_width=True, key=f"bar_oc_comp_{i}"
           )
 
-        # Sección: Tabla Proyecciones Metas por Mes
         st.divider()
         st.markdown("#### 🗓️ Proyecciones Metas por Mes (2026)")
 
@@ -1422,7 +1401,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
           (c for c in df.columns if "descripcion" in c.lower()), None
       )
       if not col_desc_stock and len(df.columns) > 3:
-        col_desc_stock = df.columns[3]  # Columna D
+        col_desc_stock = df.columns[3]
       col_fecha = next(
           (
               c
@@ -1449,19 +1428,13 @@ for i, nombre_hoja in enumerate(nombres_hojas):
       if col_cod and col_cod in df.columns:
         df[col_cod] = df[col_cod].apply(fmt_code)
 
-      # ---------------------------------------------------------------
-      # SKU (columnas B y C de la propia hoja STOCK)
-      # La hoja STOCK ya trae: A=codigo_articulo, B=codigo_sb, C=codigo_pu.
-      # No hace falta cruzar con ninguna otra hoja: se usan directo.
-      # ---------------------------------------------------------------
       col_sku_sb = next(
           (c for c in df.columns if c.strip().lower() == "codigo_sb"), None
       )
       col_sku_pu = next(
           (c for c in df.columns if c.strip().lower() == "codigo_pu"), None
       )
-      # Respaldo por posición: si por algún motivo no calzan los nombres,
-      # se usan la columna B (índice 1) y C (índice 2) tal cual.
+
       if not col_sku_sb and len(df.columns) > 1:
         col_sku_sb = df.columns[1]
       if not col_sku_pu and len(df.columns) > 2:
@@ -1501,8 +1474,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
       col_dash1, col_dash2 = st.columns([1, 2.3])
 
-      # Filtros de STOCK: Código, SKU SB (columna B) y SKU PU (columna C).
-      # Son mutuamente excluyentes: al elegir uno, los otros dos vuelven a "Todos".
       key_codigo = f"sel_codigo_stock_{i}"
       key_sku_sb = f"sel_sku_sb_stock_{i}"
       key_sku_pu = f"sel_sku_pu_stock_{i}"
@@ -1513,7 +1484,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             st.session_state[k] = "Todos"
 
       with col_dash2:
-        # Los filtros se centran dejando márgenes livianos a los costados.
         _pad_izq, filtro_codigo_col, filtro_sku_sb_col, filtro_sku_pu_col, _pad_der = (
             st.columns([0.3, 1, 1, 1, 0.3])
         )
@@ -1582,7 +1552,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
       else:
         prod_sel = "Seleccione..."
 
-
       if col_cant:
         total_unidades = df_dash[col_cant].sum()
         total_vencido = df_dash[
@@ -1610,8 +1579,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             df_dash[df_dash["Alerta_Caducidad"] == "Vigente (> 13m)"]
         )
 
-      # % de Stock Crítico: unidades ya vencidas + que vencen en menos de 6 meses,
-      # sobre el total de unidades registradas (con la selección de filtros activa).
       total_critico = total_vencido + total_menos_6m
       pct_critico = (
           (total_critico / total_unidades * 100) if total_unidades > 0 else 0.0
@@ -1640,8 +1607,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
           unsafe_allow_html=True,
       )
 
-      # Filtro por categoría de caducidad: un selector simple y confiable
-      # (los botones coloreados con CSS no se pintaban bien en todos los casos).
       label_map_alerta = {
           "Todos": "Todos",
           "Vencido": "Vencido",
@@ -1658,8 +1623,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
       )
       filtro_actual = label_map_alerta[etiqueta_sel]
 
-      # df_dash filtrado por la categoría de caducidad seleccionada arriba.
-      # Se usa en las secciones de abajo (localizadores, estado de lote, detalle).
       if filtro_actual != "Todos":
         df_dash_alerta = df_dash[df_dash["Alerta_Caducidad"] == filtro_actual].copy()
       else:
@@ -1718,8 +1681,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
         total_donut = sum(values)
         if total_donut > 0:
-          # Texto propio con 2 decimales para que los segmentos muy chicos
-          # (ej. 0.00%) también se alcancen a leer bien, afuera de la dona.
           textos_pct = [
               f"{lbl}<br>{(v / total_donut * 100):.2f}%"
               for lbl, v in zip(labels, values)
@@ -1752,8 +1713,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                   yanchor="top",
               ),
           )
-          # Se centra el gráfico dentro de la columna para que no quede
-          # estirado a lo ancho ni deje espacio vacío desbalanceado.
           _pad_chart_izq, col_chart, _pad_chart_der = st.columns([0.3, 2, 0.3])
           with col_chart:
             st.plotly_chart(
@@ -1901,8 +1860,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
       st.divider()
 
-      # TOP LOCALIZADORES CON MÁS STOCK POR VENCER (Vencido + < 6 meses,
-      # o la categoría seleccionada en las tarjetas de arriba).
       if col_loc and col_loc in df_dash.columns:
         if filtro_actual != "Todos":
           titulo_loc = f"##### 📍 Top Localizadores — {filtro_actual}"
@@ -1915,7 +1872,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
         st.markdown(titulo_loc)
 
-        # Se excluyen las filas sin localizador registrado.
         df_critico = df_critico[
             df_critico[col_loc].notna()
             & (df_critico[col_loc].astype(str).str.strip() != "")
@@ -1997,10 +1953,8 @@ for i, nombre_hoja in enumerate(nombres_hojas):
               " seleccionada."
           )
 
-
-
     # =================================================================
-    # LÓGICA ORIGINAL PARA SB Y PU
+    # LÓGICA PARA SB Y PU
     # =================================================================
     elif is_sb or is_pu:
       col_semana = next(
@@ -2354,9 +2308,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
           if col_semana
           else []
       )
-      # Se excluye del "Últimas 4 Semanas" la semana en curso / incompleta:
-      # aquella que todavía no registra recepciones (Monto y Unidades Recibidas = 0),
-      # ya que mostrarla en 0% distorsiona la visualización de Fill Rate.
+
       semanas_con_datos = list(semanas_todas)
       if semanas_con_datos and col_m_recib and col_u_recib:
         ultima_sem = semanas_con_datos[-1]
@@ -2392,19 +2344,12 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         df_filt = df_filt[df_filt[col_semana] == semana_sel]
       st.divider()
 
-      # =================================================================
-      # MÉTRICAS DE OC Y MONTOS EN LA ZONA SUPERIOR
-      # =================================================================
       if is_sb and col_div and col_oc:
         st.markdown("#### 📊 Resumen de Órdenes y Montos")
 
-        # Filtros de División
         mask_farma = df_filt[col_div].astype(str).str.upper().str.contains("FARMA", na=False)
         mask_consumo = df_filt[col_div].astype(str).str.upper().str.contains("CONSUMO", na=False)
 
-        # Cálculos de Solares (filtrando por la columna "glosa" que contenga "SOLARES")
-        # Se calcula ANTES que Consumo porque Solares es un subconjunto de la división
-        # Consumo y debe excluirse de ese grupo para no sumarse dos veces.
         if col_glosa and col_glosa in df_filt.columns:
           mask_solares = (
               df_filt[col_glosa].astype(str).str.upper().str.contains("SOLARES", na=False)
@@ -2416,21 +2361,15 @@ for i, nombre_hoja in enumerate(nombres_hojas):
           oc_solares = 0
           monto_solares = 0
 
-        # Consumo excluye lo que ya está contabilizado como Solares, para que
-        # OC Consumo / Monto Consumo no dupliquen los registros de Solares
-        # (Solares pertenece a la división Consumo pero se reporta aparte).
         mask_consumo = mask_consumo & ~mask_solares
 
-        # Cálculos de OC
         oc_farma = df_filt[mask_farma][col_oc].nunique()
         oc_consumo = df_filt[mask_consumo][col_oc].nunique()
 
-        # Cálculos de Monto
         monto_farma = df_filt[mask_farma][col_m_compra].sum()
         monto_consumo = df_filt[mask_consumo][col_m_compra].sum()
         monto_total = df_filt[col_m_compra].sum()
 
-        # UI - Grid equilibrado de 4 columnas x 2 filas, agrupado por categoría
         kf1, kf2, kf3, kf4 = st.columns(4)
         kf1.metric("📦 OC Farma", str(oc_farma))
         kf2.metric("💊 Monto Farma", formato_moneda(monto_farma))
@@ -2444,23 +2383,17 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
         st.divider()
 
-      # =================================================================
-      # NUEVO BLOQUE: MÉTRICAS DE OC Y MONTO TOTAL PARA PU (SIN DIVISIÓN)
-      # =================================================================
       if is_pu and col_oc and col_m_compra:
         st.markdown("#### 📊 Resumen General de Órdenes y Compras PU")
 
-        # En PU se consideran todas las divisiones juntas.
         cantidad_oc_pu = df_filt[col_oc].nunique()
         monto_total_pu = df_filt[col_m_compra].sum()
 
-        # UI (2 KPIs, sin separar por división)
         kpu1, kpu2 = st.columns(2)
         kpu1.metric("📦 Cantidad de OC", str(cantidad_oc_pu))
         kpu2.metric("💰 Monto Total de Compra", formato_moneda(monto_total_pu))
 
         st.divider()
-      # =================================================================
 
       if col_semana:
         sem_actual = (
@@ -2610,8 +2543,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                   delta=delta_str,
               )
 
-            # % de OC cumplidas al 100% (sin quiebre en ninguna de sus líneas)
-            # vs OC que tuvieron algún quiebre, para la semana seleccionada.
             if col_oc and col_oc in df_sem_top.columns:
               grp_oc_cumpl = df_sem_top.groupby(col_oc)[
                   "quiebre_unid_calc"
@@ -2827,582 +2758,61 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 )
 
       # =================================================================
-      # DETALLE DE PRODUCTOS SOLARES (justo debajo de "TOP 15 Quiebres
-      # (Por División)")
+      # DETALLE DE PRODUCTOS SOLARES (SOLO EN SB)
       # =================================================================
-      if is_sb and col_div and col_oc and col_glosa and col_glosa in df_filt.columns:
-        st.divider()
-        st.markdown("#### ☀️ Detalle de Productos Solares")
-
-        # Indicadores de Fill Rate para Solares, en el mismo estilo que
-        # los indicadores de "TOP 15 Quiebres (Por División)" (Fill Rate
-        # + variación en $ / Unds respecto de lo comprado).
-        mask_solares_ind = (
-            df_filt[col_glosa].astype(str).str.upper().str.contains("SOLARES", na=False)
-        )
-        df_solares_ind = df_filt[mask_solares_ind].copy()
-
-        etiqueta_sem_ind = (
-            f"Sem {fmt_sem(semana_sel)}" if semana_sel != "Todas" else "Todas"
-        )
-
-        st.markdown("#### 📌 SOLARES")
-        ind_s1, ind_s2 = st.columns(2)
-        with ind_s1:
-          tot_compra_sol = df_solares_ind[col_m_compra].sum() if col_m_compra else 0
-          tot_recib_sol = df_solares_ind[col_m_recib].sum() if col_m_recib else 0
-          fr_sol_monto = (
-              (tot_recib_sol / tot_compra_sol * 100) if tot_compra_sol > 0 else 0.0
-          )
-          delta_sol_monto = f"{tot_recib_sol - tot_compra_sol:,.0f} $ (Dif)".replace(
-              ",", "."
-          )
-          st.metric(
-              label=f"Fill Rate Monto ({etiqueta_sem_ind})",
-              value=f"{fr_sol_monto:.1f}%",
-              delta=delta_sol_monto,
-          )
-        with ind_s2:
-          tot_compra_sol_u = (
-              df_solares_ind[col_u_compra].sum() if col_u_compra else 0
-          )
-          tot_recib_sol_u = df_solares_ind[col_u_recib].sum() if col_u_recib else 0
-          fr_sol_unds = (
-              (tot_recib_sol_u / tot_compra_sol_u * 100)
-              if tot_compra_sol_u > 0
-              else 0.0
-          )
-          delta_sol_unds = (
-              f"{tot_recib_sol_u - tot_compra_sol_u:,.0f} Unds (Dif)".replace(
-                  ",", "."
-              )
-          )
-          st.metric(
-              label=f"Fill Rate Unidades ({etiqueta_sem_ind})",
-              value=f"{fr_sol_unds:.1f}%",
-              delta=delta_sol_unds,
-          )
-
-        st.divider()
-
-        df_solares = df_solares_ind.copy()
+      if is_sb and col_glosa and col_glosa in df_filt.columns:
+        mask_solares_det = df_filt[col_glosa].astype(str).str.upper().str.contains("SOLARES", na=False)
+        df_solares = df_filt[mask_solares_det].copy()
 
         if not df_solares.empty:
-          col_det_s1, col_det_s2 = st.columns(2)
-          with col_det_s1:
-            ocs_solares_disp = ["Todas"] + sorted(
-                [str(x) for x in df_solares[col_oc].dropna().unique()]
-            )
-            oc_solar_sel = st.selectbox(
-                "Filtrar Solares por OC:",
-                ocs_solares_disp,
-                key=f"det_oc_solares_{nombre_hoja}_{i}",
-            )
-          with col_det_s2:
-            skus_solares_disp = ["Todos"] + sorted(
-                [str(x) for x in df_solares[col_sku].dropna().unique()]
-            )
-            sku_solar_sel = st.selectbox(
-                "Filtrar Solares por SKU:",
-                skus_solares_disp,
-                key=f"det_sku_solares_{nombre_hoja}_{i}",
-            )
-
-          if oc_solar_sel != "Todas":
-            df_solares = df_solares[
-                df_solares[col_oc].astype(str) == oc_solar_sel
-            ]
-          if sku_solar_sel != "Todos":
-            df_solares = df_solares[
-                df_solares[col_sku].astype(str) == sku_solar_sel
-            ]
-
-          if col_rechazado and col_rechazado in df_solares.columns:
-            idx_corte_s = list(df_solares.columns).index(col_rechazado) + 1
-            df_solares_final = df_solares.iloc[:, :idx_corte_s].copy()
-          else:
-            df_solares_final = df_solares.copy()
-
-          renombrar_columnas_solares = {
-              "id_producto": "SKU",
-              "id_prod": "SKU",
-              "numero_orden": "OC",
-              "num_oc": "OC",
-              "orden_compra": "OC",
-              "descripcion": "Descripción",
-              "unidades_compra": "Unidades Compra",
-              "unidades_recibidas": "Unidades Recibidas",
-              "unidades_rechazadas": "Unidades Rechazadas",
-              "cantidad": "Unidades Compra",
-              "cantidad_recibida": "Unidades Recibidas",
-              "fecha_hora_despacho_default": "Fecha Despacho",
-              "precio_final": "Precio Final",
-              "precio_total": "Precio Total",
-          }
-          nuevas_columnas_s = {}
-          for col in df_solares_final.columns:
-            col_lower = str(col).strip().lower()
-            if col_lower in renombrar_columnas_solares:
-              nuevas_columnas_s[col] = renombrar_columnas_solares[col_lower]
-            else:
-              nuevas_columnas_s[col] = str(col).replace("_", " ").strip().title()
-          df_solares_final = df_solares_final.rename(columns=nuevas_columnas_s)
-
-          st.dataframe(
-              df_solares_final, hide_index=True, use_container_width=True
-          )
-        else:
-          st.info("No hay productos Solares registrados para la semana seleccionada.")
-
-      st.divider()
-
-      # RESUMEN 4 SEMANAS
-      if col_semana:
-        df_base_fr = df.copy()
-        df_4sem = df_base_fr[
-            df_base_fr[col_semana].isin(ultimas_4_semanas)
-        ].copy()
-
-        st.subheader("📊 Resumen Fill Rate (Últimas 4 Semanas)")
-
-        if is_pu:
-          grp = df_4sem.groupby(col_semana, as_index=False)[
-              [col_u_compra, col_u_recib, col_m_compra, col_m_recib]
-          ].sum()
-          grp["FR_Unds_pct"] = (grp[col_u_recib] / grp[col_u_compra] * 100).fillna(
-              0
-          )
-          grp["FR_Monto_pct"] = (
-              grp[col_m_recib] / grp[col_m_compra] * 100
-          ).fillna(0)
-
-          df_disp = grp.copy()
-          df_disp[col_semana] = df_disp[col_semana].apply(fmt_sem)
-          df_disp[col_u_compra] = df_disp[col_u_compra].apply(formato_unidades)
-          df_disp[col_u_recib] = df_disp[col_u_recib].apply(formato_unidades)
-          df_disp[col_m_compra] = df_disp[col_m_compra].apply(formato_moneda)
-          df_disp[col_m_recib] = df_disp[col_m_recib].apply(formato_moneda)
-          df_disp["FR_Unds_pct"] = df_disp["FR_Unds_pct"].apply(
-              lambda x: f"{x:.2f}%"
-          )
-          df_disp["FR_Monto_pct"] = df_disp["FR_Monto_pct"].apply(
-              lambda x: f"{x:.2f}%"
-          )
-
-          df_disp.columns = [
-              "Semana",
-              "Unidades Compra",
-              "Unidades Recibidas",
-              "Monto Compra ($)",
-              "Monto Recibido ($)",
-              "Fill Rate Unidades",
-              "Fill Rate Monto",
-          ]
-          st.dataframe(df_disp, hide_index=True, use_container_width=True)
           st.divider()
+          st.subheader("☀️ Detalle de Productos Solares (SB)")
 
-          col_g1, col_g2 = st.columns(2)
-          with col_g1:
-            st.markdown("##### Fill Rate por Unidades (Evolutivo)")
-            fig_unds = go.Figure(
-                go.Bar(
-                    x=[f"Sem {fmt_sem(s)}" for s in grp[col_semana]],
-                    y=grp["FR_Unds_pct"],
-                    text=[f"{v:.1f}%" for v in grp["FR_Unds_pct"]],
-                    textposition="auto",
-                    marker_color="#0070f3",
-                )
-            )
-            fig_unds.update_layout(
-                height=360,
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(0,0,0,0)",
-                font=dict(color="#ffffff"),
-                yaxis=dict(
-                    range=[0, 115], gridcolor="#222222", ticksuffix="%"
-                ),
-                xaxis=dict(gridcolor="#222222"),
-            )
-            st.plotly_chart(
-                fig_unds,
-                use_container_width=True,
-                key=f"plot_unds_{nombre_hoja}_{i}",
-            )
+          sol_m_compra = df_solares[col_m_compra].sum()
+          sol_m_recib = df_solares[col_m_recib].sum()
+          sol_u_compra = df_solares[col_u_compra].sum()
+          sol_u_recib = df_solares[col_u_recib].sum()
+          sol_fr = (sol_m_recib / sol_m_compra * 100) if sol_m_compra > 0 else 0.0
 
-          with col_g2:
-            st.markdown("##### Fill Rate por Monto (Evolutivo)")
-            fig_monto = go.Figure(
-                go.Bar(
-                    x=[f"Sem {fmt_sem(s)}" for s in grp[col_semana]],
-                    y=grp["FR_Monto_pct"],
-                    text=[f"{v:.1f}%" for v in grp["FR_Monto_pct"]],
-                    textposition="auto",
-                    marker_color="#00adb5",
-                )
-            )
-            fig_monto.update_layout(
-                height=360,
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(0,0,0,0)",
-                font=dict(color="#ffffff"),
-                yaxis=dict(
-                    range=[0, 115], gridcolor="#222222", ticksuffix="%"
-                ),
-                xaxis=dict(gridcolor="#222222"),
-            )
-            st.plotly_chart(
-                fig_monto,
-                use_container_width=True,
-                key=f"plot_monto_{nombre_hoja}_{i}",
-            )
+          c_s1, c_s2, c_s3, c_s4 = st.columns(4)
+          c_s1.metric("Monto Solicitado", formato_moneda(sol_m_compra))
+          c_s2.metric("Monto Recibido", formato_moneda(sol_m_recib))
+          c_s3.metric("Unidades Recibidas / Pedidas", f"{formato_unidades(sol_u_recib)} / {formato_unidades(sol_u_compra)}")
+          c_s4.metric("Fill Rate Solares", f"{sol_fr:.1f}%")
 
-        elif is_sb and col_div:
-          grp = df_4sem.groupby([col_semana, col_div], as_index=False)[
-              [col_u_compra, col_u_recib, col_m_compra, col_m_recib]
-          ].sum()
-          grp["FR_Unds_pct"] = (grp[col_u_recib] / grp[col_u_compra] * 100).fillna(
-              0
-          )
-          grp["FR_Monto_pct"] = (
-              grp[col_m_recib] / grp[col_m_compra] * 100
-          ).fillna(0)
+          grp_sol = df_solares.groupby([col_sku, col_desc], as_index=False).agg({
+              col_u_compra: "sum",
+              col_u_recib: "sum",
+              col_m_compra: "sum",
+              col_m_recib: "sum",
+              "quiebre_monto_calc": "sum"
+          })
+          grp_sol["Fill Rate %"] = (grp_sol[col_m_recib] / grp_sol[col_m_compra] * 100).fillna(0).round(1)
 
-          df_disp = grp.copy()
-          df_disp[col_semana] = df_disp[col_semana].apply(fmt_sem)
-          df_disp[col_u_compra] = df_disp[col_u_compra].apply(formato_unidades)
-          df_disp[col_u_recib] = df_disp[col_u_recib].apply(formato_unidades)
-          df_disp[col_m_compra] = df_disp[col_m_compra].apply(formato_moneda)
-          df_disp[col_m_recib] = df_disp[col_m_recib].apply(formato_moneda)
-          df_disp["FR_Unds_pct"] = df_disp["FR_Unds_pct"].apply(
-              lambda x: f"{x:.2f}%"
-          )
-          df_disp["FR_Monto_pct"] = df_disp["FR_Monto_pct"].apply(
-              lambda x: f"{x:.2f}%"
-          )
+          grp_sol_disp = pd.DataFrame({
+              "SKU": grp_sol[col_sku].astype(str),
+              "Descripción": grp_sol[col_desc],
+              "Unidades Pedidas": grp_sol[col_u_compra].apply(formato_unidades),
+              "Unidades Recibidas": grp_sol[col_u_recib].apply(formato_unidades),
+              "Monto Compra ($)": grp_sol[col_m_compra].apply(formato_moneda),
+              "Monto Recibido ($)": grp_sol[col_m_recib].apply(formato_moneda),
+              "Quiebre ($)": grp_sol["quiebre_monto_calc"].apply(lambda x: f"-{formato_moneda(abs(x))}" if x > 0 else "$0"),
+              "Fill Rate (%)": grp_sol["Fill Rate %"].apply(lambda x: f"{x:.1f}%")
+          })
 
-          df_disp.columns = [
-              "Semana",
-              "División",
-              "Unidades Compra",
-              "Unidades Recibidas",
-              "Monto Compra ($)",
-              "Monto Recibido ($)",
-              "Fill Rate Unidades",
-              "Fill Rate Monto",
-          ]
-          st.dataframe(df_disp, hide_index=True, use_container_width=True)
-          st.divider()
+          st.dataframe(grp_sol_disp, hide_index=True, use_container_width=True)
 
-          col_g1, col_g2 = st.columns(2)
-          p_unds = grp.pivot(
-              index=col_semana, columns=col_div, values="FR_Unds_pct"
-          ).reset_index()
-          p_monto = grp.pivot(
-              index=col_semana, columns=col_div, values="FR_Monto_pct"
-          ).reset_index()
-
-          tot_sem = df_4sem.groupby(col_semana, as_index=False)[
-              [col_u_compra, col_u_recib, col_m_compra, col_m_recib]
-          ].sum()
-          tot_sem["Total_FR_Unds"] = (
-              tot_sem[col_u_recib] / tot_sem[col_u_compra] * 100
-          ).fillna(0)
-          tot_sem["Total_FR_Monto"] = (
-              tot_sem[col_m_recib] / tot_sem[col_m_compra] * 100
-          ).fillna(0)
-
-          with col_g1:
-            st.markdown("##### Fill Rate por Unidades")
-            fig_unds = go.Figure()
-            for col_d in [c for c in p_unds.columns if c != col_semana]:
-              color_bar = (
-                  "#f97316" if "CONSUMO" in str(col_d).upper() else "#00adb5"
-              )
-              fig_unds.add_trace(
-                  go.Bar(
-                      x=[f"Sem {fmt_sem(s)}" for s in p_unds[col_semana]],
-                      y=p_unds[col_d],
-                      name=str(col_d).title(),
-                      marker_color=color_bar,
-                  )
-              )
-            fig_unds.add_trace(
-                go.Scatter(
-                    x=[f"Sem {fmt_sem(s)}" for s in tot_sem[col_semana]],
-                    y=tot_sem["Total_FR_Unds"],
-                    name="Total Semana",
-                    mode="lines+markers+text",
-                    text=[f"{v:.1f}%" for v in tot_sem["Total_FR_Unds"]],
-                    textposition="top center",
-                    line=dict(color="#e2e8f0", width=3),
-                )
-            )
-            fig_unds.update_layout(
-                barmode="group",
-                height=360,
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(0,0,0,0)",
-                font=dict(color="#ffffff"),
-                yaxis=dict(
-                    range=[0, 115], gridcolor="#222222", ticksuffix="%"
-                ),
-                xaxis=dict(gridcolor="#222222"),
-                legend=dict(orientation="h", y=-0.2),
-            )
-            st.plotly_chart(
-                fig_unds, use_container_width=True, key=f"plot_unds_sb_{i}"
-            )
-
-          with col_g2:
-            st.markdown("##### Fill Rate por Monto")
-            fig_monto = go.Figure()
-            for col_d in [c for c in p_monto.columns if c != col_semana]:
-              color_bar = (
-                  "#f97316" if "CONSUMO" in str(col_d).upper() else "#00adb5"
-              )
-              fig_monto.add_trace(
-                  go.Bar(
-                      x=[f"Sem {fmt_sem(s)}" for s in p_monto[col_semana]],
-                      y=p_monto[col_d],
-                      name=str(col_d).title(),
-                      marker_color=color_bar,
-                  )
-              )
-            fig_monto.add_trace(
-                go.Scatter(
-                    x=[f"Sem {fmt_sem(s)}" for s in tot_sem[col_semana]],
-                    y=tot_sem["Total_FR_Monto"],
-                    name="Total Semana",
-                    mode="lines+markers+text",
-                    text=[f"{v:.1f}%" for v in tot_sem["Total_FR_Monto"]],
-                    textposition="top center",
-                    line=dict(color="#e2e8f0", width=3),
-                )
-            )
-            fig_monto.update_layout(
-                barmode="group",
-                height=360,
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(0,0,0,0)",
-                font=dict(color="#ffffff"),
-                yaxis=dict(
-                    range=[0, 115], gridcolor="#222222", ticksuffix="%"
-                ),
-                xaxis=dict(gridcolor="#222222"),
-                legend=dict(orientation="h", y=-0.2),
-            )
-            st.plotly_chart(
-                fig_monto, use_container_width=True, key=f"plot_monto_sb_{i}"
-            )
-
-        st.divider()
-
-      # TABLAS DINÁMICAS: QUIEBRE POR MARCA
-      if sem_top is not None and col_marca:
-        st.subheader("🏷️ Resumen Quiebres por Marca")
-        df_sem_marca = df[df[col_semana] == sem_top].copy()
-
-        if is_pu:
-          grp_m = df_sem_marca.groupby(col_marca, as_index=False).agg(
-              {col_m_compra: "sum", "quiebre_monto_calc": "sum"}
-          )
-          grp_m = grp_m[grp_m["quiebre_monto_calc"] > 0]
-
-          if not grp_m.empty:
-            total_quiebre_div = grp_m["quiebre_monto_calc"].sum()
-            grp_m["pct_quiebre"] = (
-                (grp_m["quiebre_monto_calc"] / total_quiebre_div * 100)
-                if total_quiebre_div > 0
-                else 0.0
-            )
-            grp_m = grp_m.sort_values(
-                by="quiebre_monto_calc", ascending=False
-            )
-
-            grp_m_disp = pd.DataFrame()
-            grp_m_disp["Etiquetas de fila"] = grp_m[col_marca].astype(str)
-            grp_m_disp["TOTAL COMPRA"] = grp_m[col_m_compra].apply(
-                formato_moneda
-            )
-            grp_m_disp["MONTO QUIEBRE"] = grp_m["quiebre_monto_calc"].apply(
-                lambda x: f"-{formato_moneda(abs(x))}"
-            )
-            grp_m_disp["QUIEBRE %"] = grp_m["pct_quiebre"].apply(
-                lambda x: f"{x:.2f}%"
-            )
-
-            total_compra_div = grp_m[col_m_compra].sum()
-            fila_total = pd.DataFrame([{
-                "Etiquetas de fila": "Total general",
-                "TOTAL COMPRA": formato_moneda(total_compra_div),
-                "MONTO QUIEBRE": (
-                    f"-{formato_moneda(abs(total_quiebre_div))}"
-                ),
-                "QUIEBRE %": "100.00%",
-            }])
-            grp_m_final = pd.concat(
-                [grp_m_disp, fila_total], ignore_index=True
-            )
-
-            styled_df = grp_m_final.style.apply(
-                aplicar_criticidad, subset=["QUIEBRE %"]
-            )
-            st.dataframe(styled_df, hide_index=True, use_container_width=True)
-          else:
-            st.info(
-                f"No hay quiebres registrados para la semana {fmt_sem(sem_top)} en"
-                " PU."
-            )
-
-        elif is_sb and col_div:
-          col_m1, col_m2 = st.columns(2)
-          cols_marca_ui = [col_m1, col_m2]
-
-          for idx, div_nombre in enumerate(lista_divs):
-            if idx >= 2:
-              break
-            with cols_marca_ui[idx]:
-              st.markdown(f"#### {str(div_nombre).upper()}")
-              df_div_m = df_sem_marca[
-                  df_sem_marca[col_div] == div_nombre
-              ].copy()
-              grp_m = df_div_m.groupby(col_marca, as_index=False).agg(
-                  {col_m_compra: "sum", "quiebre_monto_calc": "sum"}
-              )
-              grp_m = grp_m[grp_m["quiebre_monto_calc"] > 0]
-
-              if not grp_m.empty:
-                total_quiebre_div = grp_m["quiebre_monto_calc"].sum()
-                grp_m["pct_quiebre"] = (
-                    (grp_m["quiebre_monto_calc"] / total_quiebre_div * 100)
-                    if total_quiebre_div > 0
-                    else 0.0
-                )
-                grp_m = grp_m.sort_values(
-                    by="quiebre_monto_calc", ascending=False
-                )
-
-                grp_m_disp = pd.DataFrame()
-                grp_m_disp["Etiquetas de fila"] = grp_m[col_marca].astype(str)
-                grp_m_disp["TOTAL COMPRA"] = grp_m[col_m_compra].apply(
-                    formato_moneda
-                )
-                grp_m_disp["MONTO QUIEBRE"] = grp_m["quiebre_monto_calc"].apply(
-                    lambda x: f"-{formato_moneda(abs(x))}"
-                )
-                grp_m_disp["QUIEBRE %"] = grp_m["pct_quiebre"].apply(
-                    lambda x: f"{x:.2f}%"
-                )
-
-                total_compra_div = grp_m[col_m_compra].sum()
-                fila_total = pd.DataFrame([{
-                    "Etiquetas de fila": "Total general",
-                    "TOTAL COMPRA": formato_moneda(total_compra_div),
-                    "MONTO QUIEBRE": (
-                        f"-{formato_moneda(abs(total_quiebre_div))}"
-                    ),
-                    "QUIEBRE %": "100.00%",
-                }])
-                grp_m_final = pd.concat(
-                    [grp_m_disp, fila_total], ignore_index=True
-                )
-
-                styled_df = grp_m_final.style.apply(
-                    aplicar_criticidad, subset=["QUIEBRE %"]
-                )
-                st.dataframe(
-                    styled_df, hide_index=True, use_container_width=True
-                )
-              else:
-                st.info(
-                    f"No hay quiebres registrados para {div_nombre} en la semana"
-                    f" {fmt_sem(sem_top)}."
-                )
-
-        st.divider()
-
-      # DETALLE DE REGISTRO CON FILTROS
-      st.subheader("📋 Detalle de Registro de Compras")
-      col_det_f1, col_det_f2 = st.columns(2)
-      with col_det_f1:
-        ocs_disponibles = (
-            ["Todas"] + sorted([str(x) for x in df_filt[col_oc].dropna().unique()])
-            if col_oc and col_oc in df_filt.columns
-            else ["Todas"]
-        )
-        oc_seleccionada = st.selectbox(
-            "Filtrar Detalle por OC:",
-            ocs_disponibles,
-            key=f"det_oc_{nombre_hoja}_{i}",
-        )
-      with col_det_f2:
-        skus_det_disponibles = (
-            ["Todos"]
-            + sorted([str(x) for x in df_filt[col_sku].dropna().unique()])
-            if col_sku and col_sku in df_filt.columns
-            else ["Todos"]
-        )
-        sku_det_seleccionado = st.selectbox(
-            "Filtrar Detalle por SKU:",
-            skus_det_disponibles,
-            key=f"det_sku_{nombre_hoja}_{i}",
-        )
-
-      df_detalle = df_filt.copy()
-      if col_oc and oc_seleccionada != "Todas":
-        df_detalle = df_detalle[
-            df_detalle[col_oc].astype(str) == oc_seleccionada
-        ]
-      if col_sku and sku_det_seleccionado != "Todos":
-        df_detalle = df_detalle[
-            df_detalle[col_sku].astype(str) == sku_det_seleccionado
-        ]
-
-      if col_rechazado and col_rechazado in df_detalle.columns:
-        idx_corte = list(df_detalle.columns).index(col_rechazado) + 1
-        df_corte_final = df_detalle.iloc[:, :idx_corte].copy()
-      else:
-        df_corte_final = df_detalle.copy()
-
-      renombrar_columnas = {
-          "id_producto": "SKU",
-          "id_prod": "SKU",
-          "numero_orden": "OC",
-          "num_oc": "OC",
-          "orden_compra": "OC",
-          "descripcion": "Descripción",
-          "unidades_compra": "Unidades Compra",
-          "unidades_recibidas": "Unidades Recibidas",
-          "unidades_rechazadas": "Unidades Rechazadas",
-          "cantidad": "Unidades Compra",
-          "cantidad_recibida": "Unidades Recibidas",
-          "fecha_hora_despacho_default": "Fecha Despacho",
-          "precio_final": "Precio Final",
-          "precio_total": "Precio Total",
-      }
-
-      nuevas_columnas = {}
-      for col in df_corte_final.columns:
-        col_lower = str(col).strip().lower()
-        if col_lower in renombrar_columnas:
-          nuevas_columnas[col] = renombrar_columnas[col_lower]
-        else:
-          nuevas_columnas[col] = str(col).replace("_", " ").strip().title()
-
-      df_corte_final = df_corte_final.rename(columns=nuevas_columnas)
-
-      st.dataframe(df_corte_final, hide_index=True, use_container_width=True)
-
+    # =================================================================
+    # VISTA GENERAL DE RESPALDO PARA OTRAS HOJAS DE EXCEL
+    # =================================================================
     else:
-      busqueda = st.text_input(
-          f"🔍 Buscar en {nombre_hoja}:", key=f"search_{nombre_hoja}_{i}"
-      )
-      if busqueda:
-        mask = (
-            df.astype(str)
-            .apply(lambda x: x.str.contains(busqueda, case=False))
-            .any(axis=1)
-        )
-        df = df[mask]
-      st.caption(f"Mostrando {len(df)} registros en {nombre_hoja}.")
-      st.dataframe(df, hide_index=True, use_container_width=True)
+      st.markdown(f"### 📋 Registros de Hoja: {nombre_hoja}")
+      busqueda_gen = st.text_input("🔍 Buscar en registros:", key=f"search_gen_{i}")
+      df_gen = df.copy()
+
+      if busqueda_gen:
+        mask_gen = df_gen.astype(str).apply(lambda x: x.str.contains(busqueda_gen, case=False)).any(axis=1)
+        df_gen = df_gen[mask_gen]
+
+      st.caption(f"Mostrando {len(df_gen)} registros.")
+      st.dataframe(df_gen, hide_index=True, use_container_width=True)
