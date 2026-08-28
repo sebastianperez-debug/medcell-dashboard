@@ -33,49 +33,64 @@ st.markdown(
     .medcell-author { color: #777777; font-size: 11px; margin-top: 4px; font-style: italic; }
 
     /* Estilo de Tarjetas de Filtro por Semana */
-    div[data-testid="stRadio"] > label { display: none; }
-    div[data-testid="stRadio"] > div { 
-        display: flex !important; 
-        flex-wrap: wrap !important; 
-        gap: 12px !important; 
-        margin-top: 8px !important; 
+    div[data-testid="stRadio"] > label { display: none !important; }
+    div[data-testid="stRadio"] [role="radiogroup"] {
+        display: flex !important;
+        flex-wrap: wrap !important;
+        gap: 12px !important;
+        margin-top: 8px !important;
     }
-    div[data-testid="stRadio"] label {
-        background-color: #141414 !important; border: 1px solid #2b2b2b !important;
-        padding: 10px 22px !important; border-radius: 10px !important;
-        cursor: pointer !important; transition: all 0.25s ease-in-out !important;
-        color: #cccccc !important; font-weight: 600 !important; font-size: 14px !important;
+    div[data-testid="stRadio"] [role="radiogroup"] > label {
+        background-color: #141414 !important;
+        border: 1px solid #2b2b2b !important;
+        padding: 10px 22px !important;
+        border-radius: 10px !important;
+        cursor: pointer !important;
+        transition: all 0.25s ease-in-out !important;
+        color: #cccccc !important;
+        font-weight: 600 !important;
+        font-size: 14px !important;
         box-sizing: border-box !important;
+        margin: 0 !important;
+    }
+    div[data-testid="stRadio"] [role="radiogroup"] > label:hover {
+        border-color: #0070f3 !important;
+        background-color: #1e1e1e !important;
+        color: #ffffff !important;
+        transform: translateY(-2px);
+    }
+    div[data-testid="stRadio"] [role="radiogroup"] > label[data-checked="true"] {
+        background-color: #0070f3 !important;
+        border-color: #0070f3 !important;
+        color: #ffffff !important;
+        box-shadow: 0px 4px 14px rgba(0, 112, 243, 0.4);
     }
 
-    /* Ajuste real para celulares: dos botones exactamente del mismo ancho por fila. */
+    /* En celular: exactamente 2 semanas por fila, ocupando mejor el ancho. */
     @media (max-width: 768px) {
-        div[data-testid="stRadio"] > div {
+        div[data-testid="stRadio"] {
+            width: 100% !important;
+            margin-top: 0 !important;
+            margin-bottom: 8px !important;
+        }
+        div[data-testid="stRadio"] [role="radiogroup"] {
             display: grid !important;
             grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-            gap: 10px !important;
+            column-gap: 10px !important;
+            row-gap: 10px !important;
             width: 100% !important;
+            margin-top: 0 !important;
         }
-        div[data-testid="stRadio"] label {
+        div[data-testid="stRadio"] [role="radiogroup"] > label {
             width: 100% !important;
             min-width: 0 !important;
-            margin: 0 !important;
-            padding: 12px 10px !important;
+            height: 58px !important;
+            padding: 10px 12px !important;
             display: flex !important;
             align-items: center !important;
             justify-content: flex-start !important;
+            margin: 0 !important;
         }
-        div[data-testid="stRadio"] label > div {
-            min-width: 0 !important;
-        }
-    }
-    div[data-testid="stRadio"] label:hover {
-        border-color: #0070f3 !important; background-color: #1e1e1e !important;
-        color: #ffffff !important; transform: translateY(-2px);
-    }
-    div[data-testid="stRadio"] label[data-checked="true"] {
-        background-color: #0070f3 !important; border-color: #0070f3 !important;
-        color: #ffffff !important; box-shadow: 0px 4px 14px rgba(0, 112, 243, 0.4);
     }
 
     /* Pestañas generales */
@@ -2360,6 +2375,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
           options=semanas_disp,
           index=idx_defecto,
           horizontal=True,
+          label_visibility="collapsed",
           key=f"semana_sel_{nombre_hoja}_{i}",
       )
       semana_sel = opciones_semanas[semana_sel_raw]
