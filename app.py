@@ -34,12 +34,40 @@ st.markdown(
 
     /* Estilo de Tarjetas de Filtro por Semana */
     div[data-testid="stRadio"] > label { display: none; }
-    div[data-testid="stRadio"] > div { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 8px; }
+    div[data-testid="stRadio"] > div { 
+        display: flex !important; 
+        flex-wrap: wrap !important; 
+        gap: 12px !important; 
+        margin-top: 8px !important; 
+    }
     div[data-testid="stRadio"] label {
         background-color: #141414 !important; border: 1px solid #2b2b2b !important;
         padding: 10px 22px !important; border-radius: 10px !important;
         cursor: pointer !important; transition: all 0.25s ease-in-out !important;
         color: #cccccc !important; font-weight: 600 !important; font-size: 14px !important;
+        box-sizing: border-box !important;
+    }
+
+    /* Ajuste real para celulares: dos botones exactamente del mismo ancho por fila. */
+    @media (max-width: 768px) {
+        div[data-testid="stRadio"] > div {
+            display: grid !important;
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 10px !important;
+            width: 100% !important;
+        }
+        div[data-testid="stRadio"] label {
+            width: 100% !important;
+            min-width: 0 !important;
+            margin: 0 !important;
+            padding: 12px 10px !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: flex-start !important;
+        }
+        div[data-testid="stRadio"] label > div {
+            min-width: 0 !important;
+        }
     }
     div[data-testid="stRadio"] label:hover {
         border-color: #0070f3 !important; background-color: #1e1e1e !important;
