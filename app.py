@@ -99,63 +99,6 @@ st.markdown(
         }
     }
 
-    /* Tablas legibles en celular: ajustan texto y evitan cortes horizontales. */
-    .responsive-table-wrap {
-        width: 100%;
-        overflow-x: auto;
-        -webkit-overflow-scrolling: touch;
-        margin: 8px 0 4px 0;
-    }
-    table.responsive-table {
-        width: 100%;
-        border-collapse: separate;
-        border-spacing: 0;
-        background: #121212;
-        border: 1px solid #2b2b2b;
-        border-radius: 10px;
-        overflow: hidden;
-        color: #f2f2f2;
-        font-size: 13px;
-    }
-    table.responsive-table th {
-        background: #171717;
-        color: #bdbdbd;
-        font-weight: 600;
-        text-align: left;
-        padding: 10px 9px;
-        border-bottom: 1px solid #303030;
-        white-space: normal;
-    }
-    table.responsive-table td {
-        padding: 9px 9px;
-        border-bottom: 1px solid #262626;
-        vertical-align: top;
-        white-space: normal;
-        overflow-wrap: anywhere;
-        word-break: break-word;
-        line-height: 1.25;
-    }
-    table.responsive-table tr:last-child td { border-bottom: 0; }
-    table.responsive-table tbody tr:hover { background: #181818; }
-
-    @media (max-width: 768px) {
-        .responsive-table-wrap {
-            overflow-x: hidden !important;
-        }
-        table.responsive-table {
-            width: 100% !important;
-            table-layout: fixed !important;
-            font-size: 12px !important;
-        }
-        table.responsive-table th,
-        table.responsive-table td {
-            padding: 8px 7px !important;
-            white-space: normal !important;
-            overflow-wrap: anywhere !important;
-            word-break: break-word !important;
-        }
-    }
-
     /* Pestañas generales */
     .stTabs [data-baseweb="tab-list"] {
         gap: 8px; background-color: #121212; padding: 8px 12px; border-radius: 10px; border: 1px solid #262626; margin-bottom: 20px;
@@ -176,23 +119,6 @@ st.markdown(
 
 
 # --- Funciones auxiliares de formato y conversión ---
-def render_responsive_table(df):
-  """Renderiza tablas clave con texto ajustable para pantallas pequeñas."""
-  if df is None or df.empty:
-    st.info("No hay datos para mostrar.")
-    return
-  html = df.to_html(
-      index=False,
-      escape=True,
-      classes="responsive-table",
-      border=0,
-  )
-  st.markdown(
-      f'<div class="responsive-table-wrap">{html}</div>',
-      unsafe_allow_html=True,
-  )
-
-
 def limpiar_numero(val):
   """Limpia cadenas numéricas de Excel preservando la escala real de enteros y decimales."""
   if pd.isna(val) or val == "" or val is None or str(val).lower() == "nan":
@@ -2896,7 +2822,9 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                     formato_unidades
                 )
 
-                render_responsive_table(grp_top_disp)
+                st.dataframe(
+                    grp_top_disp, hide_index=True, use_container_width=True
+                )
 
       # =================================================================
       # DETALLE DE PRODUCTOS SOLARES (justo debajo de "TOP 15 Quiebres
@@ -3070,7 +2998,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
               "Fill Rate Unidades",
               "Fill Rate Monto",
           ]
-          render_responsive_table(df_disp)
+          st.dataframe(df_disp, hide_index=True, use_container_width=True)
           st.divider()
 
           col_g1, col_g2 = st.columns(2)
@@ -3162,7 +3090,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
               "Fill Rate Unidades",
               "Fill Rate Monto",
           ]
-          render_responsive_table(df_disp)
+          st.dataframe(df_disp, hide_index=True, use_container_width=True)
           st.divider()
 
           col_g1, col_g2 = st.columns(2)
