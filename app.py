@@ -5,6 +5,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import streamlit as st
+import streamlit.components.v1 as components
 
 # 1. Configuración de la página
 st.set_page_config(page_title="Medcell Operaciones", layout="wide")
@@ -592,7 +593,7 @@ nombres_hojas = [
     h for h in hojas.keys() if h.strip().lower() not in HOJAS_A_EXCLUIR
 ]
 
-tabs = st.tabs([f"📊 {h}" for h in nombres_hojas])
+tabs = st.tabs([f"📊 {h}" for h in nombres_hojas] + ["📷 Escanear"])
 
 for i, nombre_hoja in enumerate(nombres_hojas):
   with tabs[i]:
@@ -3808,3 +3809,139 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         df = df[mask]
       st.caption(f"Mostrando {len(df)} registros en {nombre_hoja}.")
       st.dataframe(df, hide_index=True, use_container_width=True)
+
+
+# =================================================================
+# PESTAÑA: ESCANEAR POSICIÓN (LOCALIZADOR) - código de barras 1D
+# =================================================================
+with tabs[-1]:
+  st.markdown("### 📷 Escanear Localizador")
+  st.caption("Apunta la cámara al código de barras de la posición (Localizador).")
+
+  components.html(
+      """
+      <div id="reader" style="width:100%"></div>
+      <script src="https://unpkg.com/html5-qrcode"></script>
+      <script>
+      function onScanSuccess(decodedText) {
+          const url = new URL(window.parent.location);
+          url.searchParams.set('loc', decodedText);
+          window.parent.location.href = url.toString();
+      }
+      const formatosBarras = [
+          Html5QrcodeSupportedFormats.CODE_128,
+          Html5QrcodeSupportedFormats.CODE_39,
+          Html5QrcodeSupportedFormats.EAN_13,
+          Html5QrcodeSupportedFormats.EAN_8,
+          Html5QrcodeSupportedFormats.UPC_A,
+          Html5QrcodeSupportedFormats.ITF,
+      ];
+      const html5QrCode = new Html5Qrcode("reader", {
+          formatsToSupport: formatosBarras,
+          verbose: false
+      });
+      html5QrCode.start(
+          { facingMode: "environment" },
+          { fps: 10, qrbox: { width: 280, height: 140 } },
+          onScanSuccess
+      ).catch((err) => {
+          document.getElementById("reader").innerHTML =
+              "<p style='color:#e74c3c'>No se pudo acceder a la cámara: " + err + "</p>";
+      });
+      </script>
+      """,
+      height=350,
+  )
+
+  loc_escaneado = st.query_params.get("loc", None)
+
+  if st.button("🔄 Limpiar escaneo", key="btn_limpiar_scan"):
+    st.query_params.clear()
+    st.rerun()
+
+  if loc_escaneado:
+    df_stock_scan = hojas.get("STOCK")
+    if df_stock_scan is None:
+      st.error("No se encontró la hoja 'STOCK' en el Excel.")
+    else:
+      df_stock_scan = df_stock_scan.copy()
+
+      col_loc_scan = next(
+          (c for c in df_stock_scan.columns
+           if c.strip().lower() in ["localizador", "ubicacion"]),
+          None,
+      )
+      col_cod_scan = next(
+          (c for c in df_stock_scan.columns
+           if c.strip().lower() in ["codigo_articulo", "id_producto", "sku", "codigo"]),
+          None,
+      )
+      col_desc_scan = next(
+          (c for c in df_stock_scan.columns if "descripcion" in c.lower()), None
+      )
+      if not col_desc_scan and len(df_stock_scan.columns) > 3:
+        col_desc_scan = df_stock_scan.columns[3]
+      col_lote_scan = next(
+          (c for c in df_stock_scan.columns if c.strip().lower() == "lote_proveedor"),
+          None,
+      )
+      col_cant_scan = next(
+          (c for c in df_stock_scan.columns
+           if c.strip().lower() in ["cantidad", "stock", "unidades"]),
+          None,
+      )
+      col_fecha_scan = next(
+          (c for c in df_stock_scan.columns
+           if c.strip().lower() in ["fecha_expiracion_lote", "vencimiento", "fecha_expiracion"]),
+          None,
+      )
+
+      if not col_loc_scan:
+        st.error("La hoja STOCK no tiene columna de Localizador reconocible.")
+      else:
+        resultado = df_stock_scan[
+            df_stock_scan[col_loc_scan].astype(str).str.strip().str.upper()
+            == str(loc_escaneado).strip().upper()
+        ].copy()
+
+        st.success(f"📍 Localizador escaneado: **{loc_escaneado}**")
+
+        if resultado.empty:
+          st.warning("No se encontró ningún producto registrado en esa posición.")
+        else:
+          if col_cant_scan:
+            resultado[col_cant_scan] = resultado[col_cant_scan].apply(limpiar_numero)
+          if col_cod_scan:
+            resultado[col_cod_scan] = resultado[col_cod_scan].apply(fmt_code)
+          if col_fecha_scan:
+            resultado[col_fecha_scan] = pd.to_datetime(
+                resultado[col_fecha_scan], errors="coerce"
+            ).dt.strftime("%d-%m-%Y")
+
+          for _, fila in resultado.iterrows():
+            desc_txt = fila[col_desc_scan] if col_desc_scan else "Sin descripción"
+            cod_txt = fila[col_cod_scan] if col_cod_scan else "S/N"
+            cant_txt = (
+                formato_unidades(fila[col_cant_scan]) if col_cant_scan else "N/A"
+            )
+            lote_txt = fila[col_lote_scan] if col_lote_scan else "N/A"
+            fecha_txt = fila[col_fecha_scan] if col_fecha_scan else "N/A"
+
+            st.markdown(
+                f"""
+                <div style="background-color:#141414; border:1px solid #0070f3;
+                            border-radius:10px; padding:16px; margin-bottom:12px;">
+                    <div style="color:#aaaaaa; font-size:12px; text-transform:uppercase;">Producto</div>
+                    <div style="color:#ffffff; font-size:20px; font-weight:bold;">{desc_txt}</div>
+                    <div style="margin-top:8px; color:#cccccc; font-size:14px;">
+                        Código: <b>{cod_txt}</b> · Lote: <b>{lote_txt}</b> · Vence: <b>{fecha_txt}</b>
+                    </div>
+                    <div style="margin-top:8px; color:#2ecc71; font-size:22px; font-weight:bold;">
+                        Stock: {cant_txt} unidades
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+  else:
+    st.info("Aún no se ha escaneado ningún código.")
