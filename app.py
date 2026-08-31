@@ -33,21 +33,70 @@ st.markdown(
     .medcell-author { color: #777777; font-size: 11px; margin-top: 4px; font-style: italic; }
 
     /* Estilo de Tarjetas de Filtro por Semana */
-    div[data-testid="stRadio"] > label { display: none; }
-    div[data-testid="stRadio"] > div { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 8px; }
-    div[data-testid="stRadio"] label {
-        background-color: #141414 !important; border: 1px solid #2b2b2b !important;
-        padding: 10px 22px !important; border-radius: 10px !important;
-        cursor: pointer !important; transition: all 0.25s ease-in-out !important;
-        color: #cccccc !important; font-weight: 600 !important; font-size: 14px !important;
+    div[data-testid="stRadio"] > label { display: none !important; }
+    div[data-testid="stRadio"] [role="radiogroup"] {
+        display: flex !important;
+        flex-wrap: wrap !important;
+        gap: 12px !important;
+        margin-top: 8px !important;
     }
-    div[data-testid="stRadio"] label:hover {
-        border-color: #0070f3 !important; background-color: #1e1e1e !important;
-        color: #ffffff !important; transform: translateY(-2px);
+    div[data-testid="stRadio"] [role="radiogroup"] > label {
+        background-color: #141414 !important;
+        border: 1px solid #2b2b2b !important;
+        padding: 10px 22px !important;
+        border-radius: 10px !important;
+        cursor: pointer !important;
+        transition: all 0.25s ease-in-out !important;
+        color: #cccccc !important;
+        font-weight: 600 !important;
+        font-size: 14px !important;
+        box-sizing: border-box !important;
+        margin: 0 !important;
     }
-    div[data-testid="stRadio"] label[data-checked="true"] {
-        background-color: #0070f3 !important; border-color: #0070f3 !important;
-        color: #ffffff !important; box-shadow: 0px 4px 14px rgba(0, 112, 243, 0.4);
+    div[data-testid="stRadio"] [role="radiogroup"] > label:hover {
+        border-color: #0070f3 !important;
+        background-color: #1e1e1e !important;
+        color: #ffffff !important;
+        transform: translateY(-2px);
+    }
+    div[data-testid="stRadio"] [role="radiogroup"] > label[data-checked="true"] {
+        background-color: #0070f3 !important;
+        border-color: #0070f3 !important;
+        color: #ffffff !important;
+        box-shadow: 0px 4px 14px rgba(0, 112, 243, 0.4);
+    }
+
+    /* En celular: exactamente 2 semanas por fila, ocupando mejor el ancho. */
+    @media (max-width: 768px) {
+        div[data-testid="stRadio"] {
+            width: 100% !important;
+            max-width: none !important;
+            margin-top: 0 !important;
+            margin-bottom: 8px !important;
+        }
+        div[data-testid="stRadio"] > div {
+            width: 100% !important;
+            max-width: none !important;
+        }
+        div[data-testid="stRadio"] [role="radiogroup"] {
+            display: grid !important;
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            column-gap: 10px !important;
+            row-gap: 10px !important;
+            width: 100% !important;
+            max-width: none !important;
+            margin-top: 0 !important;
+        }
+        div[data-testid="stRadio"] [role="radiogroup"] > label {
+            width: 100% !important;
+            min-width: 0 !important;
+            height: 58px !important;
+            padding: 10px 12px !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: flex-start !important;
+            margin: 0 !important;
+        }
     }
 
     /* Pestañas generales */
@@ -229,6 +278,157 @@ def aplicar_criticidad(column):
   return styles
 
 
+@st.cache_data(ttl=60)
+def cargar_hoja_raw(ruta, nombre_hoja):
+  """Carga una hoja del Excel sin asumir fila de encabezado, preservando
+  la posición original de cada celda (para hojas con múltiples tablas
+  pegadas, como 'FILL RATE')."""
+  return pd.read_excel(ruta, sheet_name=nombre_hoja, header=None, dtype=object)
+
+
+def _fr_num(valor):
+  """Convierte un valor de celda a float; si no es numérico o está vacío
+  (None o NaN), retorna None."""
+  if valor is None:
+    return None
+  try:
+    if isinstance(valor, str) and valor.strip() == "":
+      return None
+    numero = float(valor)
+    if pd.isna(numero):
+      return None
+    return numero
+  except (TypeError, ValueError):
+    return None
+
+
+def _fr_dedupe_columnas(cols):
+  vistos = {}
+  resultado = []
+  for c in cols:
+    if c not in vistos:
+      vistos[c] = 0
+      resultado.append(c)
+    else:
+      vistos[c] += 1
+      resultado.append(f"{c} ({vistos[c]})")
+  return resultado
+
+
+def parse_bloques_fill_rate(df_raw):
+  """Detecta y extrae los distintos bloques/tablas pegados verticalmente
+  en la hoja 'FILL RATE'. Cada bloque tiene: una fila 'Semana X Total ...',
+  una fila 'Top N ...', una fila de encabezados (col A = 'TOP'), y luego
+  las filas de detalle hasta la siguiente fila vacía o el próximo bloque."""
+  n_filas, n_cols = df_raw.shape
+  bloques = []
+  r = 0
+  while r < n_filas:
+    fila = df_raw.iloc[r]
+    primer_val = (
+        str(fila.iloc[0]).strip().lower()
+        if n_cols > 0 and fila.iloc[0] is not None and not pd.isna(fila.iloc[0])
+        else ""
+    )
+    if primer_val == "top" and r >= 2:
+      header_row_idx = r
+      idx_top = r - 1
+      idx_total = r - 2
+
+      header_vals = df_raw.iloc[header_row_idx]
+      fila_total = df_raw.iloc[idx_total]
+      fila_top = df_raw.iloc[idx_top]
+
+      # Las filas KPI ('Total' y 'Top N') siempre traen sus valores en las
+      # columnas E, F, G y (opcionalmente) H, independiente de dónde
+      # empiecen los encabezados de la tabla de detalle de ese bloque.
+      def _valores_kpi(fila_kpi):
+        e = _fr_num(fila_kpi.iloc[4]) if n_cols > 4 else None
+        f = _fr_num(fila_kpi.iloc[5]) if n_cols > 5 else None
+        g = _fr_num(fila_kpi.iloc[6]) if n_cols > 6 else None
+        h = _fr_num(fila_kpi.iloc[7]) if n_cols > 7 else None
+        if h is not None:
+          # Layout de 4 valores: cantidad, monto, quiebre, FR
+          return {"cantidad": e, "monto": f, "quiebre": g, "fr": h}
+        else:
+          # Layout de 3 valores: cantidad, monto, FR (sin quiebre propio)
+          return {"cantidad": e, "monto": f, "quiebre": None, "fr": g}
+
+      kpi_total = _valores_kpi(fila_total)
+      kpi_top = _valores_kpi(fila_top)
+
+      semana_val = fila_total.iloc[2] if n_cols > 2 else None
+
+      etiqueta_b = (
+          str(fila_top.iloc[1]).strip()
+          if n_cols > 1
+          and fila_top.iloc[1] is not None
+          and not pd.isna(fila_top.iloc[1])
+          else ""
+      )
+      etiqueta_c = (
+          str(fila_top.iloc[2]).strip()
+          if n_cols > 2
+          and fila_top.iloc[2] is not None
+          and not pd.isna(fila_top.iloc[2])
+          else ""
+      )
+      titulo = " ".join(
+          p for p in [etiqueta_b, etiqueta_c] if p and p.lower() != "nan"
+      ).strip()
+
+      # Buscar el final del bloque: próxima fila vacía o próximo header 'TOP'
+      fin = header_row_idx + 1
+      while fin < n_filas:
+        fila_chk = df_raw.iloc[fin]
+        vacio = all(
+            (v is None or pd.isna(v) or (isinstance(v, str) and v.strip() == ""))
+            for v in fila_chk
+        )
+        primer_val_chk = (
+            str(fila_chk.iloc[0]).strip().lower()
+            if n_cols > 0
+            and fila_chk.iloc[0] is not None
+            and not pd.isna(fila_chk.iloc[0])
+            else ""
+        )
+        if vacio or primer_val_chk == "top":
+          break
+        fin += 1
+
+      tabla_datos = df_raw.iloc[header_row_idx + 1 : fin].copy()
+
+      columnas_finales = []
+      cols_validos = []
+      for c in range(n_cols):
+        nombre_c = header_vals.iloc[c]
+        if nombre_c is not None and not pd.isna(nombre_c) and str(nombre_c).strip() != "":
+          columnas_finales.append(str(nombre_c).strip())
+          cols_validos.append(c)
+
+      tabla_datos = tabla_datos.iloc[:, cols_validos]
+      tabla_datos.columns = _fr_dedupe_columnas(columnas_finales)
+      tabla_datos = tabla_datos.dropna(how="all").reset_index(drop=True)
+
+      bloques.append(
+          {
+              "titulo": titulo,
+              "semana": semana_val,
+              "kpi_total": kpi_total,
+              "kpi_top": kpi_top,
+              "tabla": tabla_datos,
+          }
+      )
+
+      # Si el corte fue por toparnos con el header 'TOP' del siguiente
+      # bloque, hay que re-evaluar esa misma fila en la próxima vuelta
+      # (no saltarla), o de lo contrario ese bloque se pierde.
+      r = fin
+      continue
+    r += 1
+  return bloques
+
+
 # --- 3. CARGA DEL EXCEL ---
 def buscar_excel():
   posibles_rutas = [
@@ -280,9 +480,6 @@ st.markdown(
                 <div class="medcell-brand">MEDCELL <span>OPERACIONES</span></div>
                 <div class="medcell-subtitle">ANÁLISIS DE OPERACIÓN</div>
                 <div class="medcell-author">Desarrollado por Sebastián Alexis Pérez López</div>
-            </div>
-            <div style="font-size: 28px; font-weight: 800; color: #ffffff; white-space: nowrap; padding-bottom: 2px;">
-                💊 Cadena Operaciones
             </div>
         </div>
     </div>
@@ -355,6 +552,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
     is_stock = nombre_clean == "STOCK"
     is_si = nombre_clean == "SI"
     is_si_proy = nombre_clean == "SI PROYECCION"
+    is_fill_rate = nombre_clean == "FILL RATE"
 
     # =================================================================
     # PESTAÑA VENTA SI
@@ -2335,6 +2533,8 @@ for i, nombre_hoja in enumerate(nombres_hojas):
           options=semanas_disp,
           index=idx_defecto,
           horizontal=True,
+          label_visibility="collapsed",
+          width="stretch",
           key=f"semana_sel_{nombre_hoja}_{i}",
       )
       semana_sel = opciones_semanas[semana_sel_raw]
@@ -3344,6 +3544,204 @@ for i, nombre_hoja in enumerate(nombres_hojas):
       df_corte_final = df_corte_final.rename(columns=nuevas_columnas)
 
       st.dataframe(df_corte_final, hide_index=True, use_container_width=True)
+
+    # =================================================================
+    # PESTAÑA FILL RATE (múltiples tablas pegadas: Salcobrand Consumo,
+    # Salcobrand Farma, Preunic, Terceros/Otros Canales)
+    # =================================================================
+    elif is_fill_rate:
+      st.subheader("🔥 Fill Rate por Cadena (Top Quiebres)")
+
+      try:
+        df_raw_fr = cargar_hoja_raw(ruta_final, nombre_hoja)
+      except Exception as e:
+        st.error(f"No se pudo leer la hoja en formato bruto: {e}")
+        df_raw_fr = None
+
+      if df_raw_fr is not None:
+        bloques_fr = parse_bloques_fill_rate(df_raw_fr)
+
+        titulos_fallback = [
+            "🏬 SALCOBRAND — CONSUMO MASIVO",
+            "💊 SALCOBRAND — FARMA",
+            "🏪 PREUNIC",
+            "🌐 TERCEROS / OTROS CANALES",
+        ]
+
+        if not bloques_fr:
+          st.info(
+              "No se encontraron bloques de datos reconocibles en esta hoja."
+          )
+
+        def _fr_tabla_display(tabla):
+          """Arma la tabla de detalle con el mismo estilo visual (columnas
+          formateadas como texto) que 'TOP 15 Quiebres' en SB/PU."""
+          col_sku_fr = next(
+              (c for c in tabla.columns if "sku" in c.lower()), None
+          )
+          col_desc_fr = next(
+              (c for c in tabla.columns if "descrip" in c.lower()), None
+          )
+          col_marca_fr = next(
+              (c for c in tabla.columns if c.strip().lower() == "marca"), None
+          )
+          col_cliente_fr = next(
+              (c for c in tabla.columns if c.strip().lower() == "cliente"),
+              None,
+          )
+          col_cant_fr = next(
+              (
+                  c
+                  for c in tabla.columns
+                  if "suma de solicitado" in c.strip().lower()
+              ),
+              None,
+          )
+          col_monto_fr = next(
+              (
+                  c
+                  for c in tabla.columns
+                  if c.strip().lower().startswith("solicitado $")
+              ),
+              None,
+          )
+          col_quiebre_fr = next(
+              (
+                  c
+                  for c in tabla.columns
+                  if c.strip().lower().startswith("quiebre $")
+              ),
+              None,
+          )
+          col_fr_fr = next(
+              (c for c in tabla.columns if c.strip().lower() == "fr"), None
+          )
+          col_estado_fr = next(
+              (
+                  c
+                  for c in tabla.columns
+                  if c.strip().lower() in ("estado mc", "observacion")
+              ),
+              None,
+          )
+
+          disp = pd.DataFrame()
+          if col_sku_fr:
+            disp["SKU"] = tabla[col_sku_fr].astype(str)
+          if col_desc_fr:
+            disp["Descripción"] = tabla[col_desc_fr]
+          if col_marca_fr:
+            disp["Marca"] = tabla[col_marca_fr]
+          if col_cliente_fr:
+            disp["Cliente"] = tabla[col_cliente_fr]
+          if col_cant_fr:
+            disp["Unidades Solicitadas"] = tabla[col_cant_fr].apply(
+                lambda x: formato_unidades(_fr_num(x) or 0)
+            )
+          if col_monto_fr:
+            disp["Solicitado ($)"] = tabla[col_monto_fr].apply(
+                lambda x: formato_moneda(_fr_num(x) or 0)
+            )
+          if col_quiebre_fr:
+            disp["Quiebre ($)"] = tabla[col_quiebre_fr].apply(
+                lambda x: (
+                    f"-{formato_moneda(abs(_fr_num(x)))}"
+                    if (_fr_num(x) or 0) > 0
+                    else "$0"
+                )
+            )
+          if col_fr_fr:
+            disp["FR"] = tabla[col_fr_fr].apply(
+                lambda x: f"{(_fr_num(x) or 0) * 100:.1f}%"
+            )
+          if col_estado_fr:
+            disp["Estado / Observación"] = tabla[col_estado_fr]
+
+          return disp, tabla.columns.tolist()
+
+        for idx_b, bloque in enumerate(bloques_fr):
+          titulo_mostrar = (
+              titulos_fallback[idx_b]
+              if idx_b < len(titulos_fallback)
+              else (bloque["titulo"] or f"BLOQUE {idx_b + 1}")
+          )
+          n_filas_tabla = len(bloque["tabla"])
+          kt = bloque["kpi_total"]
+          kp = bloque["kpi_top"]
+
+          try:
+            sem_txt = (
+                f"Sem {int(float(bloque['semana']))}"
+                if bloque["semana"] not in (None, "")
+                else ""
+            )
+          except (TypeError, ValueError):
+            sem_txt = ""
+
+          st.markdown(f"#### 📌 {titulo_mostrar}")
+
+          if kt["monto"] is not None:
+            st.caption(
+                f"Solicitado: {formato_moneda(kt['monto'])} · "
+                f"{formato_unidades(kt['cantidad'] or 0)} unidades"
+            )
+
+          m_ind1, m_ind2 = st.columns(2)
+          with m_ind1:
+            fr_total_pct = (kt["fr"] * 100) if kt["fr"] is not None else 0.0
+            delta_total = (
+                f"{kt['quiebre']:,.0f} $ (Quiebre)".replace(",", ".")
+                if kt["quiebre"] is not None
+                else None
+            )
+            st.metric(
+                label=(
+                    f"Fill Rate Total ({sem_txt})"
+                    if sem_txt
+                    else "Fill Rate Total"
+                ),
+                value=f"{fr_total_pct:.1f}%",
+                delta=delta_total,
+            )
+          with m_ind2:
+            fr_top_pct = (kp["fr"] * 100) if kp["fr"] is not None else 0.0
+            delta_top = (
+                f"{kp['quiebre']:,.0f} $ (Quiebre Top {n_filas_tabla})".replace(
+                    ",", "."
+                )
+                if kp["quiebre"] is not None
+                else (
+                    f"{kp['monto']:,.0f} $ (Quiebre Top {n_filas_tabla})".replace(
+                        ",", "."
+                    )
+                    if kp["monto"] is not None
+                    else None
+                )
+            )
+            st.metric(
+                label=f"% Incidencia s/Monto Total (Top {n_filas_tabla})",
+                value=f"{fr_top_pct:.1f}%",
+                delta=delta_top,
+            )
+
+          # Tabla de detalle, con el mismo look & feel que "TOP 15 Quiebres"
+          # de SB/PU: columnas clave, ya formateadas, siempre visibles.
+          tabla_disp, columnas_originales = _fr_tabla_display(bloque["tabla"])
+          if not tabla_disp.empty:
+            st.dataframe(
+                tabla_disp, hide_index=True, use_container_width=True
+            )
+            with st.expander(
+                "Ver todas las columnas (detalle completo de la hoja)",
+                expanded=False,
+            ):
+              st.dataframe(
+                  bloque["tabla"], hide_index=True, use_container_width=True
+              )
+          else:
+            st.info("No hay productos en este bloque para la semana actual.")
+
+          st.divider()
 
     else:
       busqueda = st.text_input(
