@@ -3672,7 +3672,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
               (
                   c
                   for c in tabla.columns
-                  if c.strip().lower() in ("estado mc", "observacion")
+                  if c.strip().lower() == "observacion"
               ),
               None,
           )
@@ -3707,7 +3707,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 lambda x: f"{(_fr_num(x) or 0) * 100:.1f}%"
             )
           if col_estado_fr:
-            disp["Estado / Observación"] = tabla[col_estado_fr]
+            disp["Comentario"] = tabla[col_estado_fr]
 
           return disp, tabla.columns.tolist()
 
