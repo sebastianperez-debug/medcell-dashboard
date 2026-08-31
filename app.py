@@ -112,6 +112,34 @@ st.markdown(
     div[data-testid="stMetricValue"] { color: #ffffff !important; font-size: 26px !important; font-weight: bold; }
     div[data-testid="stMetricLabel"] { color: #888888 !important; }
     div[data-testid="stDataFrame"] { background-color: #121212; border-radius: 8px; }
+
+    /* En celular: las grillas de indicadores (st.columns con st.metric,
+       como "Resumen de Órdenes y Montos") se acomodan de a 2 por fila en
+       vez de aplastarse todas en una sola línea horizontal ilegible. */
+    @media (max-width: 768px) {
+        div[data-testid="stHorizontalBlock"] {
+            flex-wrap: wrap !important;
+            row-gap: 16px !important;
+            column-gap: 12px !important;
+        }
+        div[data-testid="stHorizontalBlock"] > div[data-testid="column"],
+        div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] {
+            min-width: 46% !important;
+            width: 46% !important;
+            flex: 1 1 46% !important;
+        }
+        div[data-testid="stMetric"] {
+            min-width: 0 !important;
+        }
+        div[data-testid="stMetricValue"] {
+            font-size: 19px !important;
+            overflow-wrap: break-word !important;
+        }
+        div[data-testid="stMetricLabel"] {
+            font-size: 12px !important;
+            white-space: normal !important;
+        }
+    }
     </style>
 """,
     unsafe_allow_html=True,
