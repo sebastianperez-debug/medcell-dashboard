@@ -115,18 +115,42 @@ st.markdown(
 
     /* En celular: las grillas de indicadores (st.columns con st.metric,
        como "Resumen de Órdenes y Montos") se acomodan de a 2 por fila en
-       vez de aplastarse todas en una sola línea horizontal ilegible. */
+       vez de aplastarse todas en una sola línea horizontal ilegible.
+       Se EXCLUYEN explícitamente las filas que contienen una tabla
+       (st.dataframe) o un gráfico, para que esas sigan ocupando el ancho
+       completo, apiladas una debajo de la otra (de lo contrario las
+       columnas de la tabla quedan cortadas / ilegibles). */
     @media (max-width: 768px) {
-        div[data-testid="stHorizontalBlock"] {
+        div[data-testid="stHorizontalBlock"]:not(:has(div[data-testid="stDataFrame"])):not(:has(div[data-testid="stDataFrameResizable"])):not(:has(div[data-testid="stPlotlyChart"])):not(:has(div[data-testid="stTable"])) {
             flex-wrap: wrap !important;
             row-gap: 16px !important;
             column-gap: 12px !important;
         }
-        div[data-testid="stHorizontalBlock"] > div[data-testid="column"],
-        div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] {
+        div[data-testid="stHorizontalBlock"]:not(:has(div[data-testid="stDataFrame"])):not(:has(div[data-testid="stDataFrameResizable"])):not(:has(div[data-testid="stPlotlyChart"])):not(:has(div[data-testid="stTable"])) > div[data-testid="column"],
+        div[data-testid="stHorizontalBlock"]:not(:has(div[data-testid="stDataFrame"])):not(:has(div[data-testid="stDataFrameResizable"])):not(:has(div[data-testid="stPlotlyChart"])):not(:has(div[data-testid="stTable"])) > div[data-testid="stColumn"] {
             min-width: 46% !important;
             width: 46% !important;
             flex: 1 1 46% !important;
+        }
+        /* Filas con tabla/gráfico: apiladas a ancho completo (comportamiento
+           estándar de Streamlit en pantallas angostas). */
+        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stDataFrame"]),
+        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stDataFrameResizable"]),
+        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stPlotlyChart"]),
+        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stTable"]) {
+            flex-wrap: wrap !important;
+        }
+        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stDataFrame"]) > div[data-testid="column"],
+        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stDataFrameResizable"]) > div[data-testid="column"],
+        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stPlotlyChart"]) > div[data-testid="column"],
+        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stTable"]) > div[data-testid="column"],
+        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stDataFrame"]) > div[data-testid="stColumn"],
+        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stDataFrameResizable"]) > div[data-testid="stColumn"],
+        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stPlotlyChart"]) > div[data-testid="stColumn"],
+        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stTable"]) > div[data-testid="stColumn"] {
+            min-width: 100% !important;
+            width: 100% !important;
+            flex: 1 1 100% !important;
         }
         div[data-testid="stMetric"] {
             min-width: 0 !important;
