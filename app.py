@@ -593,6 +593,20 @@ nombres_hojas = [
     h for h in hojas.keys() if h.strip().lower() not in HOJAS_A_EXCLUIR
 ]
 
+# Orden de pestañas: todas las hojas operativas primero, STOCK justo
+# antes de ESCANEAR. Así el flujo queda:
+# ... → STOCK → 📷 Escanear
+stock_tab = next(
+    (h for h in nombres_hojas if h.strip().lower() == "stock"),
+    None,
+)
+
+if stock_tab is not None:
+    nombres_hojas = [
+        h for h in nombres_hojas
+        if h != stock_tab
+    ] + [stock_tab]
+
 tabs = st.tabs([f"📊 {h}" for h in nombres_hojas] + ["📷 Escanear"])
 
 for i, nombre_hoja in enumerate(nombres_hojas):
