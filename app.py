@@ -3820,9 +3820,17 @@ with tabs[-1]:
 
   components.html(
       """
-      <video id="video" style="width:100%; border-radius:8px; background:#000;"
-             muted playsinline autoplay></video>
-      <div style="text-align:center; margin-top:8px;">
+      <div style="position:relative; width:100%; max-height:280px; overflow:hidden;
+                  border-radius:8px; background:#000;">
+        <video id="video" style="width:100%; max-height:280px; object-fit:cover;
+               display:block;" muted playsinline autoplay></video>
+        <!-- Recuadro guía puramente visual: ZXing analiza todo el
+             fotograma, este marco solo ayuda a encuadrar el código. -->
+        <div style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+                    width:82%; height:90px; border:3px solid #00e676; border-radius:6px;
+                    box-shadow:0 0 0 2000px rgba(0,0,0,0.35); pointer-events:none;"></div>
+      </div>
+      <div style="text-align:center; margin-top:10px;">
         <button id="btn-torch" style="background:#0070f3; color:#fff; border:none;
                 border-radius:8px; padding:8px 16px; font-weight:600; cursor:pointer;">
           💡 Linterna
@@ -3864,8 +3872,8 @@ with tabs[-1]:
           const constraints = {
             video: {
               facingMode: "environment",
-              width: { ideal: 1920 },
-              height: { ideal: 1080 },
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
             },
           };
 
@@ -3903,7 +3911,7 @@ with tabs[-1]:
         }
       </script>
       """,
-      height=430,
+      height=400,
   )
 
 
