@@ -3829,13 +3829,18 @@ with tabs[-1]:
                     box-shadow:0 0 0 2000px rgba(0,0,0,0.35); pointer-events:none;"></div>
       </div>
       <div style="text-align:center; margin-top:10px; display:flex; gap:8px; justify-content:center;">
+        <button id="btn-activar" style="background:#00e676; color:#000; border:none;
+                border-radius:8px; padding:10px 20px; font-weight:700; cursor:pointer;
+                font-size:14px;">
+          ▶️ Activar cámara
+        </button>
         <button id="btn-torch" style="background:#0070f3; color:#fff; border:none;
                 border-radius:8px; padding:8px 16px; font-weight:600; cursor:pointer;">
           💡 Linterna
         </button>
       </div>
       <p id="estado-scan" style="color:#888; font-size:13px; text-align:center; margin-top:6px;">
-        🎥 Activando cámara...
+        👉 Toca "Activar cámara" para comenzar
       </p>
       <p id="detalle-scan" style="color:#666; font-size:12px; text-align:center; margin:0 8px;">
         Primero intentará reconocer el Localizador MCD directamente.
@@ -3850,10 +3855,13 @@ with tabs[-1]:
         const detalle = document.getElementById("detalle-scan");
         const video = document.getElementById("video");
         const torchBtn = document.getElementById("btn-torch");
+        const btnActivar = document.getElementById("btn-activar");
         let yaEnvio = false;
         let streamActual = null;
         let ocrWorker = null;
         let ocrActivo = false;
+        let camaraActivada = false;
+        let librariasListas = false;
 
         function mostrarError(msg) {
           estado.textContent = msg;
@@ -3997,17 +4005,55 @@ with tabs[-1]:
           }
         }
 
+        // Intenta delegar el permiso de cámara al iframe del componente.
+        // Sin esto, muchos navegadores bloquean getUserMedia dentro del
+        // iframe que genera components.html y la promesa nunca se resuelve
+        // ni se rechaza: la pantalla queda pegada en "Activando cámara...".
+        try {
+          if (window.frameElement) {
+            window.frameElement.setAttribute("allow", "camera; microphone");
+          }
+        } catch (e) {}
+
+        function conTimeout(promesa, ms, mensajeTimeout) {
+          return Promise.race([
+            promesa,
+            new Promise((_, reject) =>
+              setTimeout(() => reject(new Error(mensajeTimeout)), ms)
+            ),
+          ]);
+        }
+
         async function iniciarCamara() {
+          if (camaraActivada) return;
+          camaraActivada = true;
+
+          if (!window.isSecureContext) {
+            mostrarError("❌ La cámara requiere HTTPS. Abre la app con https://.");
+            return;
+          }
+          if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            mostrarError("❌ Este navegador no permite acceso a la cámara aquí.");
+            return;
+          }
+
+          estado.textContent = "🎥 Activando cámara...";
+          detalle.textContent = "Si tu navegador pide permiso, acepta 'Permitir'.";
+
           try {
-            streamActual = await navigator.mediaDevices.getUserMedia({
-              video: {
-                facingMode: {ideal: "environment"},
-                width: {ideal: 1920},
-                height: {ideal: 1080},
-                focusMode: {ideal: "continuous"}
-              },
-              audio: false
-            });
+            streamActual = await conTimeout(
+              navigator.mediaDevices.getUserMedia({
+                video: {
+                  facingMode: {ideal: "environment"},
+                  width: {ideal: 1920},
+                  height: {ideal: 1080},
+                  focusMode: {ideal: "continuous"}
+                },
+                audio: false
+              }),
+              12000,
+              "La cámara no respondió a tiempo."
+            );
             video.srcObject = streamActual;
             await video.play();
             estado.textContent = "📷 Buscando Localizador MCD...";
@@ -4022,8 +4068,19 @@ with tabs[-1]:
 
             // Iniciamos OCR sin bloquear el lector de barras.
             iniciarOCR();
+            iniciarBarras();
           } catch (e) {
-            mostrarError("❌ No se pudo acceder a la cámara: " + (e.message || e));
+            camaraActivada = false;
+            let msg = e && e.message ? e.message : String(e);
+            if (e && e.name === "NotAllowedError") {
+              msg = "Permiso de cámara denegado. Revisa los permisos del sitio en tu navegador y vuelve a intentar.";
+            } else if (e && e.name === "NotFoundError") {
+              msg = "No se encontró ninguna cámara en el dispositivo.";
+            } else if (e && e.name === "NotReadableError") {
+              msg = "La cámara está siendo usada por otra app. Ciérrala e intenta de nuevo.";
+            }
+            mostrarError("❌ No se pudo acceder a la cámara: " + msg);
+            detalle.textContent = "Toca 'Activar cámara' para volver a intentar.";
           }
         }
 
@@ -4062,17 +4119,24 @@ with tabs[-1]:
           }
         };
 
+        btnActivar.onclick = function() {
+          if (!librariasListas) {
+            estado.textContent = "⏳ Cargando lectores, un momento...";
+            return;
+          }
+          iniciarCamara();
+        };
+
         let intentos = 0;
         const esperarLibrerias = setInterval(() => {
           intentos++;
           if (typeof ZXing !== "undefined" && typeof Tesseract !== "undefined") {
             clearInterval(esperarLibrerias);
-            iniciarCamara();
-            setTimeout(iniciarBarras, 1200);
+            librariasListas = true;
           } else if (intentos >= 100) {
             clearInterval(esperarLibrerias);
             if (typeof Tesseract !== "undefined") {
-              iniciarCamara();
+              librariasListas = true;
             } else {
               mostrarError("❌ No se pudieron cargar los lectores. Recarga la página.");
             }
