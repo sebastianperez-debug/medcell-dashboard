@@ -3821,7 +3821,7 @@ with tabs[-1]:
   components.html(
       """
       <video id="video" style="width:100%; border-radius:8px; background:#000;"
-             muted playsinline></video>
+             muted playsinline autoplay></video>
       <div style="text-align:center; margin-top:8px;">
         <button id="btn-torch" style="background:#0070f3; color:#fff; border:none;
                 border-radius:8px; padding:8px 16px; font-weight:600; cursor:pointer;">
@@ -3829,74 +3829,83 @@ with tabs[-1]:
         </button>
       </div>
       <p id="estado-scan" style="color:#888; font-size:13px; text-align:center; margin-top:6px;">
-        Iniciando cámara...
+        Cargando lector...
       </p>
-      <script type="module">
-        import {
-          BrowserMultiFormatReader,
-          DecodeHintType,
-          BarcodeFormat,
-        } from "https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/esm/index.min.js";
-
-        const hints = new Map();
-        hints.set(DecodeHintType.POSSIBLE_FORMATS, [
-          BarcodeFormat.CODE_128,
-          BarcodeFormat.CODE_39,
-          BarcodeFormat.CODABAR,
-          BarcodeFormat.EAN_13,
-          BarcodeFormat.EAN_8,
-          BarcodeFormat.UPC_A,
-          BarcodeFormat.ITF,
-        ]);
-        hints.set(DecodeHintType.TRY_HARDER, true);
-
-        const codeReader = new BrowserMultiFormatReader(hints);
+      <script src="https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js"></script>
+      <script>
         const estado = document.getElementById("estado-scan");
-        let yaEnvio = false;
-        let controlsGlobal = null;
 
-        const constraints = {
-          video: {
-            facingMode: "environment",
-            width: { ideal: 1920 },
-            height: { ideal: 1080 },
-          },
-        };
+        // Si la librería no llegó a cargar (CDN caído, red lenta, etc.),
+        // avisamos en pantalla en vez de quedar pegados en silencio.
+        setTimeout(function () {
+          if (typeof ZXing === "undefined") {
+            estado.textContent = "❌ No se pudo cargar el lector de códigos (revisa tu conexión y recarga).";
+          }
+        }, 6000);
 
-        codeReader
-          .decodeFromConstraints(constraints, "video", (result, err) => {
-            if (result && !yaEnvio) {
-              yaEnvio = true;
-              estado.textContent = "✅ Código detectado: " + result.getText();
-              const url = new URL(window.parent.location);
-              url.searchParams.set("loc", result.getText());
-              window.parent.location.href = url.toString();
-            }
-          })
-          .then((controls) => {
-            controlsGlobal = controls;
-            estado.textContent = "📷 Buscando código...";
-            document.getElementById("btn-torch").onclick = function () {
-              try {
-                const track = document
-                  .getElementById("video")
-                  .srcObject.getVideoTracks()[0];
-                const settings = track.getSettings();
-                track
-                  .applyConstraints({ advanced: [{ torch: !settings.torch }] })
-                  .catch(() => alert("Este dispositivo no permite linterna desde el navegador."));
-              } catch (e) {
-                alert("No se pudo acceder a la linterna.");
+        if (typeof ZXing !== "undefined") {
+          const { BrowserMultiFormatReader, DecodeHintType, BarcodeFormat } = ZXing;
+
+          const hints = new Map();
+          hints.set(DecodeHintType.POSSIBLE_FORMATS, [
+            BarcodeFormat.CODE_128,
+            BarcodeFormat.CODE_39,
+            BarcodeFormat.CODABAR,
+            BarcodeFormat.EAN_13,
+            BarcodeFormat.EAN_8,
+            BarcodeFormat.UPC_A,
+            BarcodeFormat.ITF,
+          ]);
+          hints.set(DecodeHintType.TRY_HARDER, true);
+
+          const codeReader = new BrowserMultiFormatReader(hints);
+          let yaEnvio = false;
+
+          const constraints = {
+            video: {
+              facingMode: "environment",
+              width: { ideal: 1920 },
+              height: { ideal: 1080 },
+            },
+          };
+
+          estado.textContent = "🎥 Solicitando acceso a la cámara...";
+
+          codeReader
+            .decodeFromConstraints(constraints, "video", (result, err) => {
+              if (result && !yaEnvio) {
+                yaEnvio = true;
+                estado.textContent = "✅ Código detectado: " + result.getText();
+                const url = new URL(window.parent.location);
+                url.searchParams.set("loc", result.getText());
+                window.parent.location.href = url.toString();
               }
-            };
-          })
-          .catch((err) => {
-            estado.textContent = "❌ No se pudo acceder a la cámara: " + err;
-          });
+            })
+            .then((controls) => {
+              estado.textContent = "📷 Buscando código...";
+              document.getElementById("btn-torch").onclick = function () {
+                try {
+                  const track = document
+                    .getElementById("video")
+                    .srcObject.getVideoTracks()[0];
+                  const settings = track.getSettings();
+                  track
+                    .applyConstraints({ advanced: [{ torch: !settings.torch }] })
+                    .catch(() => alert("Este dispositivo no permite linterna desde el navegador."));
+                } catch (e) {
+                  alert("No se pudo acceder a la linterna.");
+                }
+              };
+            })
+            .catch((err) => {
+              estado.textContent = "❌ No se pudo acceder a la cámara: " + err;
+            });
+        }
       </script>
       """,
       height=430,
   )
+
 
   st.caption(
       "💡 Tip: si tiene 2 códigos en la misma etiqueta, tapa el de arriba con"
