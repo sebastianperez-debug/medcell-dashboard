@@ -3855,11 +3855,6 @@ with tabs[-1]:
           const { BrowserMultiFormatReader, DecodeHintType, BarcodeFormat } = ZXing;
 
           const hints = new Map();
-          // Mantenemos varios formatos habilitados (restringir solo a
-          // CODE_128 hacía que la lectura fallara constantemente cuando hay
-          // varias etiquetas de código muy juntas, como en un stack de
-          // localizadores). En cambio, filtramos los falsos positivos
-          // (ej. lecturas tipo EAN-13) validando la forma del texto leído.
           hints.set(DecodeHintType.POSSIBLE_FORMATS, [
             BarcodeFormat.CODE_128,
             BarcodeFormat.CODE_39,
@@ -3874,15 +3869,6 @@ with tabs[-1]:
           const codeReader = new BrowserMultiFormatReader(hints);
           let yaEnvio = false;
 
-          // Un Localizador siempre tiene letras y puntos (ej: MCD.0.3.G.2.120).
-          // Si lo leído no calza con ese patrón, es casi seguro una lectura
-          // errónea (p.ej. un EAN-13 solo numérico, o el código de un
-          // producto/otra etiqueta vecina) y seguimos escaneando en vez de
-          // aceptarlo.
-          function esLocalizadorValido(texto) {
-            return /^[A-Za-z0-9]+(\\.[A-Za-z0-9]+){2,}$/.test(texto.trim());
-          }
-
           const constraints = {
             video: {
               facingMode: "environment",
@@ -3896,17 +3882,10 @@ with tabs[-1]:
           codeReader
             .decodeFromConstraints(constraints, "video", (result, err) => {
               if (result && !yaEnvio) {
-                const texto = result.getText();
-                if (!esLocalizadorValido(texto)) {
-                  // Lectura sospechosa (no tiene forma de Localizador):
-                  // la ignoramos y seguimos escaneando en vez de aceptarla.
-                  estado.textContent = "⚠️ Código no válido, sigue escaneando: " + texto;
-                  return;
-                }
                 yaEnvio = true;
-                estado.textContent = "✅ Código detectado: " + texto;
+                estado.textContent = "✅ Código detectado: " + result.getText();
                 const url = new URL(window.parent.location);
-                url.searchParams.set("loc", texto);
+                url.searchParams.set("loc", result.getText());
                 window.parent.location.href = url.toString();
               }
             })
@@ -3937,10 +3916,9 @@ with tabs[-1]:
 
 
   st.caption(
-      "💡 Tip: si hay varios códigos juntos en el mismo stack (como en una"
-      " columna de posiciones), tapa con el dedo los de arriba y abajo y deja"
-      " visible solo el que quieres leer, centrado en el recuadro verde."
-      " Mantén el celular firme y a unos 10-15 cm del código."
+      "💡 Tip: si tiene 2 códigos en la misma etiqueta, tapa el de arriba con"
+      " el dedo y deja solo visible el de abajo (el del Localizador). Mantén"
+      " el celular firme y a unos 10-15 cm del código."
   )
 
   with st.expander("⌨️ ¿No lee el código? Ingresa el Localizador manualmente", expanded=True):
@@ -4004,12 +3982,69 @@ with tabs[-1]:
       if not col_loc_scan:
         st.error("La hoja STOCK no tiene columna de Localizador reconocible.")
       else:
+        # El lector puede devolver el valor REAL codificado en el código de barras
+        # (por ejemplo un EAN-13 como 9631187073887), mientras que la etiqueta
+        # muestra visualmente un Localizador como MCD.0.3.G.2.120.
+        # Primero intentamos buscar directamente por Localizador. Si no existe,
+        # buscamos el valor escaneado en TODAS las columnas de STOCK y, si alguna
+        # fila contiene ese código, usamos el Localizador de esa fila como puente.
+        def _norm_scan_value(v):
+            if v is None or pd.isna(v):
+                return ""
+            s = str(v).strip().upper()
+            if s.endswith(".0"):
+                s = s[:-2]
+            return s
+
+        scan_norm = _norm_scan_value(loc_escaneado)
+
+        # 1) Caso normal: el código de barras contiene directamente el Localizador.
         resultado = df_stock_scan[
-            df_stock_scan[col_loc_scan].astype(str).str.strip().str.upper()
-            == str(loc_escaneado).strip().upper()
+            df_stock_scan[col_loc_scan].apply(_norm_scan_value) == scan_norm
         ].copy()
 
-        st.success(f"📍 Localizador escaneado: **{loc_escaneado}**")
+        localizadores_encontrados = []
+
+        # 2) Si el código de barras contiene un número distinto del texto del
+        # Localizador, buscamos ese número en todas las columnas de STOCK.
+        if resultado.empty and scan_norm:
+            for col in df_stock_scan.columns:
+                try:
+                    mask_codigo = df_stock_scan[col].apply(_norm_scan_value) == scan_norm
+                    if mask_codigo.any():
+                        locs = (
+                            df_stock_scan.loc[mask_codigo, col_loc_scan]
+                            .dropna()
+                            .astype(str)
+                            .str.strip()
+                        )
+                        localizadores_encontrados.extend(
+                            [x for x in locs.tolist() if x]
+                        )
+                except Exception:
+                    continue
+
+            localizadores_encontrados = list(dict.fromkeys(localizadores_encontrados))
+
+            if localizadores_encontrados:
+                resultado = df_stock_scan[
+                    df_stock_scan[col_loc_scan]
+                    .astype(str)
+                    .str.strip()
+                    .str.upper()
+                    .isin([x.upper() for x in localizadores_encontrados])
+                ].copy()
+
+        # Mostramos qué devolvió físicamente el lector y, si corresponde,
+        # qué Localizador encontró mediante el código de la base.
+        if localizadores_encontrados:
+            loc_mostrado = ", ".join(localizadores_encontrados)
+            st.success(
+                f"📍 Código escaneado: **{loc_escaneado}** → "
+                f"Localizador encontrado: **{loc_mostrado}**"
+            )
+        else:
+            st.success(f"📍 Localizador escaneado: **{loc_escaneado}**")
 
         if resultado.empty:
           st.warning("No se encontró ningún producto registrado en esa posición.")
