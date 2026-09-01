@@ -3864,10 +3864,16 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         }
 
         def _fr_build_kanban(tabla, hoy=None):
-          """Arma las 4 columnas del tablero de urgencia (Esta semana /
-          Próximas 2 semanas / Este mes / Sin fecha) a partir de las
+          """Arma las 4 columnas del tablero de urgencia (Sin fecha /
+          Esta semana / Próximas 2 semanas / Este mes) a partir de las
           fechas estimadas parseadas desde la columna de comentario /
-          observación de la tabla original."""
+          observación de la tabla original.
+
+          Las columnas se calculan con semanas de calendario reales
+          (lunes a domingo), no con ventanas de "7 días corridos desde
+          hoy": así el 07-09, por ejemplo, cae en la semana calendario
+          que le corresponde y no en 'Esta semana' solo por estar a
+          pocos días de distancia."""
           col_sku = next(
               (c for c in tabla.columns if "sku" in c.lower()), None
           )
@@ -3895,11 +3901,18 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             return None
 
           hoy = hoy or datetime.now()
+          hoy_fecha = hoy.date() if hasattr(hoy, "date") else hoy
+
+          # Límites de semana de calendario (lunes a domingo).
+          lunes_actual = hoy_fecha - timedelta(days=hoy_fecha.weekday())
+          fin_semana_actual = lunes_actual + timedelta(days=6)
+          fin_proximas_2_semanas = fin_semana_actual + timedelta(days=14)
+
           columnas = {
+              "Sin fecha / más adelante": [],
               "Esta semana": [],
               "Próximas 2 semanas": [],
               "Este mes": [],
-              "Sin fecha / más adelante": [],
           }
 
           for _, row in tabla.iterrows():
@@ -3939,12 +3952,18 @@ for i, nombre_hoja in enumerate(nombres_hojas):
               columnas["Sin fecha / más adelante"].append(item)
               continue
 
-            dias_restantes = (fecha - hoy).days
-            if dias_restantes <= 7:
+            fecha_date = fecha.date() if hasattr(fecha, "date") else fecha
+
+            if fecha_date <= fin_semana_actual:
+              # Incluye también fechas atrasadas (overdue): si ya
+              # debería haber llegado, es urgente ahora.
               columnas["Esta semana"].append(item)
-            elif dias_restantes <= 14:
+            elif fecha_date <= fin_proximas_2_semanas:
               columnas["Próximas 2 semanas"].append(item)
-            elif dias_restantes <= 31:
+            elif (
+                fecha_date.month == hoy_fecha.month
+                and fecha_date.year == hoy_fecha.year
+            ):
               columnas["Este mes"].append(item)
             else:
               columnas["Sin fecha / más adelante"].append(item)
