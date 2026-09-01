@@ -3820,69 +3820,88 @@ with tabs[-1]:
 
   components.html(
       """
-      <div id="reader" style="width:100%"></div>
+      <video id="video" style="width:100%; border-radius:8px; background:#000;"
+             muted playsinline></video>
       <div style="text-align:center; margin-top:8px;">
         <button id="btn-torch" style="background:#0070f3; color:#fff; border:none;
                 border-radius:8px; padding:8px 16px; font-weight:600; cursor:pointer;">
           💡 Linterna
         </button>
       </div>
-      <script src="https://unpkg.com/html5-qrcode"></script>
-      <script>
-      let torchOn = false;
-      function onScanSuccess(decodedText) {
-          const url = new URL(window.parent.location);
-          url.searchParams.set('loc', decodedText);
-          window.parent.location.href = url.toString();
-      }
-      const formatosBarras = [
-          Html5QrcodeSupportedFormats.CODE_128,
-          Html5QrcodeSupportedFormats.CODE_39,
-          Html5QrcodeSupportedFormats.CODABAR,
-          Html5QrcodeSupportedFormats.EAN_13,
-          Html5QrcodeSupportedFormats.EAN_8,
-          Html5QrcodeSupportedFormats.UPC_A,
-          Html5QrcodeSupportedFormats.ITF,
-      ];
-      const html5QrCode = new Html5Qrcode("reader", {
-          formatsToSupport: formatosBarras,
-          // Usa el detector nativo del navegador cuando está disponible
-          // (más preciso en 1D que el algoritmo JS puro).
-          experimentalFeatures: { useBarCodeDetectorIfSupported: true },
-          verbose: false
-      });
-      html5QrCode.start(
-          { facingMode: "environment" },
-          {
-              fps: 15,
-              // Caja angosta y alargada: aísla UN solo código de barra
-              // (evita capturar 2 códigos pegados en la misma etiqueta).
-              qrbox: { width: 260, height: 90 },
-              disableFlip: false,
+      <p id="estado-scan" style="color:#888; font-size:13px; text-align:center; margin-top:6px;">
+        Iniciando cámara...
+      </p>
+      <script type="module">
+        import {
+          BrowserMultiFormatReader,
+          DecodeHintType,
+          BarcodeFormat,
+        } from "https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/esm/index.min.js";
+
+        const hints = new Map();
+        hints.set(DecodeHintType.POSSIBLE_FORMATS, [
+          BarcodeFormat.CODE_128,
+          BarcodeFormat.CODE_39,
+          BarcodeFormat.CODABAR,
+          BarcodeFormat.EAN_13,
+          BarcodeFormat.EAN_8,
+          BarcodeFormat.UPC_A,
+          BarcodeFormat.ITF,
+        ]);
+        hints.set(DecodeHintType.TRY_HARDER, true);
+
+        const codeReader = new BrowserMultiFormatReader(hints);
+        const estado = document.getElementById("estado-scan");
+        let yaEnvio = false;
+        let controlsGlobal = null;
+
+        const constraints = {
+          video: {
+            facingMode: "environment",
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
           },
-          onScanSuccess
-      ).then(() => {
-          document.getElementById("btn-torch").onclick = function() {
-              torchOn = !torchOn;
-              html5QrCode.applyVideoConstraints({
-                  advanced: [{ torch: torchOn }]
-              }).catch(() => {
-                  alert("Este dispositivo no permite controlar la linterna desde el navegador.");
-                  torchOn = !torchOn;
-              });
-          };
-      }).catch((err) => {
-          document.getElementById("reader").innerHTML =
-              "<p style='color:#e74c3c'>No se pudo acceder a la cámara: " + err + "</p>";
-      });
+        };
+
+        codeReader
+          .decodeFromConstraints(constraints, "video", (result, err) => {
+            if (result && !yaEnvio) {
+              yaEnvio = true;
+              estado.textContent = "✅ Código detectado: " + result.getText();
+              const url = new URL(window.parent.location);
+              url.searchParams.set("loc", result.getText());
+              window.parent.location.href = url.toString();
+            }
+          })
+          .then((controls) => {
+            controlsGlobal = controls;
+            estado.textContent = "📷 Buscando código...";
+            document.getElementById("btn-torch").onclick = function () {
+              try {
+                const track = document
+                  .getElementById("video")
+                  .srcObject.getVideoTracks()[0];
+                const settings = track.getSettings();
+                track
+                  .applyConstraints({ advanced: [{ torch: !settings.torch }] })
+                  .catch(() => alert("Este dispositivo no permite linterna desde el navegador."));
+              } catch (e) {
+                alert("No se pudo acceder a la linterna.");
+              }
+            };
+          })
+          .catch((err) => {
+            estado.textContent = "❌ No se pudo acceder a la cámara: " + err;
+          });
       </script>
       """,
-      height=400,
+      height=430,
   )
 
   st.caption(
       "💡 Tip: si tiene 2 códigos en la misma etiqueta, tapa el de arriba con"
-      " el dedo y deja solo visible el de abajo (el del Localizador)."
+      " el dedo y deja solo visible el de abajo (el del Localizador). Mantén"
+      " el celular firme y a unos 10-15 cm del código."
   )
 
   with st.expander("⌨️ ¿No lee el código? Ingresa el Localizador manualmente"):
@@ -3892,6 +3911,7 @@ with tabs[-1]:
     if st.button("Buscar", key="btn_buscar_manual") and loc_manual.strip():
       st.query_params["loc"] = loc_manual.strip()
       st.rerun()
+
 
   loc_escaneado = st.query_params.get("loc", None)
 
