@@ -3825,10 +3825,11 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
           return None, None
 
-        def _fr_build_timeline(tabla, hoy=None):
-          """Construye un DataFrame listo para px.timeline con las
-          fechas estimadas de resolución parseadas desde la columna de
-          comentario/observación de la tabla original."""
+        def _fr_build_kanban(tabla, hoy=None):
+          """Arma las 4 columnas del tablero de urgencia (Esta semana /
+          Próxima semana / Este mes / Sin fecha) a partir de las fechas
+          estimadas parseadas desde la columna de comentario/observación
+          de la tabla original."""
           col_sku = next(
               (c for c in tabla.columns if "sku" in c.lower()), None
           )
@@ -3856,12 +3857,16 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             return None
 
           hoy = hoy or datetime.now()
-          filas = []
+          columnas = {
+              "Esta semana": [],
+              "Próxima semana": [],
+              "Este mes": [],
+              "Sin fecha / más adelante": [],
+          }
+
           for _, row in tabla.iterrows():
             comentario = row.get(col_estado)
-            fecha, tipo = _fr_parse_fecha_comentario(comentario, hoy)
-            if fecha is None:
-              continue
+            fecha, _tipo = _fr_parse_fecha_comentario(comentario, hoy)
 
             etiqueta_sku = (
                 str(row.get(col_sku, "")).strip() if col_sku else ""
@@ -3877,26 +3882,95 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             quiebre_val = (
                 abs(_fr_num(row.get(col_quiebre)) or 0) if col_quiebre else 0
             )
-            inicio = hoy
-            fin = fecha if fecha > hoy else hoy + timedelta(days=1)
 
-            filas.append(
-                {
-                    "Tarea": etiqueta[:60],
-                    "Inicio": inicio,
-                    "Fin": fin,
-                    "Quiebre ($)": quiebre_val,
-                    "Comentario": str(comentario),
-                    "Tipo de Fecha": tipo,
-                }
+            item = {
+                "etiqueta": etiqueta[:70],
+                "quiebre": quiebre_val,
+                "comentario": str(comentario) if comentario else "",
+            }
+
+            if fecha is None:
+              columnas["Sin fecha / más adelante"].append(item)
+              continue
+
+            dias_restantes = (fecha - hoy).days
+            if dias_restantes <= 7:
+              columnas["Esta semana"].append(item)
+            elif dias_restantes <= 14:
+              columnas["Próxima semana"].append(item)
+            elif dias_restantes <= 31:
+              columnas["Este mes"].append(item)
+            else:
+              columnas["Sin fecha / más adelante"].append(item)
+
+          # Ordenar cada columna de mayor a menor quiebre ($), para que
+          # lo más urgente/costoso aparezca primero.
+          for nombre_col in columnas:
+            columnas[nombre_col].sort(
+                key=lambda x: x["quiebre"], reverse=True
             )
 
-          if not filas:
+          if not any(columnas.values()):
             return None
 
-          return pd.DataFrame(filas).sort_values("Fin").reset_index(
-              drop=True
+          return columnas
+
+        _FR_KANBAN_COLORES = {
+            "Esta semana": "#e34948",
+            "Próxima semana": "#f1c40f",
+            "Este mes": "#5f5e5a",
+            "Sin fecha / más adelante": "#3d3d3a",
+        }
+
+        def _fr_render_kanban(columnas, key_prefix=""):
+          """Renderiza el tablero de 4 columnas con tarjetas por SKU,
+          usando el mismo estilo visual oscuro del resto de la app."""
+          st.markdown(
+              """
+              <style>
+              .fr-kanban-col-title { font-size:13px; font-weight:600;
+                text-transform:uppercase; letter-spacing:0.5px;
+                margin-bottom:8px; }
+              .fr-kanban-card { background-color:#141414; border:1px solid #2b2b2b;
+                border-radius:0 8px 8px 0; padding:10px 12px; margin-bottom:8px; }
+              .fr-kanban-card-title { font-size:13px; font-weight:600;
+                color:#ffffff; margin:0 0 2px 0; }
+              .fr-kanban-card-sub { font-size:12px; color:#aaaaaa; margin:0; }
+              </style>
+              """,
+              unsafe_allow_html=True,
           )
+          cols_st = st.columns(4)
+          for col_st, (nombre_col, items) in zip(
+              cols_st, columnas.items()
+          ):
+            with col_st:
+              color_borde = _FR_KANBAN_COLORES.get(nombre_col, "#333333")
+              st.markdown(
+                  f'<div class="fr-kanban-col-title" style="color:{color_borde};">'
+                  f"{nombre_col} ({len(items)})</div>",
+                  unsafe_allow_html=True,
+              )
+              if not items:
+                st.markdown(
+                    '<p style="font-size:12px; color:#555555;">Sin quiebres</p>',
+                    unsafe_allow_html=True,
+                )
+                continue
+              for item in items:
+                monto_txt = (
+                    formato_moneda(item["quiebre"])
+                    if item["quiebre"]
+                    else "$0"
+                )
+                comentario_txt = item["comentario"] or "Sin comentario"
+                st.markdown(
+                    f'<div class="fr-kanban-card" style="border-left:3px solid {color_borde};">'
+                    f'<p class="fr-kanban-card-title">{item["etiqueta"]}</p>'
+                    f'<p class="fr-kanban-card-sub">{monto_txt} · {comentario_txt}</p>'
+                    "</div>",
+                    unsafe_allow_html=True,
+                )
 
         for idx_b, bloque in enumerate(bloques_fr):
           titulo_mostrar = (
@@ -3981,52 +4055,23 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             st.info("No hay productos en este bloque para la semana actual.")
 
           # -------------------------------------------------------
-          # Línea de tiempo de resolución (Gantt) para este bloque
+          # Tablero de urgencia (Kanban) para este bloque: agrupa los
+          # quiebres en Esta semana / Próxima semana / Este mes / Sin
+          # fecha, según lo que se pudo interpretar del comentario.
           # -------------------------------------------------------
-          df_timeline_fr = _fr_build_timeline(bloque["tabla"])
-          if df_timeline_fr is not None and not df_timeline_fr.empty:
-            st.markdown("##### 🗓️ Línea de tiempo de resolución estimada")
+          columnas_kanban_fr = _fr_build_kanban(bloque["tabla"])
+          if columnas_kanban_fr is not None:
+            st.markdown("##### 🗂️ Tablero de urgencia de resolución")
             st.caption(
-                "Fechas estimadas extraídas automáticamente desde la "
-                "columna 'Comentario' (ETA, semanas, meses). Los SKU sin "
-                "una fecha identificable no aparecen aquí. El color de "
-                "la barra indica la magnitud del quiebre en $."
+                "Agrupado según la fecha estimada extraída del "
+                "'Comentario' (ETA, semanas, meses). Ordenado de mayor a "
+                "menor quiebre ($) dentro de cada columna."
             )
-            fig_tl_fr = px.timeline(
-                df_timeline_fr,
-                x_start="Inicio",
-                x_end="Fin",
-                y="Tarea",
-                color="Quiebre ($)",
-                color_continuous_scale="Reds",
-                hover_data={
-                    "Comentario": True,
-                    "Tipo de Fecha": True,
-                    "Quiebre ($)": ":,.0f",
-                    "Inicio": False,
-                },
-            )
-            fig_tl_fr.update_yaxes(autorange="reversed", title=None)
-            fig_tl_fr.update_xaxes(title=None)
-            fig_tl_fr.update_layout(
-                template="plotly_dark",
-                paper_bgcolor="#0b0b0b",
-                plot_bgcolor="#0b0b0b",
-                font=dict(color="#ffffff"),
-                height=max(280, 42 * len(df_timeline_fr) + 60),
-                margin=dict(l=10, r=10, t=10, b=10),
-                coloraxis_colorbar=dict(title="Quiebre ($)"),
-            )
-            st.plotly_chart(
-                fig_tl_fr,
-                use_container_width=True,
-                key=f"fr_timeline_{idx_b}",
-            )
+            _fr_render_kanban(columnas_kanban_fr, key_prefix=f"fr_{idx_b}")
           else:
             st.caption(
-                "ℹ️ No se identificaron fechas estimables en los "
-                "comentarios de este bloque para construir la línea de "
-                "tiempo."
+                "ℹ️ No hay suficiente información en los comentarios de "
+                "este bloque para armar el tablero de urgencia."
             )
 
           st.divider()
