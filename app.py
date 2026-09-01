@@ -3640,11 +3640,40 @@ for i, nombre_hoja in enumerate(nombres_hojas):
               "No se encontraron bloques de datos reconocibles en esta hoja."
           )
 
+        def _fr_es_col_sku(nombre_col):
+          """Detecta si una columna corresponde al código/SKU del
+          producto, aceptando tanto el encabezado 'SKU' como variantes
+          de 'Código' (con o sin tilde, con o sin prefijo '0-')."""
+          n = str(nombre_col).strip().lower()
+          n_sin_guion = n.replace("-", " ").replace("_", " ")
+          return (
+              "sku" in n
+              or "codigo" in n_sin_guion
+              or "código" in n_sin_guion
+              or n_sin_guion.strip() == "0 med"
+          )
+
+        def _fr_renombrar_encabezados(tabla):
+          """Renombra encabezados crudos poco claros (ej. '0- MED') para
+          que en todas las vistas de la tabla (resumen y detalle
+          completo) se muestren de forma consistente como 'Código'."""
+          mapa_renombre = {}
+          for c in tabla.columns:
+            normalizado = (
+                str(c).strip().lower().replace("-", " ").replace("_", " ")
+            )
+            normalizado = " ".join(normalizado.split())
+            if normalizado in ("0 med", "med", "codigo", "código"):
+              mapa_renombre[c] = "Código"
+          if mapa_renombre:
+            return tabla.rename(columns=mapa_renombre)
+          return tabla
+
         def _fr_tabla_display(tabla):
           """Arma la tabla de detalle con el mismo estilo visual (columnas
           formateadas como texto) que 'TOP 15 Quiebres' en SB/PU."""
           col_sku_fr = next(
-              (c for c in tabla.columns if "sku" in c.lower()), None
+              (c for c in tabla.columns if _fr_es_col_sku(c)), None
           )
           col_desc_fr = next(
               (c for c in tabla.columns if "descrip" in c.lower()), None
@@ -3694,7 +3723,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
           disp = pd.DataFrame()
           if col_sku_fr:
-            disp["SKU"] = tabla[col_sku_fr].astype(str)
+            disp["Código"] = tabla[col_sku_fr].astype(str)
           if col_desc_fr:
             disp["Descripción"] = tabla[col_desc_fr]
           if col_marca_fr:
@@ -3875,7 +3904,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
           que le corresponde y no en 'Esta semana' solo por estar a
           pocos días de distancia."""
           col_sku = next(
-              (c for c in tabla.columns if "sku" in c.lower()), None
+              (c for c in tabla.columns if _fr_es_col_sku(c)), None
           )
           col_desc = next(
               (c for c in tabla.columns if "descrip" in c.lower()), None
@@ -4050,6 +4079,10 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 )
 
         for idx_b, bloque in enumerate(bloques_fr):
+          # Normalizar encabezados poco claros (ej. '0- MED') a 'Código'
+          # para que se vean igual en todas las vistas de esta tabla.
+          bloque["tabla"] = _fr_renombrar_encabezados(bloque["tabla"])
+
           titulo_mostrar = (
               titulos_fallback[idx_b]
               if idx_b < len(titulos_fallback)
