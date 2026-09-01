@@ -3904,16 +3904,22 @@ with tabs[-1]:
       " el celular firme y a unos 10-15 cm del código."
   )
 
-  with st.expander("⌨️ ¿No lee el código? Ingresa el Localizador manualmente"):
+  with st.expander("⌨️ ¿No lee el código? Ingresa el Localizador manualmente", expanded=True):
     loc_manual = st.text_input(
         "Localizador (ej: MCD.0.3.C.2.013):", key="loc_manual_input"
     )
-    if st.button("Buscar", key="btn_buscar_manual") and loc_manual.strip():
-      st.query_params["loc"] = loc_manual.strip()
-      st.rerun()
+    buscar_click = st.button("Buscar", key="btn_buscar_manual")
 
-
-  loc_escaneado = st.query_params.get("loc", None)
+  # Resuelve el Localizador a usar en esta misma ejecución: prioriza el
+  # ingreso manual recién enviado; si no, usa el que venga de la cámara
+  # (parámetro de URL). Evita depender de un segundo round-trip de rerun.
+  loc_query = st.query_params.get("loc", None)
+  loc_escaneado = None
+  if buscar_click and loc_manual.strip():
+    loc_escaneado = loc_manual.strip()
+    st.query_params["loc"] = loc_escaneado
+  elif loc_query:
+    loc_escaneado = loc_query
 
   if st.button("🔄 Limpiar escaneo", key="btn_limpiar_scan"):
     st.query_params.clear()
