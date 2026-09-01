@@ -4025,62 +4025,117 @@ with tabs[-1]:
         }
 
         async function iniciarCamara() {
-          if (camaraActivada) return;
-          camaraActivada = true;
+          // No bloquear nuevos intentos si una tentativa anterior falló.
+          if (camaraActivada && streamActual && streamActual.active) return;
 
           if (!window.isSecureContext) {
-            mostrarError("❌ La cámara requiere HTTPS. Abre la app con https://.");
+            camaraActivada = false;
+            mostrarError("❌ La cámara requiere HTTPS.");
+            detalle.textContent = "Abre la aplicación con https://. En algunos celulares, http://IP:8501 no permite cámara.";
             return;
           }
+
           if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            camaraActivada = false;
             mostrarError("❌ Este navegador no permite acceso a la cámara aquí.");
+            detalle.textContent = "Prueba con Chrome o Safari actualizado y verifica los permisos de cámara.";
             return;
           }
+
+          // Si quedó un stream anterior, lo cerramos antes de pedir uno nuevo.
+          try {
+            if (streamActual) {
+              streamActual.getTracks().forEach(t => t.stop());
+            }
+          } catch (e) {}
+          streamActual = null;
+          camaraActivada = false;
 
           estado.textContent = "🎥 Activando cámara...";
-          detalle.textContent = "Si tu navegador pide permiso, acepta 'Permitir'.";
+          detalle.textContent = "Si el teléfono pregunta si deseas permitir la cámara, selecciona «Permitir».";
+          btnActivar.disabled = true;
+          btnActivar.textContent = "⏳ Activando...";
 
           try {
-            streamActual = await conTimeout(
+            // IMPORTANTE: primero usamos una petición simple y compatible.
+            // No forzamos focusMode dentro de getUserMedia porque algunos
+            // navegadores móviles rechazan la solicitud completa por ello.
+            const stream = await conTimeout(
               navigator.mediaDevices.getUserMedia({
                 video: {
-                  facingMode: {ideal: "environment"},
-                  width: {ideal: 1920},
-                  height: {ideal: 1080},
-                  focusMode: {ideal: "continuous"}
+                  facingMode: { ideal: "environment" },
+                  width: { ideal: 1280 },
+                  height: { ideal: 720 }
                 },
                 audio: false
               }),
-              12000,
+              15000,
               "La cámara no respondió a tiempo."
             );
+
+            streamActual = stream;
             video.srcObject = streamActual;
-            await video.play();
-            estado.textContent = "📷 Buscando Localizador MCD...";
 
             try {
-              const track = streamActual.getVideoTracks()[0];
-              const caps = track.getCapabilities ? track.getCapabilities() : {};
-              if (caps.focusMode && caps.focusMode.includes("continuous")) {
-                await track.applyConstraints({advanced:[{focusMode:"continuous"}]});
-              }
-            } catch (e) {}
+              await video.play();
+            } catch (playError) {
+              console.warn("video.play() no se pudo ejecutar automáticamente:", playError);
+            }
 
-            // Iniciamos OCR y lector de barras cuando estén listos, sin
-            // bloquear la apertura de la cámara si el CDN tarda o falla.
+            // SOLO después de obtener el stream correctamente.
+            camaraActivada = true;
+            btnActivar.disabled = false;
+            btnActivar.textContent = "🔄 Reiniciar cámara";
+            torchBtn.disabled = false;
+
+            estado.textContent = "📷 Buscando Localizador MCD...";
+            detalle.textContent = "Cámara activa. Centra el MCD dentro del recuadro verde.";
+
+            // Enfoque continuo: se intenta solamente si el dispositivo lo anuncia.
+            try {
+              const track = streamActual.getVideoTracks()[0];
+              const caps = track && track.getCapabilities ? track.getCapabilities() : {};
+
+              if (caps.focusMode && Array.isArray(caps.focusMode) && caps.focusMode.includes("continuous")) {
+                await track.applyConstraints({
+                  advanced: [{ focusMode: "continuous" }]
+                });
+              }
+            } catch (e) {
+              console.log("Enfoque continuo no disponible:", e);
+            }
+
+            // El lector/OCR se inicia después de que la cámara ya esté visible.
             intentarIniciarLectores();
+
           } catch (e) {
             camaraActivada = false;
+            torchBtn.disabled = true;
+            btnActivar.disabled = false;
+            btnActivar.textContent = "▶️ Activar cámara";
+
+            try {
+              if (streamActual) streamActual.getTracks().forEach(t => t.stop());
+            } catch (stopError) {}
+            streamActual = null;
+
             let msg = e && e.message ? e.message : String(e);
+
             if (e && e.name === "NotAllowedError") {
-              msg = "Permiso de cámara denegado. Revisa los permisos del sitio en tu navegador y vuelve a intentar.";
+              msg = "Permiso de cámara denegado. Revisa los permisos del sitio en el navegador y vuelve a intentarlo.";
             } else if (e && e.name === "NotFoundError") {
               msg = "No se encontró ninguna cámara en el dispositivo.";
             } else if (e && e.name === "NotReadableError") {
-              msg = "La cámara está siendo usada por otra app. Ciérrala e intenta de nuevo.";
+              msg = "La cámara está siendo usada por otra aplicación. Ciérrala e intenta nuevamente.";
+            } else if (e && e.name === "OverconstrainedError") {
+              msg = "El teléfono no acepta la configuración solicitada. Intenta nuevamente.";
+            } else if (e && e.name === "SecurityError") {
+              msg = "El navegador bloqueó la cámara por seguridad. Se requiere HTTPS.";
             }
+
             mostrarError("❌ No se pudo acceder a la cámara: " + msg);
-            detalle.textContent = "Toca 'Activar cámara' para volver a intentar.";
+            detalle.textContent = "Toca «Activar cámara» para volver a intentar.";
+            console.error("Error getUserMedia:", e);
           }
         }
 
@@ -4107,19 +4162,54 @@ with tabs[-1]:
           }
         }
 
-        torchBtn.onclick = function() {
+        torchBtn.disabled = true;
+        torchBtn.textContent = "💡 Linterna";
+
+        torchBtn.onclick = async function() {
           try {
             const track = streamActual && streamActual.getVideoTracks()[0];
-            if (!track) throw new Error("No hay cámara activa");
-            const settings = track.getSettings();
-            track.applyConstraints({advanced:[{torch:!settings.torch}]})
-              .catch(() => alert("Este dispositivo no permite linterna desde el navegador."));
+
+            if (!track || !streamActual || !streamActual.active) {
+              alert("Primero debes activar la cámara.");
+              return;
+            }
+
+            const caps = track.getCapabilities ? track.getCapabilities() : {};
+
+            if (!caps.torch) {
+              alert("Este teléfono o navegador no permite controlar la linterna desde la aplicación.");
+              return;
+            }
+
+            const settings = track.getSettings ? track.getSettings() : {};
+            const encendida = Boolean(settings.torch);
+
+            await track.applyConstraints({
+              advanced: [{ torch: !encendida }]
+            });
+
+            torchBtn.textContent = !encendida
+              ? "🔦 Apagar linterna"
+              : "💡 Linterna";
+
           } catch (e) {
-            alert("No se pudo acceder a la linterna.");
+            console.error("Error de linterna:", e);
+            alert("No se pudo controlar la linterna en este dispositivo.");
           }
         };
 
         btnActivar.onclick = function() {
+          // Permite volver a pedir permiso/reiniciar después de un fallo.
+          if (streamActual && streamActual.active) {
+            try {
+              streamActual.getTracks().forEach(t => t.stop());
+            } catch (e) {}
+            streamActual = null;
+            camaraActivada = false;
+            video.srcObject = null;
+            torchBtn.disabled = true;
+            torchBtn.textContent = "💡 Linterna";
+          }
           iniciarCamara();
         };
 
