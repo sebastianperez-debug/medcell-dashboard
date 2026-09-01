@@ -3811,16 +3811,14 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
 
 # =================================================================
-# PESTAÑA: ESCANEAR POSICIÓN (LOCALIZADOR) - híbrido: OCR + código de barras
+# PESTAÑA: ESCANEAR POSICIÓN (LOCALIZADOR)
+# Cámara nativa + código de barras + OCR
 # =================================================================
 with tabs[-1]:
   st.markdown("### 📷 Escanear Localizador")
-  st.caption("Apunta la cámara al texto MCD de la posición. Si el texto no se reconoce, el lector intenta también el código de barras.")
-
-  st.markdown("### 📷 Escanear Localizador")
-  st.info(
-      "📱 Para máxima compatibilidad en celulares, esta versión usa la cámara nativa de Streamlit. "
-      "Al tocar el botón de cámara del teléfono, el navegador pedirá permiso para usarla."
+  st.caption(
+      "Toma una foto de la etiqueta. El sistema intenta primero leer el "
+      "código de barras y luego el texto MCD impreso debajo/encima del código."
   )
 
   if "activar_camara_scan" not in st.session_state:
@@ -3828,109 +3826,267 @@ with tabs[-1]:
 
   c1, c2 = st.columns([1, 1])
   with c1:
-    if st.button("▶️ Activar cámara", key="btn_activar_camara_nativa", use_container_width=True):
+    if st.button(
+        "▶️ Activar cámara",
+        key="btn_activar_camara_nativa",
+        use_container_width=True,
+    ):
       st.session_state.activar_camara_scan = True
+      st.rerun()
+
   with c2:
-    if st.button("⏹️ Cerrar cámara", key="btn_cerrar_camara_nativa", use_container_width=True):
+    if st.button(
+        "⏹️ Cerrar cámara",
+        key="btn_cerrar_camara_nativa",
+        use_container_width=True,
+    ):
       st.session_state.activar_camara_scan = False
+      st.session_state.pop("foto_scan_procesada", None)
       st.rerun()
 
   if st.session_state.activar_camara_scan:
-    st.caption(
-        "💡 En el teléfono, la cámara nativa puede mostrar su propio control de flash/linterna. "
-        "Ese control depende del sistema del celular y no puede ser activado de forma fiable por Streamlit."
+    st.info(
+        "📱 Al tocar la cámara, el celular solicitará permiso para usarla. "
+        "Centra la etiqueta MCD y el código de barras en la imagen."
     )
 
     foto_scan = st.camera_input(
         "📸 Toma una foto del Localizador MCD",
         key="camera_scan_native",
-        resolution="1080p",
-        help="Centra MCD.0.3.G.x.xxx dentro de la imagen y toma la foto."
+        help=(
+            "Acerca el celular a unos 10-20 cm. Intenta que el texto "
+            "MCD.0.3.G.x.xxx y el código de barras queden nítidos."
+        ),
     )
 
     if foto_scan is not None:
-      try:
-        from PIL import Image, ImageOps, ImageEnhance, ImageFilter
-        import numpy as np
-        import cv2
-        import pytesseract
+      foto_id = getattr(foto_scan, "file_id", None) or getattr(
+          foto_scan, "name", None
+      )
 
-        imagen = Image.open(foto_scan).convert("RGB")
-        st.image(imagen, caption="Imagen capturada", use_container_width=True)
+      if st.session_state.get("foto_scan_procesada") != foto_id:
+        st.session_state["foto_scan_procesada"] = foto_id
 
-        def normalizar_localizador_python(texto):
-          if not texto:
-            return None
+        try:
+          import io
           import re
-          s = str(texto).upper().replace("\n", " ").replace("\r", " ").replace("\t", " ")
-          s = s.replace("|", "I")
-          s = re.sub(r"\s+", " ", s)
-          patron = r"MCD\s*[.\-\s]\s*\d+\s*[.\-\s]\s*\d+\s*[.\-\s]\s*[A-Z0-9]+\s*[.\-\s]\s*\d+\s*[.\-\s]\s*\d+"
-          m = re.search(patron, s)
-          if not m:
+          from PIL import Image, ImageOps, ImageEnhance
+
+          imagen = Image.open(io.BytesIO(foto_scan.getvalue())).convert("RGB")
+
+          st.image(
+              imagen,
+              caption="Imagen capturada",
+              use_container_width=True,
+          )
+
+          def normalizar_localizador_python(texto):
+            if not texto:
+              return None
+
+            s = str(texto).upper()
+            s = s.replace("\n", " ").replace("\r", " ").replace("\t", " ")
+            s = s.replace("|", "I")
+            s = re.sub(r"\s+", " ", s)
+
+            patron = (
+                r"MCD\s*[.\-\s]\s*\d+\s*[.\-\s]\s*\d+"
+                r"\s*[.\-\s]\s*[A-Z0-9]+\s*[.\-\s]\s*\d+"
+                r"\s*[.\-\s]\s*\d+"
+            )
+
+            m = re.search(patron, s)
+            if not m:
+              return None
+
+            loc = re.sub(r"\s+", "", m.group(0))
+            loc = loc.replace("-", ".")
+            loc = re.sub(r"\.{2,}", ".", loc)
+            loc = re.sub(r"^MCD[.\-]", "MCD.", loc)
+
+            if re.fullmatch(
+                r"MCD\.\d+\.\d+\.[A-Z0-9]+\.\d+\.\d+",
+                loc,
+            ):
+              return loc
+
             return None
-          loc = re.sub(r"\s+", "", m.group(0)).replace("-", ".")
-          loc = re.sub(r"\.{2,}", ".", loc)
-          if re.fullmatch(r"MCD\.\d+\.\d+\.[A-Z0-9]+\.\d+\.\d+", loc):
-            return loc
-          return None
 
-        # Primero intentamos QR/código 2D con OpenCV.
-        arr = np.array(imagen)
-        bgr = cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
-        detector = cv2.QRCodeDetector()
-        valor_qr, puntos, _ = detector.detectAndDecode(bgr)
-        loc_detectado = normalizar_localizador_python(valor_qr)
-
-        # Luego OCR sobre el centro y también sobre una versión mejorada.
-        texto_ocr = ""
-        if not loc_detectado:
-          gris = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
-          h, w = gris.shape[:2]
-          crop = gris[int(h*0.20):int(h*0.80), int(w*0.08):int(w*0.92)]
-          crop = cv2.resize(crop, None, fx=1.6, fy=1.6, interpolation=cv2.INTER_CUBIC)
-          crop = cv2.GaussianBlur(crop, (3, 3), 0)
-          _, crop_bin = cv2.threshold(crop, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+          # =============================================================
+          # 1) CÓDIGO DE BARRAS / QR
+          #    Se usa zxing-cpp, no OpenCV.
+          #    Esto elimina el error "No module named 'cv2'".
+          # =============================================================
+          valores_codigo = []
 
           try:
-            texto_ocr = pytesseract.image_to_string(
-                crop_bin,
-                config="--psm 6 -c tessedit_char_whitelist=MCD.0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ-"
+            import zxingcpp
+
+            lecturas = zxingcpp.read_barcodes(imagen)
+
+            for lectura in lecturas:
+              try:
+                valor = str(lectura.text).strip()
+              except Exception:
+                valor = ""
+
+              if valor:
+                valores_codigo.append(valor)
+
+          except ImportError:
+            # El OCR puede funcionar aunque zxing-cpp no esté disponible.
+            pass
+          except Exception:
+            # Nunca bloquear el OCR por un fallo del lector de barras.
+            pass
+
+          loc_detectado = None
+
+          for valor in valores_codigo:
+            loc_detectado = normalizar_localizador_python(valor)
+            if loc_detectado:
+              break
+
+          # =============================================================
+          # 2) OCR
+          #    Se prueban varias zonas de la foto, incluyendo la zona
+          #    donde normalmente está el texto MCD bajo el código de barras.
+          # =============================================================
+          try:
+            import pytesseract
+
+            w, h = imagen.size
+
+            regiones = [
+                imagen,
+                imagen.crop((0, int(h * 0.15), w, int(h * 0.85))),
+                imagen.crop((0, int(h * 0.35), w, int(h * 0.80))),
+                imagen.crop(
+                    (
+                        int(w * 0.10),
+                        int(h * 0.25),
+                        int(w * 0.90),
+                        int(h * 0.80),
+                    )
+                ),
+            ]
+
+            for region in regiones:
+              if loc_detectado:
+                break
+
+              rw, rh = region.size
+              escala = 3
+
+              procesada = region.resize(
+                  (max(1, rw * escala), max(1, rh * escala)),
+                  Image.Resampling.LANCZOS,
+              )
+
+              gris = ImageOps.grayscale(procesada)
+              gris = ImageOps.autocontrast(gris)
+              gris = ImageEnhance.Sharpness(gris).enhance(2.5)
+              gris = ImageEnhance.Contrast(gris).enhance(2.0)
+
+              versiones = [
+                  gris,
+                  gris.point(lambda p: 255 if p > 150 else 0),
+                  gris.point(lambda p: 255 if p > 180 else 0),
+              ]
+
+              for preparada in versiones:
+                try:
+                  texto = pytesseract.image_to_string(
+                      preparada,
+                      config=(
+                          "--psm 6 "
+                          "-c tessedit_char_whitelist="
+                          "MCD.0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ-"
+                      ),
+                  )
+                except Exception:
+                  texto = ""
+
+                loc_detectado = normalizar_localizador_python(texto)
+
+                if loc_detectado:
+                  break
+
+          except ImportError:
+            st.warning(
+                "⚠️ OCR no instalado. El código de barras seguirá funcionando "
+                "si está disponible. También puedes ingresar el Localizador "
+                "manualmente abajo."
             )
-          except Exception as ocr_error:
-            texto_ocr = ""
-            st.warning("OCR no disponible en este servidor. Puedes ingresar el Localizador manualmente abajo.")
+          except Exception:
+            st.warning(
+                "⚠️ No se pudo ejecutar OCR en el servidor. "
+                "El código de barras y la búsqueda manual siguen disponibles."
+            )
 
-          loc_detectado = normalizar_localizador_python(texto_ocr)
+          # =============================================================
+          # 3) ENVIAR A LA LÓGICA DE STOCK
+          #
+          # Si se reconoce MCD -> se busca directamente por Localizador.
+          # Si se reconoce un número de barra -> se busca código -> Localizador.
+          # =============================================================
+          valor_detectado = loc_detectado
 
-        if loc_detectado:
-          st.success(f"✅ Localizador detectado: {loc_detectado}")
-          st.session_state["loc_scan_detectado"] = loc_detectado
-          st.query_params["loc"] = loc_detectado
-          st.rerun()
-        else:
-          st.warning("⚠️ No pude reconocer el Localizador en esta foto.")
-          st.caption("Prueba acercándote, dejando el texto MCD completo dentro de la imagen y evitando reflejos.")
+          if not valor_detectado and valores_codigo:
+            valor_detectado = valores_codigo[0]
 
-      except Exception as e:
-        st.error(f"❌ No se pudo procesar la imagen de la cámara: {e}")
+          if valor_detectado:
+            st.session_state["loc_scan_detectado"] = valor_detectado
+            st.query_params["loc"] = valor_detectado
+
+            if loc_detectado:
+              st.success(
+                  f"✅ Localizador detectado: **{loc_detectado}**"
+              )
+            else:
+              st.success(
+                  f"📦 Código de barras detectado: **{valor_detectado}**"
+              )
+
+            st.rerun()
+
+          st.warning(
+              "⚠️ No pude reconocer automáticamente el Localizador ni "
+              "el código de barras."
+          )
+          st.caption(
+              "Prueba acercándote, dejando toda la etiqueta dentro de la "
+              "foto y evitando reflejos. El texto MCD impreso debajo de "
+              "la barra también es válido."
+          )
+
+        except Exception as e:
+          st.error(
+              f"❌ No se pudo procesar la imagen de la cámara: {e}"
+          )
 
   st.caption(
-      "💡 Recomendado: centra el texto MCD.0.3.G.x.xxx, a unos 10-20 cm. "
-      "La cámara nativa reemplaza el componente HTML/JavaScript que estaba bloqueando el acceso en los celulares."
+      "💡 Puedes usar cualquiera de estas dos fuentes: "
+      "1) el código de barras, o 2) el texto MCD impreso debajo de la barra. "
+      "Ambos pueden utilizarse para llegar a la información de STOCK."
   )
 
-  with st.expander("⌨️ ¿No lee el código? Ingresa el Localizador manualmente", expanded=True):
+  with st.expander(
+      "⌨️ ¿No lee el código? Ingresa el Localizador manualmente",
+      expanded=True,
+  ):
     loc_manual = st.text_input(
-        "Localizador (ej: MCD.0.3.C.2.013):", key="loc_manual_input"
+        "Localizador (ej: MCD.0.3.C.2.013):",
+        key="loc_manual_input",
     )
-    buscar_click = st.button("Buscar", key="btn_buscar_manual")
+    buscar_click = st.button(
+        "Buscar",
+        key="btn_buscar_manual",
+    )
 
-  # Resuelve el Localizador a usar en esta misma ejecución: prioriza el
-  # ingreso manual recién enviado; si no, usa el que venga de la cámara
-  # (parámetro de URL). Evita depender de un segundo round-trip de rerun.
   loc_query = st.query_params.get("loc", None)
   loc_escaneado = None
+
   if buscar_click and loc_manual.strip():
     loc_escaneado = loc_manual.strip()
     st.query_params["loc"] = loc_escaneado
@@ -3939,195 +4095,389 @@ with tabs[-1]:
 
   if st.button("🔄 Limpiar escaneo", key="btn_limpiar_scan"):
     st.query_params.clear()
+    st.session_state.pop("loc_scan_detectado", None)
+    st.session_state.pop("foto_scan_procesada", None)
     st.rerun()
 
   if loc_escaneado:
     df_stock_scan = hojas.get("STOCK")
+
     if df_stock_scan is None:
       st.error("No se encontró la hoja 'STOCK' en el Excel.")
     else:
       df_stock_scan = df_stock_scan.copy()
 
       col_loc_scan = next(
-          (c for c in df_stock_scan.columns
-           if c.strip().lower() in ["localizador", "ubicacion"]),
+          (
+              c
+              for c in df_stock_scan.columns
+              if c.strip().lower()
+              in ["localizador", "ubicacion", "ubicación"]
+          ),
           None,
       )
+
       col_cod_scan = next(
-          (c for c in df_stock_scan.columns
-           if c.strip().lower() in ["codigo_articulo", "id_producto", "sku", "codigo"]),
+          (
+              c
+              for c in df_stock_scan.columns
+              if c.strip().lower()
+              in [
+                  "codigo_articulo",
+                  "id_producto",
+                  "sku",
+                  "codigo",
+                  "código",
+                  "ean",
+                  "ean13",
+                  "gtin",
+                  "codigo_barras",
+                  "código_barras",
+                  "codigo_barra",
+                  "código_barra",
+              ]
+          ),
           None,
       )
+
       col_desc_scan = next(
-          (c for c in df_stock_scan.columns if "descripcion" in c.lower()), None
+          (
+              c
+              for c in df_stock_scan.columns
+              if "descripcion" in c.lower()
+              or "descripción" in c.lower()
+          ),
+          None,
       )
+
       if not col_desc_scan and len(df_stock_scan.columns) > 3:
         col_desc_scan = df_stock_scan.columns[3]
+
       col_lote_scan = next(
-          (c for c in df_stock_scan.columns if c.strip().lower() == "lote_proveedor"),
+          (
+              c
+              for c in df_stock_scan.columns
+              if c.strip().lower()
+              in ["lote_proveedor", "lote proveedor", "lote"]
+          ),
           None,
       )
+
       col_cant_scan = next(
-          (c for c in df_stock_scan.columns
-           if c.strip().lower() in ["cantidad", "stock", "unidades"]),
+          (
+              c
+              for c in df_stock_scan.columns
+              if c.strip().lower()
+              in ["cantidad", "stock", "unidades"]
+          ),
           None,
       )
+
       col_fecha_scan = next(
-          (c for c in df_stock_scan.columns
-           if c.strip().lower() in ["fecha_expiracion_lote", "vencimiento", "fecha_expiracion"]),
+          (
+              c
+              for c in df_stock_scan.columns
+              if c.strip().lower()
+              in [
+                  "fecha_expiracion_lote",
+                  "vencimiento",
+                  "fecha_expiracion",
+                  "fecha expiracion lote",
+              ]
+          ),
           None,
       )
 
       if not col_loc_scan:
-        st.error("La hoja STOCK no tiene columna de Localizador reconocible.")
+        st.error(
+            "La hoja STOCK no tiene columna de Localizador reconocible."
+        )
       else:
-        # ================================================================
-        # RESOLUCIÓN CÓDIGO DE BARRAS -> LOCALIZADOR
-        # ================================================================
+
         def _norm_scan_value(v):
-            if v is None or pd.isna(v):
-                return ""
-            s = str(v).strip().upper()
-            if s.endswith(".0"):
-                s = s[:-2]
-            return s
+          if v is None or pd.isna(v):
+            return ""
+
+          s = str(v).strip().upper()
+
+          if s.endswith(".0"):
+            s = s[:-2]
+
+          s = re.sub(r"\s+", "", s)
+
+          return s
 
         def _parece_localizador(v):
-            s = _norm_scan_value(v)
-            if not s:
-                return False
-            partes = s.split(".")
-            return len(partes) >= 5 and partes[0] == "MCD" and all(part.strip() for part in partes)
+          s = _norm_scan_value(v)
+
+          if not s:
+            return False
+
+          partes = s.split(".")
+
+          return (
+              len(partes) >= 6
+              and partes[0] == "MCD"
+              and all(part.strip() for part in partes)
+          )
 
         scan_norm = _norm_scan_value(loc_escaneado)
+
         localizadores_encontrados = []
         hoja_mapeo = None
 
-        # Respaldo para las etiquetas probadas.
+        # =============================================================
+        # 1) El valor detectado puede ser directamente un Localizador.
+        # =============================================================
+        resultado = df_stock_scan[
+            df_stock_scan[col_loc_scan].apply(_norm_scan_value)
+            == scan_norm
+        ].copy()
+
+        if not resultado.empty:
+          localizadores_encontrados = [str(loc_escaneado).strip()]
+          hoja_mapeo = "STOCK"
+
+        # =============================================================
+        # 2) Mapeos de respaldo de códigos probados anteriormente.
+        # =============================================================
         MAPEO_PRUEBA = {
             "9631187073887": "MCD.0.3.G.2.120",
             "11111283": "MCD.0.3.G.4.120",
         }
 
-        resultado = df_stock_scan[
-            df_stock_scan[col_loc_scan].apply(_norm_scan_value) == scan_norm
-        ].copy()
+        if resultado.empty and scan_norm in MAPEO_PRUEBA:
+          localizadores_encontrados = [MAPEO_PRUEBA[scan_norm]]
+          hoja_mapeo = "MAPEO_PRUEBA"
 
-        if not resultado.empty:
-            localizadores_encontrados = [str(loc_escaneado).strip()]
-            hoja_mapeo = "STOCK"
+          loc_norms = {
+              _norm_scan_value(x)
+              for x in localizadores_encontrados
+          }
 
-        if resultado.empty and scan_norm and scan_norm in MAPEO_PRUEBA:
-            localizadores_encontrados = [MAPEO_PRUEBA[scan_norm]]
-            hoja_mapeo = "MAPEO_PRUEBA"
-            loc_norms = {_norm_scan_value(x) for x in localizadores_encontrados}
+          resultado = df_stock_scan[
+              df_stock_scan[col_loc_scan]
+              .apply(_norm_scan_value)
+              .isin(loc_norms)
+          ].copy()
+
+        # =============================================================
+        # 3) Código -> Localizador en cualquier hoja del Excel.
+        # =============================================================
+        if resultado.empty and scan_norm:
+          for nombre_hoja, df_mapeo in hojas.items():
+
+            if (
+                df_mapeo is None
+                or not hasattr(df_mapeo, "columns")
+            ):
+              continue
+
+            try:
+              df_mapeo = df_mapeo.copy()
+            except Exception:
+              continue
+
+            for col in df_mapeo.columns:
+              try:
+                mask_codigo = (
+                    df_mapeo[col]
+                    .apply(_norm_scan_value)
+                    == scan_norm
+                )
+              except Exception:
+                continue
+
+              if not mask_codigo.any():
+                continue
+
+              filas_match = df_mapeo.loc[mask_codigo]
+
+              columnas_loc = [
+                  c
+                  for c in df_mapeo.columns
+                  if any(
+                      palabra in str(c).strip().lower()
+                      for palabra in [
+                          "localizador",
+                          "ubicacion",
+                          "ubicación",
+                          "loc",
+                      ]
+                  )
+              ]
+
+              candidatos = []
+
+              for c_loc in columnas_loc:
+                try:
+                  candidatos.extend(
+                      filas_match[c_loc]
+                      .dropna()
+                      .astype(str)
+                      .str.strip()
+                      .tolist()
+                  )
+                except Exception:
+                  pass
+
+              if not candidatos:
+                for _, fila_match in filas_match.iterrows():
+                  for valor in fila_match.tolist():
+                    if _parece_localizador(valor):
+                      candidatos.append(str(valor).strip())
+
+              candidatos = [
+                  x
+                  for x in candidatos
+                  if _parece_localizador(x)
+              ]
+
+              candidatos = list(dict.fromkeys(candidatos))
+
+              if candidatos:
+                localizadores_encontrados.extend(candidatos)
+                hoja_mapeo = nombre_hoja
+                break
+
+            if localizadores_encontrados:
+              break
+
+          localizadores_encontrados = list(
+              dict.fromkeys(localizadores_encontrados)
+          )
+
+          if localizadores_encontrados:
+            loc_norms = {
+                _norm_scan_value(x)
+                for x in localizadores_encontrados
+            }
+
             resultado = df_stock_scan[
-                df_stock_scan[col_loc_scan].apply(_norm_scan_value).isin(loc_norms)
+                df_stock_scan[col_loc_scan]
+                .apply(_norm_scan_value)
+                .isin(loc_norms)
             ].copy()
 
-        # Busca códigos en todas las hojas para encontrar una relación
-        # código -> Localizador si existe en el Excel.
-        if resultado.empty and scan_norm:
-            for nombre_hoja, df_mapeo in hojas.items():
-                if df_mapeo is None or not hasattr(df_mapeo, "columns"):
-                    continue
-                try:
-                    df_mapeo = df_mapeo.copy()
-                except Exception:
-                    continue
-
-                for col in df_mapeo.columns:
-                    try:
-                        mask_codigo = df_mapeo[col].apply(_norm_scan_value) == scan_norm
-                    except Exception:
-                        continue
-                    if not mask_codigo.any():
-                        continue
-
-                    filas_match = df_mapeo.loc[mask_codigo]
-                    columnas_loc = [
-                        c for c in df_mapeo.columns
-                        if any(palabra in str(c).strip().lower()
-                               for palabra in ["localizador", "ubicacion", "ubicación", "loc"])
-                    ]
-                    candidatos = []
-                    for c_loc in columnas_loc:
-                        try:
-                            candidatos.extend(filas_match[c_loc].dropna().astype(str).str.strip().tolist())
-                        except Exception:
-                            pass
-                    if not candidatos:
-                        for _, fila_match in filas_match.iterrows():
-                            for valor in fila_match.tolist():
-                                if _parece_localizador(valor):
-                                    candidatos.append(str(valor).strip())
-
-                    candidatos = [x for x in candidatos if _parece_localizador(x)]
-                    candidatos = list(dict.fromkeys(candidatos))
-                    if candidatos:
-                        localizadores_encontrados.extend(candidatos)
-                        hoja_mapeo = nombre_hoja
-                        break
-                if localizadores_encontrados:
-                    break
-
-            localizadores_encontrados = list(dict.fromkeys(localizadores_encontrados))
-            if localizadores_encontrados:
-                loc_norms = {_norm_scan_value(x) for x in localizadores_encontrados}
-                resultado = df_stock_scan[
-                    df_stock_scan[col_loc_scan].apply(_norm_scan_value).isin(loc_norms)
-                ].copy()
-
+        # =============================================================
+        # 4) Mostrar resultado
+        # =============================================================
         if localizadores_encontrados and not resultado.empty:
-            loc_mostrado = ", ".join(localizadores_encontrados)
-            if hoja_mapeo and hoja_mapeo != "STOCK":
-                st.success(f"📍 Localizador detectado: **{loc_mostrado}**")
-            else:
-                st.success(f"📍 Localizador: **{loc_mostrado}**")
-        elif scan_norm:
-            st.warning(
-                f"⚠️ Se detectó **{loc_escaneado}**, pero no encontré ese Localizador ni una relación código → Localizador en el Excel."
+
+          loc_mostrado = ", ".join(localizadores_encontrados)
+
+          if hoja_mapeo and hoja_mapeo != "STOCK":
+            st.success(
+                f"📍 Localizador detectado: **{loc_mostrado}**"
+            )
+          else:
+            st.success(
+                f"📍 Localizador: **{loc_mostrado}**"
             )
 
-        # ================================================================
-        # MOSTRAR LOS PRODUCTOS: MISMA LÓGICA QUE LA BÚSQUEDA MANUAL
-        # ================================================================
+        elif scan_norm:
+
+          st.warning(
+              f"⚠️ Se detectó **{loc_escaneado}**, pero no encontré "
+              "ese Localizador ni una relación código → Localizador "
+              "en el Excel."
+          )
+
         if resultado.empty:
-          st.warning("No se encontró ningún producto registrado en esa posición.")
+
+          st.warning(
+              "No se encontró ningún producto registrado en esa posición."
+          )
+
         else:
+
           if col_cant_scan:
-            resultado[col_cant_scan] = resultado[col_cant_scan].apply(limpiar_numero)
+            resultado[col_cant_scan] = resultado[
+                col_cant_scan
+            ].apply(limpiar_numero)
+
           if col_cod_scan:
-            resultado[col_cod_scan] = resultado[col_cod_scan].apply(fmt_code)
+            resultado[col_cod_scan] = resultado[
+                col_cod_scan
+            ].apply(fmt_code)
+
           if col_fecha_scan:
             resultado[col_fecha_scan] = pd.to_datetime(
-                resultado[col_fecha_scan], errors="coerce"
+                resultado[col_fecha_scan],
+                errors="coerce",
             ).dt.strftime("%d-%m-%Y")
 
+          st.markdown("#### 📦 Productos encontrados")
+
           for _, fila in resultado.iterrows():
-            desc_txt = fila[col_desc_scan] if col_desc_scan else "Sin descripción"
-            cod_txt = fila[col_cod_scan] if col_cod_scan else "S/N"
-            cant_txt = (
-                formato_unidades(fila[col_cant_scan]) if col_cant_scan else "N/A"
+
+            desc_txt = (
+                fila[col_desc_scan]
+                if col_desc_scan
+                else "Sin descripción"
             )
-            lote_txt = fila[col_lote_scan] if col_lote_scan else "N/A"
-            fecha_txt = fila[col_fecha_scan] if col_fecha_scan else "N/A"
+
+            cod_txt = (
+                fila[col_cod_scan]
+                if col_cod_scan
+                else "S/N"
+            )
+
+            cant_txt = (
+                formato_unidades(fila[col_cant_scan])
+                if col_cant_scan
+                else "N/A"
+            )
+
+            lote_txt = (
+                fila[col_lote_scan]
+                if col_lote_scan
+                else "N/A"
+            )
+
+            fecha_txt = (
+                fila[col_fecha_scan]
+                if col_fecha_scan
+                else "N/A"
+            )
 
             st.markdown(
                 f"""
-                <div style="background-color:#141414; border:1px solid #0070f3;
-                            border-radius:10px; padding:16px; margin-bottom:12px;">
-                    <div style="color:#aaaaaa; font-size:12px; text-transform:uppercase;">Producto</div>
-                    <div style="color:#ffffff; font-size:20px; font-weight:bold;">{desc_txt}</div>
-                    <div style="margin-top:8px; color:#cccccc; font-size:14px;">
-                        Código: <b>{cod_txt}</b> · Lote: <b>{lote_txt}</b> · Vence: <b>{fecha_txt}</b>
+                <div style="background-color:#141414;
+                            border:1px solid #0070f3;
+                            border-radius:10px;
+                            padding:16px;
+                            margin-bottom:12px;">
+                    <div style="color:#aaaaaa;
+                                font-size:12px;
+                                text-transform:uppercase;">
+                        Producto
                     </div>
-                    <div style="margin-top:8px; color:#2ecc71; font-size:22px; font-weight:bold;">
+
+                    <div style="color:#ffffff;
+                                font-size:20px;
+                                font-weight:bold;">
+                        {desc_txt}
+                    </div>
+
+                    <div style="margin-top:8px;
+                                color:#cccccc;
+                                font-size:14px;">
+                        Código: <b>{cod_txt}</b>
+                        · Lote: <b>{lote_txt}</b>
+                        · Vence: <b>{fecha_txt}</b>
+                    </div>
+
+                    <div style="margin-top:8px;
+                                color:#2ecc71;
+                                font-size:22px;
+                                font-weight:bold;">
                         Stock: {cant_txt} unidades
                     </div>
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
+
   else:
     st.info("Aún no se ha escaneado ningún código.")
