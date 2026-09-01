@@ -3855,19 +3855,27 @@ with tabs[-1]:
           const { BrowserMultiFormatReader, DecodeHintType, BarcodeFormat } = ZXing;
 
           const hints = new Map();
+          // Solo CODE_128: es el formato real de la etiqueta de Localizador.
+          // Tener EAN_13/UPC_A/ITF activos al mismo tiempo hacía que ZXing
+          // a veces malinterpretara las barras de un Code128 como si fueran
+          // un EAN-13 (falso positivo numérico tipo "9631187073887").
           hints.set(DecodeHintType.POSSIBLE_FORMATS, [
             BarcodeFormat.CODE_128,
             BarcodeFormat.CODE_39,
             BarcodeFormat.CODABAR,
-            BarcodeFormat.EAN_13,
-            BarcodeFormat.EAN_8,
-            BarcodeFormat.UPC_A,
-            BarcodeFormat.ITF,
           ]);
           hints.set(DecodeHintType.TRY_HARDER, true);
 
           const codeReader = new BrowserMultiFormatReader(hints);
           let yaEnvio = false;
+
+          // Un Localizador siempre tiene letras y puntos (ej: MCD.0.3.G.2.120).
+          // Si lo leído no calza con ese patrón, es casi seguro una lectura
+          // errónea (p.ej. un EAN-13 solo numérico) y seguimos escaneando
+          // en vez de aceptarlo.
+          function esLocalizadorValido(texto) {
+            return /^[A-Za-z0-9]+(\\.[A-Za-z0-9]+){2,}$/.test(texto.trim());
+          }
 
           const constraints = {
             video: {
@@ -3882,10 +3890,17 @@ with tabs[-1]:
           codeReader
             .decodeFromConstraints(constraints, "video", (result, err) => {
               if (result && !yaEnvio) {
+                const texto = result.getText();
+                if (!esLocalizadorValido(texto)) {
+                  // Lectura sospechosa (no tiene forma de Localizador):
+                  // la ignoramos y seguimos escaneando en vez de aceptarla.
+                  estado.textContent = "⚠️ Código no válido, sigue escaneando: " + texto;
+                  return;
+                }
                 yaEnvio = true;
-                estado.textContent = "✅ Código detectado: " + result.getText();
+                estado.textContent = "✅ Código detectado: " + texto;
                 const url = new URL(window.parent.location);
-                url.searchParams.set("loc", result.getText());
+                url.searchParams.set("loc", texto);
                 window.parent.location.href = url.toString();
               }
             })
