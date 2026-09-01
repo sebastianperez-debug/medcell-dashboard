@@ -3814,7 +3814,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
               or "próxima semana" in txt
               or "semana que viene" in txt
           ):
-            return hoy + timedelta(days=7), "Próxima semana"
+            return hoy + timedelta(days=7), "Próximas semanas"
 
           return None, None
 
@@ -3858,11 +3858,16 @@ for i, nombre_hoja in enumerate(nombres_hojas):
           # 3) Fallback: primera fecha detectable en todo el comentario.
           return _fr_intentar_fecha_en_texto(txt, anio_ref, hoy)
 
+        _FR_MESES_ABREV = {
+            1: "ene", 2: "feb", 3: "mar", 4: "abr", 5: "may", 6: "jun",
+            7: "jul", 8: "ago", 9: "sep", 10: "oct", 11: "nov", 12: "dic",
+        }
+
         def _fr_build_kanban(tabla, hoy=None):
           """Arma las 4 columnas del tablero de urgencia (Esta semana /
-          Próxima semana / Este mes / Sin fecha) a partir de las fechas
-          estimadas parseadas desde la columna de comentario/observación
-          de la tabla original."""
+          Próximas 2 semanas / Este mes / Sin fecha) a partir de las
+          fechas estimadas parseadas desde la columna de comentario /
+          observación de la tabla original."""
           col_sku = next(
               (c for c in tabla.columns if "sku" in c.lower()), None
           )
@@ -3892,14 +3897,14 @@ for i, nombre_hoja in enumerate(nombres_hojas):
           hoy = hoy or datetime.now()
           columnas = {
               "Esta semana": [],
-              "Próxima semana": [],
+              "Próximas 2 semanas": [],
               "Este mes": [],
               "Sin fecha / más adelante": [],
           }
 
           for _, row in tabla.iterrows():
             comentario = row.get(col_estado)
-            fecha, _tipo = _fr_parse_fecha_comentario(comentario, hoy)
+            fecha, tipo_fecha = _fr_parse_fecha_comentario(comentario, hoy)
 
             etiqueta_sku = (
                 str(row.get(col_sku, "")).strip() if col_sku else ""
@@ -3916,10 +3921,18 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 abs(_fr_num(row.get(col_quiebre)) or 0) if col_quiebre else 0
             )
 
+            fecha_txt = (
+                f"{fecha.day} {_FR_MESES_ABREV.get(fecha.month, '')}"
+                if fecha is not None
+                else None
+            )
+
             item = {
                 "etiqueta": etiqueta[:70],
                 "quiebre": quiebre_val,
                 "comentario": str(comentario) if comentario else "",
+                "fecha_txt": fecha_txt,
+                "tipo_fecha": tipo_fecha,
             }
 
             if fecha is None:
@@ -3930,7 +3943,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             if dias_restantes <= 7:
               columnas["Esta semana"].append(item)
             elif dias_restantes <= 14:
-              columnas["Próxima semana"].append(item)
+              columnas["Próximas 2 semanas"].append(item)
             elif dias_restantes <= 31:
               columnas["Este mes"].append(item)
             else:
@@ -3950,14 +3963,17 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
         _FR_KANBAN_COLORES = {
             "Esta semana": "#e34948",
-            "Próxima semana": "#f1c40f",
+            "Próximas 2 semanas": "#f1c40f",
             "Este mes": "#5f5e5a",
             "Sin fecha / más adelante": "#3d3d3a",
         }
 
         def _fr_render_kanban(columnas, key_prefix=""):
           """Renderiza el tablero de 4 columnas con tarjetas por SKU,
-          usando el mismo estilo visual oscuro del resto de la app."""
+          usando el mismo estilo visual oscuro del resto de la app. Cada
+          tarjeta muestra la fecha estimada ya calculada (no solo el
+          comentario crudo), para que quede clara sin depender del
+          nombre de la columna."""
           st.markdown(
               """
               <style>
@@ -3969,6 +3985,8 @@ for i, nombre_hoja in enumerate(nombres_hojas):
               .fr-kanban-card-title { font-size:13px; font-weight:600;
                 color:#ffffff; margin:0 0 2px 0; }
               .fr-kanban-card-sub { font-size:12px; color:#aaaaaa; margin:0; }
+              .fr-kanban-card-fecha { font-size:11px; font-weight:600;
+                margin:4px 0 0 0; }
               </style>
               """,
               unsafe_allow_html=True,
@@ -3997,10 +4015,17 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                     else "$0"
                 )
                 comentario_txt = item["comentario"] or "Sin comentario"
+                fecha_html = ""
+                if item.get("fecha_txt"):
+                  fecha_html = (
+                      f'<p class="fr-kanban-card-fecha" style="color:{color_borde};">'
+                      f'→ {item["fecha_txt"]}</p>'
+                  )
                 st.markdown(
                     f'<div class="fr-kanban-card" style="border-left:3px solid {color_borde};">'
                     f'<p class="fr-kanban-card-title">{item["etiqueta"]}</p>'
                     f'<p class="fr-kanban-card-sub">{monto_txt} · {comentario_txt}</p>'
+                    f"{fecha_html}"
                     "</div>",
                     unsafe_allow_html=True,
                 )
@@ -4089,7 +4114,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
           # -------------------------------------------------------
           # Tablero de urgencia (Kanban) para este bloque: agrupa los
-          # quiebres en Esta semana / Próxima semana / Este mes / Sin
+          # quiebres en Esta semana / Próximas 2 semanas / Este mes / Sin
           # fecha, según lo que se pudo interpretar del comentario.
           # -------------------------------------------------------
           columnas_kanban_fr = _fr_build_kanban(bloque["tabla"])
