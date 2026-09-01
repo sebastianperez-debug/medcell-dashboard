@@ -4394,48 +4394,29 @@ with tabs[-1]:
                             else "N/A"
                         )
 
-                        tarjeta = textwrap.dedent(
-                            f"""
-                            <div style="
-                                background-color:#141414;
-                                border:1px solid #0070f3;
-                                border-radius:10px;
-                                padding:16px;
-                                margin-bottom:12px;
-                            ">
-                                <div style="
-                                    color:#aaaaaa;
-                                    font-size:12px;
-                                    text-transform:uppercase;
-                                ">Producto</div>
-
-                                <div style="
-                                    color:#ffffff;
-                                    font-size:20px;
-                                    font-weight:bold;
-                                ">{desc_txt}</div>
-
-                                <div style="
-                                    margin-top:8px;
-                                    color:#cccccc;
-                                    font-size:14px;
-                                ">
-                                    Código: <b>{cod_txt}</b>
-                                    · Lote: <b>{lote_txt}</b>
-                                    · Vence: <b>{fecha_txt}</b>
-                                </div>
-
-                                <div style="
-                                    margin-top:8px;
-                                    color:#2ecc71;
-                                    font-size:22px;
-                                    font-weight:bold;
-                                ">
-                                    Stock: {cant_txt} unidades
-                                </div>
-                            </div>
-                            """
-                        ).strip()
+                        # HTML en una sola línea por bloque evita que
+                        # Streamlit interprete los atributos multilínea
+                        # como un bloque de código Markdown.
+                        tarjeta = (
+                            f'<div style="background-color:#141414;'
+                            f'border:1px solid #0070f3;border-radius:10px;'
+                            f'padding:16px;margin-bottom:12px;">'
+                            f'<div style="color:#aaaaaa;font-size:12px;'
+                            f'text-transform:uppercase;">PRODUCTO</div>'
+                            f'<div style="color:#ffffff;font-size:20px;'
+                            f'font-weight:bold;margin-top:6px;">'
+                            f'{desc_txt}</div>'
+                            f'<div style="margin-top:8px;color:#cccccc;'
+                            f'font-size:14px;">'
+                            f'Código: <b>{cod_txt}</b>'
+                            f' · Lote: <b>{lote_txt}</b>'
+                            f' · Vence: <b>{fecha_txt}</b>'
+                            f'</div>'
+                            f'<div style="margin-top:8px;color:#2ecc71;'
+                            f'font-size:22px;font-weight:bold;">'
+                            f'Stock: {cant_txt} unidades</div>'
+                            f'</div>'
+                        )
 
                         st.markdown(
                             tarjeta,
