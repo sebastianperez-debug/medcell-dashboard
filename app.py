@@ -3749,18 +3749,11 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             "5": 5, "5ta": 5, "quinta": 5,
         }
 
-        def _fr_parse_fecha_comentario(comentario, hoy=None):
-          """Intenta extraer una fecha estimada de resolución desde un
-          comentario en español. Devuelve (fecha, tipo) o (None, None)
-          si no se pudo identificar nada."""
-          if not comentario or not isinstance(comentario, str):
-            return None, None
-          txt = comentario.strip().lower()
-          if not txt:
-            return None, None
-          hoy = hoy or datetime.now()
-          anio_ref = hoy.year
-
+        def _fr_intentar_fecha_en_texto(txt, anio_ref, hoy):
+          """Intenta los patrones de fecha conocidos (fecha exacta,
+          mes-año, semana del mes, referencias relativas) sobre un
+          fragmento de texto ya en minúsculas. Devuelve (fecha, tipo)
+          o (None, None)."""
           # 1) Fecha exacta dd/mm o dd-mm (con año opcional)
           m = re.search(r"(\d{1,2})[/\-](\d{1,2})(?:[/\-](\d{2,4}))?", txt)
           if m:
@@ -3824,6 +3817,46 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             return hoy + timedelta(days=7), "Próxima semana"
 
           return None, None
+
+        def _fr_parse_fecha_comentario(comentario, hoy=None):
+          """Intenta extraer una fecha estimada de resolución desde un
+          comentario en español. Devuelve (fecha, tipo) o (None, None)
+          si no se pudo identificar nada.
+
+          Reglas de prioridad:
+          1) 'Recuperado' -> ya se resolvió, cuenta como esta semana.
+          2) Si el comentario menciona 'Sell in' o 'SI' junto a una
+             fecha (dd/mm, semana del mes, etc.), esa fecha manda por
+             sobre cualquier ETA que también aparezca en el texto.
+          3) En cualquier otro caso, se usa la primera fecha detectable
+             con los patrones estándar (ETA, mes-año, semana del mes,
+             referencias relativas)."""
+          if not comentario or not isinstance(comentario, str):
+            return None, None
+          original = comentario.strip()
+          txt = original.lower()
+          if not txt:
+            return None, None
+          hoy = hoy or datetime.now()
+          anio_ref = hoy.year
+
+          # 1) Ya recuperado: se considera resuelto esta semana.
+          if "recuperad" in txt:
+            return hoy, "Recuperado"
+
+          # 2) Priorizar fecha de Sell In / SI sobre una ETA anterior.
+          m_si = re.search(r"sell\s*in", txt)
+          if not m_si:
+            m_si = re.search(r"\bSI\b", original)
+          if m_si:
+            fecha_si, _tipo_si = _fr_intentar_fecha_en_texto(
+                txt[m_si.start():], anio_ref, hoy
+            )
+            if fecha_si is not None:
+              return fecha_si, "Sell In"
+
+          # 3) Fallback: primera fecha detectable en todo el comentario.
+          return _fr_intentar_fecha_en_texto(txt, anio_ref, hoy)
 
         def _fr_build_kanban(tabla, hoy=None):
           """Arma las 4 columnas del tablero de urgencia (Esta semana /
