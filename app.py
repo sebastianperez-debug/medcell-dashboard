@@ -1,6 +1,6 @@
 import re
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -3726,6 +3726,178 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
           return disp, tabla.columns.tolist()
 
+        # -----------------------------------------------------------
+        # Línea de tiempo de resolución (Gantt) a partir de la columna
+        # "Comentario"/"Observacion": se parsean fechas exactas (ETA
+        # dd/mm), meses aproximados (Nov-26), semanas de un mes
+        # ("3era Semana Septiembre") y referencias relativas
+        # ("esta semana", "próxima semana").
+        # -----------------------------------------------------------
+        _MESES_ES = {
+            "enero": 1, "febrero": 2, "marzo": 3, "abril": 4, "mayo": 5,
+            "junio": 6, "julio": 7, "agosto": 8, "septiembre": 9,
+            "setiembre": 9, "octubre": 10, "noviembre": 11, "diciembre": 12,
+            "ene": 1, "feb": 2, "mar": 3, "abr": 4, "may": 5, "jun": 6,
+            "jul": 7, "ago": 8, "sep": 9, "set": 9, "oct": 10, "nov": 11,
+            "dic": 12,
+        }
+        _ORDINALES_SEM = {
+            "1": 1, "1era": 1, "1ra": 1, "primera": 1,
+            "2": 2, "2da": 2, "segunda": 2,
+            "3": 3, "3era": 3, "3ra": 3, "tercera": 3,
+            "4": 4, "4ta": 4, "cuarta": 4,
+            "5": 5, "5ta": 5, "quinta": 5,
+        }
+
+        def _fr_parse_fecha_comentario(comentario, hoy=None):
+          """Intenta extraer una fecha estimada de resolución desde un
+          comentario en español. Devuelve (fecha, tipo) o (None, None)
+          si no se pudo identificar nada."""
+          if not comentario or not isinstance(comentario, str):
+            return None, None
+          txt = comentario.strip().lower()
+          if not txt:
+            return None, None
+          hoy = hoy or datetime.now()
+          anio_ref = hoy.year
+
+          # 1) Fecha exacta dd/mm o dd-mm (con año opcional)
+          m = re.search(r"(\d{1,2})[/\-](\d{1,2})(?:[/\-](\d{2,4}))?", txt)
+          if m:
+            d_str, mo_str, y_str = m.groups()
+            try:
+              d, mo = int(d_str), int(mo_str)
+              if 1 <= mo <= 12 and 1 <= d <= 31:
+                y = int(y_str) if y_str else anio_ref
+                if y < 100:
+                  y += 2000
+                fecha = datetime(y, mo, d)
+                # Si la fecha quedó muy en el pasado, se asume el año
+                # siguiente (referencia rueda de un año a otro).
+                if fecha < hoy - timedelta(days=180):
+                  fecha = datetime(y + 1, mo, d)
+                return fecha, "Fecha exacta"
+            except ValueError:
+              pass
+
+          # 2) Mes-Año abreviado, ej. "Nov-26"
+          m = re.search(
+              r"\b(ene|feb|mar|abr|may|jun|jul|ago|sep|set|oct|nov|dic)"
+              r"[a-zñ]*[\-/](\d{2,4})\b",
+              txt,
+          )
+          if m:
+            mes_str, y_str = m.groups()
+            mes = _MESES_ES.get(mes_str)
+            y = int(y_str)
+            if y < 100:
+              y += 2000
+            if mes:
+              return datetime(y, mes, 1), "Mes aproximado"
+
+          # 3) "N-ésima semana de <mes>", ej. "3era Semana Septiembre"
+          m = re.search(
+              r"(\d+era|\d+ra|\d+da|\d+ta|\d+|primera|segunda|tercera|"
+              r"cuarta|quinta)\s*semana\s+(?:de\s+)?([a-zñ]+)",
+              txt,
+          )
+          if m:
+            ord_str, mes_str = m.groups()
+            n = _ORDINALES_SEM.get(ord_str)
+            mes = _MESES_ES.get(mes_str)
+            if n and mes:
+              dia = min(28, (n - 1) * 7 + 1)
+              try:
+                return datetime(anio_ref, mes, dia), "Semana del mes"
+              except ValueError:
+                pass
+
+          # 4) Referencias relativas: "esta semana" / "próxima semana"
+          if "esta semana" in txt:
+            dias_hasta_viernes = (4 - hoy.weekday()) % 7
+            return hoy + timedelta(days=dias_hasta_viernes), "Esta semana"
+          if (
+              "proxima semana" in txt
+              or "próxima semana" in txt
+              or "semana que viene" in txt
+          ):
+            return hoy + timedelta(days=7), "Próxima semana"
+
+          return None, None
+
+        def _fr_build_timeline(tabla, hoy=None):
+          """Construye un DataFrame listo para px.timeline con las
+          fechas estimadas de resolución parseadas desde la columna de
+          comentario/observación de la tabla original."""
+          col_sku = next(
+              (c for c in tabla.columns if "sku" in c.lower()), None
+          )
+          col_desc = next(
+              (c for c in tabla.columns if "descrip" in c.lower()), None
+          )
+          col_quiebre = next(
+              (
+                  c
+                  for c in tabla.columns
+                  if c.strip().lower().startswith("quiebre $")
+              ),
+              None,
+          )
+          col_estado = next(
+              (
+                  c
+                  for c in tabla.columns
+                  if c.strip().lower() == "observacion"
+              ),
+              None,
+          )
+
+          if col_estado is None or (col_sku is None and col_desc is None):
+            return None
+
+          hoy = hoy or datetime.now()
+          filas = []
+          for _, row in tabla.iterrows():
+            comentario = row.get(col_estado)
+            fecha, tipo = _fr_parse_fecha_comentario(comentario, hoy)
+            if fecha is None:
+              continue
+
+            etiqueta_sku = (
+                str(row.get(col_sku, "")).strip() if col_sku else ""
+            )
+            etiqueta_desc = (
+                str(row.get(col_desc, "")).strip() if col_desc else ""
+            )
+            if etiqueta_sku and etiqueta_desc:
+              etiqueta = f"{etiqueta_sku} · {etiqueta_desc}"
+            else:
+              etiqueta = etiqueta_desc or etiqueta_sku or "(sin SKU)"
+
+            quiebre_val = (
+                abs(_fr_num(row.get(col_quiebre)) or 0) if col_quiebre else 0
+            )
+            inicio = hoy
+            fin = fecha if fecha > hoy else hoy + timedelta(days=1)
+
+            filas.append(
+                {
+                    "Tarea": etiqueta[:60],
+                    "Inicio": inicio,
+                    "Fin": fin,
+                    "Quiebre ($)": quiebre_val,
+                    "Comentario": str(comentario),
+                    "Tipo de Fecha": tipo,
+                }
+            )
+
+          if not filas:
+            return None
+
+          return pd.DataFrame(filas).sort_values("Fin").reset_index(
+              drop=True
+          )
+
         for idx_b, bloque in enumerate(bloques_fr):
           titulo_mostrar = (
               titulos_fallback[idx_b]
@@ -3807,6 +3979,55 @@ for i, nombre_hoja in enumerate(nombres_hojas):
               )
           else:
             st.info("No hay productos en este bloque para la semana actual.")
+
+          # -------------------------------------------------------
+          # Línea de tiempo de resolución (Gantt) para este bloque
+          # -------------------------------------------------------
+          df_timeline_fr = _fr_build_timeline(bloque["tabla"])
+          if df_timeline_fr is not None and not df_timeline_fr.empty:
+            st.markdown("##### 🗓️ Línea de tiempo de resolución estimada")
+            st.caption(
+                "Fechas estimadas extraídas automáticamente desde la "
+                "columna 'Comentario' (ETA, semanas, meses). Los SKU sin "
+                "una fecha identificable no aparecen aquí. El color de "
+                "la barra indica la magnitud del quiebre en $."
+            )
+            fig_tl_fr = px.timeline(
+                df_timeline_fr,
+                x_start="Inicio",
+                x_end="Fin",
+                y="Tarea",
+                color="Quiebre ($)",
+                color_continuous_scale="Reds",
+                hover_data={
+                    "Comentario": True,
+                    "Tipo de Fecha": True,
+                    "Quiebre ($)": ":,.0f",
+                    "Inicio": False,
+                },
+            )
+            fig_tl_fr.update_yaxes(autorange="reversed", title=None)
+            fig_tl_fr.update_xaxes(title=None)
+            fig_tl_fr.update_layout(
+                template="plotly_dark",
+                paper_bgcolor="#0b0b0b",
+                plot_bgcolor="#0b0b0b",
+                font=dict(color="#ffffff"),
+                height=max(280, 42 * len(df_timeline_fr) + 60),
+                margin=dict(l=10, r=10, t=10, b=10),
+                coloraxis_colorbar=dict(title="Quiebre ($)"),
+            )
+            st.plotly_chart(
+                fig_tl_fr,
+                use_container_width=True,
+                key=f"fr_timeline_{idx_b}",
+            )
+          else:
+            st.caption(
+                "ℹ️ No se identificaron fechas estimables en los "
+                "comentarios de este bloque para construir la línea de "
+                "tiempo."
+            )
 
           st.divider()
 
