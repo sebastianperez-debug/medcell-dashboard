@@ -4066,9 +4066,9 @@ with tabs[-1]:
               }
             } catch (e) {}
 
-            // Iniciamos OCR sin bloquear el lector de barras.
-            iniciarOCR();
-            iniciarBarras();
+            // Iniciamos OCR y lector de barras cuando estén listos, sin
+            // bloquear la apertura de la cámara si el CDN tarda o falla.
+            intentarIniciarLectores();
           } catch (e) {
             camaraActivada = false;
             let msg = e && e.message ? e.message : String(e);
@@ -4120,28 +4120,40 @@ with tabs[-1]:
         };
 
         btnActivar.onclick = function() {
-          if (!librariasListas) {
-            estado.textContent = "⏳ Cargando lectores, un momento...";
-            return;
-          }
           iniciarCamara();
         };
 
-        let intentos = 0;
-        const esperarLibrerias = setInterval(() => {
-          intentos++;
-          if (typeof ZXing !== "undefined" && typeof Tesseract !== "undefined") {
-            clearInterval(esperarLibrerias);
-            librariasListas = true;
-          } else if (intentos >= 100) {
-            clearInterval(esperarLibrerias);
-            if (typeof Tesseract !== "undefined") {
-              librariasListas = true;
-            } else {
-              mostrarError("❌ No se pudieron cargar los lectores. Recarga la página.");
-            }
+        // La cámara NO depende de que ZXing/Tesseract hayan cargado: se
+        // activa al toque igual, y el lector de barras/OCR se suma apenas
+        // esas librerías (que vienen de un CDN externo) estén listas.
+        function intentarIniciarLectores() {
+          if (librariasListas) {
+            iniciarOCR();
+            iniciarBarras();
+            return;
           }
-        }, 100);
+          let intentos = 0;
+          const esperarLibrerias = setInterval(() => {
+            intentos++;
+            if (typeof ZXing !== "undefined" && typeof Tesseract !== "undefined") {
+              clearInterval(esperarLibrerias);
+              librariasListas = true;
+              iniciarOCR();
+              iniciarBarras();
+            } else if (intentos >= 100) {
+              clearInterval(esperarLibrerias);
+              if (typeof Tesseract !== "undefined") {
+                librariasListas = true;
+                iniciarOCR();
+              } else if (typeof ZXing !== "undefined") {
+                librariasListas = true;
+                iniciarBarras();
+              } else {
+                detalle.textContent = "⚠️ No se pudieron cargar los lectores (revisa tu conexión). Puedes ingresar el Localizador manualmente más abajo.";
+              }
+            }
+          }, 100);
+        }
       </script>
       """,
       height=430,
