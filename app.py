@@ -5,7 +5,6 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import streamlit as st
-import streamlit.components.v1 as components
 
 # 1. Configuración de la página
 st.set_page_config(page_title="Medcell Operaciones", layout="wide")
@@ -3818,441 +3817,107 @@ with tabs[-1]:
   st.markdown("### 📷 Escanear Localizador")
   st.caption("Apunta la cámara al texto MCD de la posición. Si el texto no se reconoce, el lector intenta también el código de barras.")
 
-  components.html(
-      """
-      <div style="position:relative; width:100%; max-height:320px; overflow:hidden;
-                  border-radius:8px; background:#000;">
-        <video id="video" style="width:100%; max-height:320px; object-fit:cover;
-               display:block;" muted playsinline autoplay></video>
-        <div style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
-                    width:82%; height:105px; border:3px solid #00e676; border-radius:6px;
-                    box-shadow:0 0 0 2000px rgba(0,0,0,0.35); pointer-events:none;"></div>
-      </div>
-      <div style="text-align:center; margin-top:10px; display:flex; gap:8px; justify-content:center;">
-        <button id="btn-activar" style="background:#00e676; color:#000; border:none;
-                border-radius:8px; padding:10px 20px; font-weight:700; cursor:pointer;
-                font-size:14px;">
-          ▶️ Activar cámara
-        </button>
-        <button id="btn-torch" style="background:#0070f3; color:#fff; border:none;
-                border-radius:8px; padding:8px 16px; font-weight:600; cursor:pointer;">
-          💡 Linterna
-        </button>
-      </div>
-      <p id="estado-scan" style="color:#888; font-size:13px; text-align:center; margin-top:6px;">
-        👉 Toca "Activar cámara" para comenzar
-      </p>
-      <p id="detalle-scan" style="color:#666; font-size:12px; text-align:center; margin:0 8px;">
-        Primero intentará reconocer el Localizador MCD directamente.
-      </p>
-
-      <!-- Código de barras: se mantiene como respaldo -->
-      <script src="https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js"></script>
-      <!-- OCR: reconoce el texto visible MCD.0.3.G.4.120 -->
-      <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-      <script>
-        const estado = document.getElementById("estado-scan");
-        const detalle = document.getElementById("detalle-scan");
-        const video = document.getElementById("video");
-        const torchBtn = document.getElementById("btn-torch");
-        const btnActivar = document.getElementById("btn-activar");
-        let yaEnvio = false;
-        let streamActual = null;
-        let ocrWorker = null;
-        let ocrActivo = false;
-        let camaraActivada = false;
-        let librariasListas = false;
-
-        function mostrarError(msg) {
-          estado.textContent = msg;
-        }
-
-        function normalizarLocalizador(texto) {
-          if (!texto) return null;
-          let s = String(texto).toUpperCase();
-          s = s.replace(/[\n\r\t]/g, " ");
-          // Corrige errores OCR habituales antes de buscar el patrón.
-          s = s.replace(/[|]/g, "I");
-          s = s.replace(/\s+/g, " ");
-
-          // El patrón real de las etiquetas es MCD.0.3.G.4.120, etc.
-          // Permitimos letras/números por segmento para soportar otras posiciones.
-          const m = s.match(/MCD\s*[.\-\s]\s*\d+\s*[.\-\s]\s*\d+\s*[.\-\s]\s*[A-Z0-9]+\s*[.\-\s]\s*\d+\s*[.\-\s]\s*\d+/);
-          if (!m) return null;
-
-          let loc = m[0]
-            .replace(/\s+/g, "")
-            .replace(/-/g, ".");
-
-          // Normaliza separadores repetidos y algunos errores comunes de OCR.
-          loc = loc.replace(/\.\.+/g, ".");
-          loc = loc.replace(/^MCD/i, "MCD");
-
-          if (/^MCD\.\d+\.\d+\.[A-Z0-9]+\.\d+\.\d+$/.test(loc)) {
-            return loc;
-          }
-          return null;
-        }
-
-        function enviarValor(valor, origen) {
-          if (yaEnvio || !valor) return;
-          const loc = normalizarLocalizador(valor);
-          if (!loc) return;
-
-          yaEnvio = true;
-          estado.textContent = "✅ Localizador detectado: " + loc;
-          detalle.textContent = origen === "ocr"
-            ? "🔎 Reconocido desde el texto de la etiqueta. Buscando productos..."
-            : "📦 Obtenido desde el código de barras. Buscando productos...";
-
-          try {
-            const url = new URL(window.parent.location.href);
-            url.searchParams.set("loc", loc);
-            window.parent.location.href = url.href;
-          } catch (e) {
-            window.location.href = "?loc=" + encodeURIComponent(loc);
-          }
-        }
-
-        function enviarCodigoBarras(codigo) {
-          if (yaEnvio || !codigo) return;
-          const valor = String(codigo).trim();
-
-          // No aceptamos falsos positivos como B4B.
-          if (!/^\d{8,14}$/.test(valor)) return;
-
-          // Si el lector de barras entrega directamente un Localizador, también sirve.
-          const loc = normalizarLocalizador(valor);
-          if (loc) {
-            enviarValor(loc, "barcode");
-            return;
-          }
-
-          // Para códigos numéricos que no contienen el MCD, enviamos el número
-          // como loc SOLO como último recurso. La lógica Python resolverá una
-          // equivalencia si existe en el Excel.
-          yaEnvio = true;
-          estado.textContent = "✅ Código detectado: " + valor;
-          detalle.textContent = "🔎 Buscando la relación código → Localizador...";
-          try {
-            const url = new URL(window.parent.location.href);
-            url.searchParams.set("loc", valor);
-            window.parent.location.href = url.href;
-          } catch (e) {
-            window.location.href = "?loc=" + encodeURIComponent(valor);
-          }
-        }
-
-        async function iniciarOCR() {
-          if (ocrActivo || typeof Tesseract === "undefined" || yaEnvio) return;
-          ocrActivo = true;
-          try {
-            detalle.textContent = "🔎 OCR activo: busca el texto MCD.0.3.G.x.xxx...";
-            ocrWorker = await Tesseract.createWorker("eng", 1, {
-              logger: function(m) {
-                if (m.status === "recognizing text") {
-                  const pct = Math.round((m.progress || 0) * 100);
-                  estado.textContent = "🔎 Reconociendo Localizador... " + pct + "%";
-                }
-              }
-            });
-            await ocrWorker.setParameters({
-              tessedit_char_whitelist: "MCD.0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ-",
-              preserve_interword_spaces: "0"
-            });
-
-            const canvas = document.createElement("canvas");
-            const ctx = canvas.getContext("2d", {willReadFrequently:true});
-
-            while (!yaEnvio) {
-              if (!video.videoWidth || !video.videoHeight) {
-                await new Promise(r => setTimeout(r, 700));
-                continue;
-              }
-
-              // Captura principalmente la zona del recuadro verde.
-              const vw = video.videoWidth;
-              const vh = video.videoHeight;
-              const cropW = Math.floor(vw * 0.82);
-              const cropH = Math.floor(vh * 0.34);
-              const sx = Math.floor((vw - cropW) / 2);
-              const sy = Math.floor((vh - cropH) / 2);
-              canvas.width = cropW;
-              canvas.height = cropH;
-              ctx.drawImage(video, sx, sy, cropW, cropH, 0, 0, cropW, cropH);
-
-              try {
-                const resultado = await ocrWorker.recognize(canvas);
-                const texto = resultado?.data?.text || "";
-                const loc = normalizarLocalizador(texto);
-                if (loc) {
-                  enviarValor(loc, "ocr");
-                  break;
-                }
-              } catch (e) {
-                // OCR puede fallar en un fotograma; continuamos con el siguiente.
-              }
-
-              if (!yaEnvio) {
-                estado.textContent = "📷 Buscando Localizador MCD...";
-                await new Promise(r => setTimeout(r, 400));
-              }
-            }
-          } catch (e) {
-            detalle.textContent = "⚠️ OCR no disponible; se mantiene el lector de barras.";
-          } finally {
-            ocrActivo = false;
-          }
-        }
-
-        // Intenta delegar el permiso de cámara al iframe del componente.
-        // Sin esto, muchos navegadores bloquean getUserMedia dentro del
-        // iframe que genera components.html y la promesa nunca se resuelve
-        // ni se rechaza: la pantalla queda pegada en "Activando cámara...".
-        try {
-          if (window.frameElement) {
-            window.frameElement.setAttribute("allow", "camera; microphone");
-          }
-        } catch (e) {}
-
-        function conTimeout(promesa, ms, mensajeTimeout) {
-          return Promise.race([
-            promesa,
-            new Promise((_, reject) =>
-              setTimeout(() => reject(new Error(mensajeTimeout)), ms)
-            ),
-          ]);
-        }
-
-        async function iniciarCamara() {
-          // No bloquear nuevos intentos si una tentativa anterior falló.
-          if (camaraActivada && streamActual && streamActual.active) return;
-
-          if (!window.isSecureContext) {
-            camaraActivada = false;
-            mostrarError("❌ La cámara requiere HTTPS.");
-            detalle.textContent = "Abre la aplicación con https://. En algunos celulares, http://IP:8501 no permite cámara.";
-            return;
-          }
-
-          if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-            camaraActivada = false;
-            mostrarError("❌ Este navegador no permite acceso a la cámara aquí.");
-            detalle.textContent = "Prueba con Chrome o Safari actualizado y verifica los permisos de cámara.";
-            return;
-          }
-
-          // Si quedó un stream anterior, lo cerramos antes de pedir uno nuevo.
-          try {
-            if (streamActual) {
-              streamActual.getTracks().forEach(t => t.stop());
-            }
-          } catch (e) {}
-          streamActual = null;
-          camaraActivada = false;
-
-          estado.textContent = "🎥 Activando cámara...";
-          detalle.textContent = "Si el teléfono pregunta si deseas permitir la cámara, selecciona «Permitir».";
-          btnActivar.disabled = true;
-          btnActivar.textContent = "⏳ Activando...";
-
-          try {
-            // IMPORTANTE: primero usamos una petición simple y compatible.
-            // No forzamos focusMode dentro de getUserMedia porque algunos
-            // navegadores móviles rechazan la solicitud completa por ello.
-            const stream = await conTimeout(
-              navigator.mediaDevices.getUserMedia({
-                video: {
-                  facingMode: { ideal: "environment" },
-                  width: { ideal: 1280 },
-                  height: { ideal: 720 }
-                },
-                audio: false
-              }),
-              15000,
-              "La cámara no respondió a tiempo."
-            );
-
-            streamActual = stream;
-            video.srcObject = streamActual;
-
-            try {
-              await video.play();
-            } catch (playError) {
-              console.warn("video.play() no se pudo ejecutar automáticamente:", playError);
-            }
-
-            // SOLO después de obtener el stream correctamente.
-            camaraActivada = true;
-            btnActivar.disabled = false;
-            btnActivar.textContent = "🔄 Reiniciar cámara";
-            torchBtn.disabled = false;
-
-            estado.textContent = "📷 Buscando Localizador MCD...";
-            detalle.textContent = "Cámara activa. Centra el MCD dentro del recuadro verde.";
-
-            // Enfoque continuo: se intenta solamente si el dispositivo lo anuncia.
-            try {
-              const track = streamActual.getVideoTracks()[0];
-              const caps = track && track.getCapabilities ? track.getCapabilities() : {};
-
-              if (caps.focusMode && Array.isArray(caps.focusMode) && caps.focusMode.includes("continuous")) {
-                await track.applyConstraints({
-                  advanced: [{ focusMode: "continuous" }]
-                });
-              }
-            } catch (e) {
-              console.log("Enfoque continuo no disponible:", e);
-            }
-
-            // El lector/OCR se inicia después de que la cámara ya esté visible.
-            intentarIniciarLectores();
-
-          } catch (e) {
-            camaraActivada = false;
-            torchBtn.disabled = true;
-            btnActivar.disabled = false;
-            btnActivar.textContent = "▶️ Activar cámara";
-
-            try {
-              if (streamActual) streamActual.getTracks().forEach(t => t.stop());
-            } catch (stopError) {}
-            streamActual = null;
-
-            let msg = e && e.message ? e.message : String(e);
-
-            if (e && e.name === "NotAllowedError") {
-              msg = "Permiso de cámara denegado. Revisa los permisos del sitio en el navegador y vuelve a intentarlo.";
-            } else if (e && e.name === "NotFoundError") {
-              msg = "No se encontró ninguna cámara en el dispositivo.";
-            } else if (e && e.name === "NotReadableError") {
-              msg = "La cámara está siendo usada por otra aplicación. Ciérrala e intenta nuevamente.";
-            } else if (e && e.name === "OverconstrainedError") {
-              msg = "El teléfono no acepta la configuración solicitada. Intenta nuevamente.";
-            } else if (e && e.name === "SecurityError") {
-              msg = "El navegador bloqueó la cámara por seguridad. Se requiere HTTPS.";
-            }
-
-            mostrarError("❌ No se pudo acceder a la cámara: " + msg);
-            detalle.textContent = "Toca «Activar cámara» para volver a intentar.";
-            console.error("Error getUserMedia:", e);
-          }
-        }
-
-        function iniciarBarras() {
-          if (typeof ZXing === "undefined") return;
-          try {
-            const hints = new Map();
-            hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [
-              ZXing.BarcodeFormat.CODE_128,
-              ZXing.BarcodeFormat.CODE_39,
-              ZXing.BarcodeFormat.EAN_13,
-              ZXing.BarcodeFormat.EAN_8,
-              ZXing.BarcodeFormat.ITF,
-              ZXing.BarcodeFormat.UPC_A
-            ]);
-            hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
-            const reader = new ZXing.BrowserMultiFormatReader(hints);
-            reader.decodeFromVideoDevice(null, video, (result, err) => {
-              if (!result || yaEnvio) return;
-              enviarCodigoBarras(result.getText());
-            });
-          } catch (e) {
-            // OCR continúa siendo el método principal.
-          }
-        }
-
-        torchBtn.disabled = true;
-        torchBtn.textContent = "💡 Linterna";
-
-        torchBtn.onclick = async function() {
-          try {
-            const track = streamActual && streamActual.getVideoTracks()[0];
-
-            if (!track || !streamActual || !streamActual.active) {
-              alert("Primero debes activar la cámara.");
-              return;
-            }
-
-            const caps = track.getCapabilities ? track.getCapabilities() : {};
-
-            if (!caps.torch) {
-              alert("Este teléfono o navegador no permite controlar la linterna desde la aplicación.");
-              return;
-            }
-
-            const settings = track.getSettings ? track.getSettings() : {};
-            const encendida = Boolean(settings.torch);
-
-            await track.applyConstraints({
-              advanced: [{ torch: !encendida }]
-            });
-
-            torchBtn.textContent = !encendida
-              ? "🔦 Apagar linterna"
-              : "💡 Linterna";
-
-          } catch (e) {
-            console.error("Error de linterna:", e);
-            alert("No se pudo controlar la linterna en este dispositivo.");
-          }
-        };
-
-        btnActivar.onclick = function() {
-          // Permite volver a pedir permiso/reiniciar después de un fallo.
-          if (streamActual && streamActual.active) {
-            try {
-              streamActual.getTracks().forEach(t => t.stop());
-            } catch (e) {}
-            streamActual = null;
-            camaraActivada = false;
-            video.srcObject = null;
-            torchBtn.disabled = true;
-            torchBtn.textContent = "💡 Linterna";
-          }
-          iniciarCamara();
-        };
-
-        // La cámara NO depende de que ZXing/Tesseract hayan cargado: se
-        // activa al toque igual, y el lector de barras/OCR se suma apenas
-        // esas librerías (que vienen de un CDN externo) estén listas.
-        function intentarIniciarLectores() {
-          if (librariasListas) {
-            iniciarOCR();
-            iniciarBarras();
-            return;
-          }
-          let intentos = 0;
-          const esperarLibrerias = setInterval(() => {
-            intentos++;
-            if (typeof ZXing !== "undefined" && typeof Tesseract !== "undefined") {
-              clearInterval(esperarLibrerias);
-              librariasListas = true;
-              iniciarOCR();
-              iniciarBarras();
-            } else if (intentos >= 100) {
-              clearInterval(esperarLibrerias);
-              if (typeof Tesseract !== "undefined") {
-                librariasListas = true;
-                iniciarOCR();
-              } else if (typeof ZXing !== "undefined") {
-                librariasListas = true;
-                iniciarBarras();
-              } else {
-                detalle.textContent = "⚠️ No se pudieron cargar los lectores (revisa tu conexión). Puedes ingresar el Localizador manualmente más abajo.";
-              }
-            }
-          }, 100);
-        }
-      </script>
-      """,
-      height=430,
+  st.markdown("### 📷 Escanear Localizador")
+  st.info(
+      "📱 Para máxima compatibilidad en celulares, esta versión usa la cámara nativa de Streamlit. "
+      "Al tocar el botón de cámara del teléfono, el navegador pedirá permiso para usarla."
   )
 
+  if "activar_camara_scan" not in st.session_state:
+    st.session_state.activar_camara_scan = False
+
+  c1, c2 = st.columns([1, 1])
+  with c1:
+    if st.button("▶️ Activar cámara", key="btn_activar_camara_nativa", use_container_width=True):
+      st.session_state.activar_camara_scan = True
+  with c2:
+    if st.button("⏹️ Cerrar cámara", key="btn_cerrar_camara_nativa", use_container_width=True):
+      st.session_state.activar_camara_scan = False
+      st.rerun()
+
+  if st.session_state.activar_camara_scan:
+    st.caption(
+        "💡 En el teléfono, la cámara nativa puede mostrar su propio control de flash/linterna. "
+        "Ese control depende del sistema del celular y no puede ser activado de forma fiable por Streamlit."
+    )
+
+    foto_scan = st.camera_input(
+        "📸 Toma una foto del Localizador MCD",
+        key="camera_scan_native",
+        resolution="1080p",
+        help="Centra MCD.0.3.G.x.xxx dentro de la imagen y toma la foto."
+    )
+
+    if foto_scan is not None:
+      try:
+        from PIL import Image, ImageOps, ImageEnhance, ImageFilter
+        import numpy as np
+        import cv2
+        import pytesseract
+
+        imagen = Image.open(foto_scan).convert("RGB")
+        st.image(imagen, caption="Imagen capturada", use_container_width=True)
+
+        def normalizar_localizador_python(texto):
+          if not texto:
+            return None
+          import re
+          s = str(texto).upper().replace("\n", " ").replace("\r", " ").replace("\t", " ")
+          s = s.replace("|", "I")
+          s = re.sub(r"\s+", " ", s)
+          patron = r"MCD\s*[.\-\s]\s*\d+\s*[.\-\s]\s*\d+\s*[.\-\s]\s*[A-Z0-9]+\s*[.\-\s]\s*\d+\s*[.\-\s]\s*\d+"
+          m = re.search(patron, s)
+          if not m:
+            return None
+          loc = re.sub(r"\s+", "", m.group(0)).replace("-", ".")
+          loc = re.sub(r"\.{2,}", ".", loc)
+          if re.fullmatch(r"MCD\.\d+\.\d+\.[A-Z0-9]+\.\d+\.\d+", loc):
+            return loc
+          return None
+
+        # Primero intentamos QR/código 2D con OpenCV.
+        arr = np.array(imagen)
+        bgr = cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
+        detector = cv2.QRCodeDetector()
+        valor_qr, puntos, _ = detector.detectAndDecode(bgr)
+        loc_detectado = normalizar_localizador_python(valor_qr)
+
+        # Luego OCR sobre el centro y también sobre una versión mejorada.
+        texto_ocr = ""
+        if not loc_detectado:
+          gris = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
+          h, w = gris.shape[:2]
+          crop = gris[int(h*0.20):int(h*0.80), int(w*0.08):int(w*0.92)]
+          crop = cv2.resize(crop, None, fx=1.6, fy=1.6, interpolation=cv2.INTER_CUBIC)
+          crop = cv2.GaussianBlur(crop, (3, 3), 0)
+          _, crop_bin = cv2.threshold(crop, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+          try:
+            texto_ocr = pytesseract.image_to_string(
+                crop_bin,
+                config="--psm 6 -c tessedit_char_whitelist=MCD.0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ-"
+            )
+          except Exception as ocr_error:
+            texto_ocr = ""
+            st.warning("OCR no disponible en este servidor. Puedes ingresar el Localizador manualmente abajo.")
+
+          loc_detectado = normalizar_localizador_python(texto_ocr)
+
+        if loc_detectado:
+          st.success(f"✅ Localizador detectado: {loc_detectado}")
+          st.session_state["loc_scan_detectado"] = loc_detectado
+          st.query_params["loc"] = loc_detectado
+          st.rerun()
+        else:
+          st.warning("⚠️ No pude reconocer el Localizador en esta foto.")
+          st.caption("Prueba acercándote, dejando el texto MCD completo dentro de la imagen y evitando reflejos.")
+
+      except Exception as e:
+        st.error(f"❌ No se pudo procesar la imagen de la cámara: {e}")
+
   st.caption(
-      "💡 Recomendado: centra el texto MCD.0.3.G.x.xxx dentro del recuadro verde, "
-      "a unos 10-20 cm. El sistema intenta reconocer primero el Localizador visible "
-      "y usa el código de barras como respaldo."
+      "💡 Recomendado: centra el texto MCD.0.3.G.x.xxx, a unos 10-20 cm. "
+      "La cámara nativa reemplaza el componente HTML/JavaScript que estaba bloqueando el acceso en los celulares."
   )
 
   with st.expander("⌨️ ¿No lee el código? Ingresa el Localizador manualmente", expanded=True):
