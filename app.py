@@ -3855,14 +3855,19 @@ with tabs[-1]:
           const { BrowserMultiFormatReader, DecodeHintType, BarcodeFormat } = ZXing;
 
           const hints = new Map();
-          // Solo CODE_128: es el formato real de la etiqueta de Localizador.
-          // Tener EAN_13/UPC_A/ITF activos al mismo tiempo hacía que ZXing
-          // a veces malinterpretara las barras de un Code128 como si fueran
-          // un EAN-13 (falso positivo numérico tipo "9631187073887").
+          // Mantenemos varios formatos habilitados (restringir solo a
+          // CODE_128 hacía que la lectura fallara constantemente cuando hay
+          // varias etiquetas de código muy juntas, como en un stack de
+          // localizadores). En cambio, filtramos los falsos positivos
+          // (ej. lecturas tipo EAN-13) validando la forma del texto leído.
           hints.set(DecodeHintType.POSSIBLE_FORMATS, [
             BarcodeFormat.CODE_128,
             BarcodeFormat.CODE_39,
             BarcodeFormat.CODABAR,
+            BarcodeFormat.EAN_13,
+            BarcodeFormat.EAN_8,
+            BarcodeFormat.UPC_A,
+            BarcodeFormat.ITF,
           ]);
           hints.set(DecodeHintType.TRY_HARDER, true);
 
@@ -3871,8 +3876,9 @@ with tabs[-1]:
 
           // Un Localizador siempre tiene letras y puntos (ej: MCD.0.3.G.2.120).
           // Si lo leído no calza con ese patrón, es casi seguro una lectura
-          // errónea (p.ej. un EAN-13 solo numérico) y seguimos escaneando
-          // en vez de aceptarlo.
+          // errónea (p.ej. un EAN-13 solo numérico, o el código de un
+          // producto/otra etiqueta vecina) y seguimos escaneando en vez de
+          // aceptarlo.
           function esLocalizadorValido(texto) {
             return /^[A-Za-z0-9]+(\\.[A-Za-z0-9]+){2,}$/.test(texto.trim());
           }
@@ -3931,9 +3937,10 @@ with tabs[-1]:
 
 
   st.caption(
-      "💡 Tip: si tiene 2 códigos en la misma etiqueta, tapa el de arriba con"
-      " el dedo y deja solo visible el de abajo (el del Localizador). Mantén"
-      " el celular firme y a unos 10-15 cm del código."
+      "💡 Tip: si hay varios códigos juntos en el mismo stack (como en una"
+      " columna de posiciones), tapa con el dedo los de arriba y abajo y deja"
+      " visible solo el que quieres leer, centrado en el recuadro verde."
+      " Mantén el celular firme y a unos 10-15 cm del código."
   )
 
   with st.expander("⌨️ ¿No lee el código? Ingresa el Localizador manualmente", expanded=True):
