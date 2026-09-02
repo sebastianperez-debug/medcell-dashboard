@@ -4896,10 +4896,24 @@ with tabs[0]:
     df_r["Unidades Quiebre"] = df_r["Unidades Quiebre"].apply(
         lambda v: formato_unidades(v or 0)
     )
+    # Acortar la descripción para que las 6 columnas quepan sin scroll
+    # horizontal; el texto completo queda disponible al pasar el mouse.
+    df_r["Descripción"] = df_r["Descripción"].astype(str).apply(
+        lambda t: t if len(t) <= 28 else t[:26].rstrip() + "…"
+    )
     df_r.insert(0, "#", df_r.index)
     return df_r[
         ["#", "SKU", "Descripción", "N° Semanas", "Unidades Quiebre", "Monto Quiebre"]
     ]
+
+  _config_col_rec = {
+      "#": st.column_config.NumberColumn("#", width="small"),
+      "SKU": st.column_config.TextColumn("SKU", width="small"),
+      "Descripción": st.column_config.TextColumn("Descripción", width="medium"),
+      "N° Semanas": st.column_config.NumberColumn("Sem.", width="small"),
+      "Unidades Quiebre": st.column_config.TextColumn("Unid.", width="small"),
+      "Monto Quiebre": st.column_config.TextColumn("Monto", width="small"),
+  }
 
   if rec_todos:
     col_rec_sb, col_rec_pu = st.columns(2)
@@ -4912,6 +4926,7 @@ with tabs[0]:
             df_rec_sb_top,
             hide_index=True,
             use_container_width=True,
+            column_config=_config_col_rec,
             height=min(38 * len(df_rec_sb_top) + 38, 420),
         )
       else:
@@ -4925,6 +4940,7 @@ with tabs[0]:
             df_rec_pu_top,
             hide_index=True,
             use_container_width=True,
+            column_config=_config_col_rec,
             height=min(38 * len(df_rec_pu_top) + 38, 420),
         )
       else:
