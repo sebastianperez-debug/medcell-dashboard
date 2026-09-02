@@ -1374,7 +1374,9 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                       for v in df_oc_plot["Monto OC"]
                   ],
                   textposition="outside",
-                  textfont=dict(size=14, color="#ffffff", family="Arial Black"),
+                  textangle=0,
+                  textfont=dict(size=12, color="#ffffff", family="Arial Black"),
+                  cliponaxis=False,
               )
           )
 
@@ -1390,13 +1392,17 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                       for v in df_oc_plot["Proyección salida"]
                   ],
                   textposition="outside",
-                  textfont=dict(size=14, color="#ffffff", family="Arial Black"),
+                  textangle=0,
+                  textfont=dict(size=12, color="#ffffff", family="Arial Black"),
+                  cliponaxis=False,
               )
           )
 
           fig_oc.update_layout(
               barmode="group",
-              height=420,
+              bargap=0.35,
+              bargroupgap=0.15,
+              height=440,
               paper_bgcolor="rgba(0,0,0,0)",
               plot_bgcolor="rgba(0,0,0,0)",
               font=dict(color="#ffffff"),
@@ -1408,7 +1414,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                   range=[0, df_oc_plot["Monto OC"].max() * 1.35] if not df_oc_plot.empty else [0, 100],
               ),
               legend=dict(orientation="h", y=1.15, x=0.2, font=dict(size=13)),
-              uniformtext_minsize=12,
+              uniformtext_minsize=10,
               uniformtext_mode="show",
           )
           st.plotly_chart(
