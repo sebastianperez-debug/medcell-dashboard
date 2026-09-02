@@ -4896,18 +4896,16 @@ with tabs[0]:
     df_r["Unidades Quiebre"] = df_r["Unidades Quiebre"].apply(
         lambda v: formato_unidades(v or 0)
     )
-    # Acortar la descripción para que las 6 columnas quepan sin scroll
+    # Acortar la descripción para que las columnas quepan sin scroll
     # horizontal; el texto completo queda disponible al pasar el mouse.
     df_r["Descripción"] = df_r["Descripción"].astype(str).apply(
         lambda t: t if len(t) <= 28 else t[:26].rstrip() + "…"
     )
-    df_r.insert(0, "#", df_r.index)
     return df_r[
-        ["#", "SKU", "Descripción", "N° Semanas", "Unidades Quiebre", "Monto Quiebre"]
+        ["SKU", "Descripción", "N° Semanas", "Unidades Quiebre", "Monto Quiebre"]
     ]
 
   _config_col_rec = {
-      "#": st.column_config.NumberColumn("#", width="small"),
       "SKU": st.column_config.TextColumn("SKU", width="small"),
       "Descripción": st.column_config.TextColumn("Descripción", width="medium"),
       "N° Semanas": st.column_config.NumberColumn("Sem.", width="small"),
@@ -4918,13 +4916,16 @@ with tabs[0]:
   if rec_todos:
     col_rec_sb, col_rec_pu = st.columns(2)
 
+    # El ranking 1-10 se muestra como índice de la tabla (columna angosta
+    # y nativa de Streamlit) en vez de una columna de datos aparte, para
+    # dejarle más espacio horizontal a "Descripción".
     with col_rec_sb:
       st.markdown("###### 🏬 SALCOBRAND (SB)")
       df_rec_sb_top = _fr_top10_recurrentes(rec_sb)
       if df_rec_sb_top is not None:
         st.dataframe(
             df_rec_sb_top,
-            hide_index=True,
+            hide_index=False,
             use_container_width=True,
             column_config=_config_col_rec,
             height=min(38 * len(df_rec_sb_top) + 38, 420),
@@ -4938,7 +4939,7 @@ with tabs[0]:
       if df_rec_pu_top is not None:
         st.dataframe(
             df_rec_pu_top,
-            hide_index=True,
+            hide_index=False,
             use_container_width=True,
             column_config=_config_col_rec,
             height=min(38 * len(df_rec_pu_top) + 38, 420),
