@@ -598,6 +598,11 @@ nombres_hojas = [
     h for h in nombres_hojas if h.strip().upper() != "STOCK"
 ] + [h for h in nombres_hojas if h.strip().upper() == "STOCK"]
 
+# Colocar "FILL RATE" como la 3ra pestaña.
+nombres_fr = [h for h in nombres_hojas if h.strip().upper() == "FILL RATE"]
+nombres_resto = [h for h in nombres_hojas if h.strip().upper() != "FILL RATE"]
+nombres_hojas = nombres_resto[:2] + nombres_fr + nombres_resto[2:]
+
 tabs = st.tabs([f"📊 {h}" for h in nombres_hojas] + ["📷 Escanear"])
 
 for i, nombre_hoja in enumerate(nombres_hojas):
