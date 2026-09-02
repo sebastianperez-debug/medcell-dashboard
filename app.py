@@ -604,10 +604,17 @@ nombres_fr = [h for h in nombres_hojas if h.strip().upper() == "FILL RATE"]
 nombres_resto = [h for h in nombres_hojas if h.strip().upper() != "FILL RATE"]
 nombres_hojas = nombres_resto[:2] + nombres_fr + nombres_resto[2:]
 
-tabs = st.tabs([f"📊 {h}" for h in nombres_hojas] + ["📷 Escanear"])
+tabs = st.tabs(
+    ["📊 RESUMEN"] + [f"📊 {h}" for h in nombres_hojas] + ["📷 Escanear"]
+)
+
+# Diccionario donde cada pestaña original va dejando los indicadores que
+# necesita la pestaña "RESUMEN" (se rellena durante el for de abajo y se
+# consume recién al final, cuando ya se procesaron todas las hojas).
+resumen_data = {}
 
 for i, nombre_hoja in enumerate(nombres_hojas):
-  with tabs[i]:
+  with tabs[i + 1]:
     df = hojas[nombre_hoja].copy()
     nombre_clean = nombre_hoja.strip().upper()
 
@@ -777,6 +784,18 @@ for i, nombre_hoja in enumerate(nombres_hojas):
               (grp_div[col_monto] / monto_total) if monto_total > 0 else 0
           )
           grp_div = grp_div.sort_values(by=col_monto, ascending=False)
+
+          resumen_data["venta_div"] = {
+              "filas": [
+                  {
+                      "division": str(r[col_div]),
+                      "monto": float(r[col_monto]),
+                      "participacion": float(r["Participación"]) * 100,
+                  }
+                  for _, r in grp_div.iterrows()
+              ],
+              "monto_total": float(monto_total),
+          }
 
           fig_donut = px.pie(
               grp_div,
@@ -1085,6 +1104,16 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             (facturado_total / meta_total * 100) if meta_total > 0 else 0
         )
         diferencia_proy = proyeccion_total - meta_total
+
+        resumen_data["si_proy"] = {
+            "mes_actual": str(mes_actual),
+            "meta_total": float(meta_total),
+            "facturado_total": float(facturado_total),
+            "proyeccion_total": float(proyeccion_total),
+            "cumplimiento_actual": float(cumplimiento_actual),
+            "cumplimiento_proy": float(cumplimiento_proy),
+            "diferencia_proy": float(diferencia_proy),
+        }
 
         st.markdown("#### 🎯 Resumen de Cumplimiento Meta")
         k1, k2, k3, k4, k5 = st.columns(5)
@@ -1892,6 +1921,14 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         total_vigentes = len(
             df_dash[df_dash["Alerta_Caducidad"] == "Vigente (> 13m)"]
         )
+
+      resumen_data["stock_caducidad"] = {
+          "total_unidades": float(total_unidades),
+          "vencido": float(total_vencido),
+          "menos_6m": float(total_menos_6m),
+          "pronto_6_13m": float(total_pronto),
+          "vigente_13m": float(total_vigentes),
+      }
 
       # % de Stock Crítico: unidades ya vencidas + que vencen en menos de 6 meses,
       # sobre el total de unidades registradas (con la selección de filtros activa).
@@ -3288,6 +3325,14 @@ for i, nombre_hoja in enumerate(nombres_hojas):
               grp[col_m_recib] / grp[col_m_compra] * 100
           ).fillna(0)
 
+          resumen_data["fr4_pu"] = [
+              {
+                  "semana": fmt_sem(r[col_semana]),
+                  "fr_monto_pct": float(r["FR_Monto_pct"]),
+              }
+              for _, r in grp.iterrows()
+          ]
+
           df_disp = grp.copy()
           df_disp[col_semana] = df_disp[col_semana].apply(fmt_sem)
           df_disp[col_u_compra] = df_disp[col_u_compra].apply(formato_unidades)
@@ -3378,6 +3423,15 @@ for i, nombre_hoja in enumerate(nombres_hojas):
           grp["FR_Monto_pct"] = (
               grp[col_m_recib] / grp[col_m_compra] * 100
           ).fillna(0)
+
+          resumen_data["fr4_sb"] = [
+              {
+                  "semana": fmt_sem(r[col_semana]),
+                  "division": str(r[col_div]),
+                  "fr_monto_pct": float(r["FR_Monto_pct"]),
+              }
+              for _, r in grp.iterrows()
+          ]
 
           df_disp = grp.copy()
           df_disp[col_semana] = df_disp[col_semana].apply(fmt_sem)
@@ -3513,6 +3567,18 @@ for i, nombre_hoja in enumerate(nombres_hojas):
       if sem_top is not None and col_marca:
         st.subheader("🏷️ Resumen Quiebres por Marca")
         df_sem_marca = df[df[col_semana] == sem_top].copy()
+
+        # Captura para la pestaña RESUMEN: quiebre por marca de ESTA hoja
+        # (SB o PU), sin separar por división, para poder sumarlas luego
+        # entre ambas hojas y armar el ranking combinado.
+        _grp_m_total = df_sem_marca.groupby(col_marca, as_index=False).agg(
+            {"quiebre_monto_calc": "sum"}
+        )
+        _grp_m_total = _grp_m_total[_grp_m_total["quiebre_monto_calc"] > 0]
+        resumen_data[f"marca_quiebre_{'pu' if is_pu else 'sb'}"] = {
+            str(r[col_marca]): float(r["quiebre_monto_calc"])
+            for _, r in _grp_m_total.iterrows()
+        }
 
         if is_pu:
           grp_m = df_sem_marca.groupby(col_marca, as_index=False).agg(
@@ -4264,6 +4330,15 @@ for i, nombre_hoja in enumerate(nombres_hojas):
           # -------------------------------------------------------
           columnas_kanban_fr = _fr_build_kanban(bloque["tabla"])
           if columnas_kanban_fr is not None:
+            # Captura para la pestaña RESUMEN: productos que deberían
+            # recuperarse esta semana, con el nombre del bloque de origen
+            # (Consumo Masivo, Farma, Preunic, Terceros).
+            resumen_data.setdefault("fill_rate_calendar", [])
+            for _item in columnas_kanban_fr.get("Esta semana", []):
+              resumen_data["fill_rate_calendar"].append(
+                  {**_item, "bloque": titulo_mostrar}
+              )
+
             st.markdown("##### 🗂️ Tablero de urgencia de resolución")
             st.caption(
                 "Agrupado según la fecha estimada extraída del "
@@ -4292,6 +4367,320 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         df = df[mask]
       st.caption(f"Mostrando {len(df)} registros en {nombre_hoja}.")
       st.dataframe(df, hide_index=True, use_container_width=True)
+
+
+# =================================================================
+# PESTAÑA RESUMEN: indicadores clave tomados de SB, PU, FILL RATE, SI,
+# SI PROYECCION y STOCK. Se arma al final, una vez que el for de arriba
+# ya recorrió todas las hojas y dejó sus datos en resumen_data.
+# =================================================================
+with tabs[0]:
+  st.markdown("### 📊 Resumen Ejecutivo")
+  st.caption(
+      "Vista consolidada con lo más relevante de cada pestaña: Fill Rate"
+      " reciente, urgencias de recuperación, venta, cumplimiento de meta y"
+      " estado de caducidad."
+  )
+  st.divider()
+
+  # -----------------------------------------------------------------
+  # Fill Rate últimas 4 semanas: SB (por división) y PU
+  # -----------------------------------------------------------------
+  st.markdown("#### 🔄 Fill Rate Monto — Últimas 4 Semanas")
+  col_res_sb, col_res_pu = st.columns(2)
+
+  with col_res_sb:
+    st.markdown("##### SB (Consumo Masivo y Farma)")
+    fr4_sb = resumen_data.get("fr4_sb")
+    if fr4_sb:
+      df_fr4_sb = pd.DataFrame(fr4_sb)
+      fig_fr4_sb = go.Figure()
+      for div_nombre_r in df_fr4_sb["division"].unique():
+        sub = df_fr4_sb[df_fr4_sb["division"] == div_nombre_r]
+        color_linea = (
+            "#f97316" if "CONSUMO" in str(div_nombre_r).upper() else "#00adb5"
+        )
+        fig_fr4_sb.add_trace(
+            go.Scatter(
+                x=[f"Sem {s}" for s in sub["semana"]],
+                y=sub["fr_monto_pct"],
+                name=str(div_nombre_r).title(),
+                mode="lines+markers+text",
+                text=[f"{v:.1f}%" for v in sub["fr_monto_pct"]],
+                textposition="top center",
+                line=dict(color=color_linea, width=3),
+            )
+        )
+      fig_fr4_sb.update_layout(
+          height=320,
+          paper_bgcolor="rgba(0,0,0,0)",
+          plot_bgcolor="rgba(0,0,0,0)",
+          font=dict(color="#ffffff"),
+          yaxis=dict(range=[0, 115], gridcolor="#222222", ticksuffix="%"),
+          xaxis=dict(gridcolor="#222222"),
+          legend=dict(orientation="h", y=-0.2),
+          margin=dict(t=20),
+      )
+      st.plotly_chart(
+          fig_fr4_sb, use_container_width=True, key="resumen_fr4_sb"
+      )
+    else:
+      st.info("No hay datos de Fill Rate SB disponibles.")
+
+  with col_res_pu:
+    st.markdown("##### PU")
+    fr4_pu = resumen_data.get("fr4_pu")
+    if fr4_pu:
+      df_fr4_pu = pd.DataFrame(fr4_pu)
+      fig_fr4_pu = go.Figure(
+          go.Scatter(
+              x=[f"Sem {s}" for s in df_fr4_pu["semana"]],
+              y=df_fr4_pu["fr_monto_pct"],
+              mode="lines+markers+text",
+              text=[f"{v:.1f}%" for v in df_fr4_pu["fr_monto_pct"]],
+              textposition="top center",
+              line=dict(color="#0070f3", width=3),
+          )
+      )
+      fig_fr4_pu.update_layout(
+          height=320,
+          paper_bgcolor="rgba(0,0,0,0)",
+          plot_bgcolor="rgba(0,0,0,0)",
+          font=dict(color="#ffffff"),
+          yaxis=dict(range=[0, 115], gridcolor="#222222", ticksuffix="%"),
+          xaxis=dict(gridcolor="#222222"),
+          margin=dict(t=20),
+      )
+      st.plotly_chart(
+          fig_fr4_pu, use_container_width=True, key="resumen_fr4_pu"
+      )
+    else:
+      st.info("No hay datos de Fill Rate PU disponibles.")
+
+  st.divider()
+
+  # -----------------------------------------------------------------
+  # Fill Rate: calendario de productos que deberían recuperar esta semana
+  # -----------------------------------------------------------------
+  st.markdown("#### 🗓️ Fill Rate — Deberían Recuperar Esta Semana")
+  calendario_fr = resumen_data.get("fill_rate_calendar")
+  if calendario_fr:
+    calendario_fr_ordenado = sorted(
+        calendario_fr, key=lambda x: x["quiebre"], reverse=True
+    )
+    st.markdown(
+        """
+        <style>
+        .res-cal-card { background-color:#141414; border:1px solid #2b2b2b;
+          border-left:3px solid #e34948; border-radius:0 8px 8px 0;
+          padding:10px 12px; margin-bottom:8px; }
+        .res-cal-card-title { font-size:13px; font-weight:600;
+          color:#ffffff; margin:0 0 2px 0; }
+        .res-cal-card-sub { font-size:12px; color:#aaaaaa; margin:0; }
+        .res-cal-card-fecha { font-size:11px; font-weight:600;
+          color:#e34948; margin:4px 0 0 0; }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+    n_cols_cal = 3
+    cols_cal = st.columns(n_cols_cal)
+    for idx_cal, item_cal in enumerate(calendario_fr_ordenado):
+      with cols_cal[idx_cal % n_cols_cal]:
+        monto_txt = (
+            formato_moneda(item_cal["quiebre"]) if item_cal["quiebre"] else "$0"
+        )
+        comentario_txt = item_cal.get("comentario") or "Sin comentario"
+        fecha_html = ""
+        if item_cal.get("fecha_txt"):
+          fecha_html = (
+              f'<p class="res-cal-card-fecha">→ {item_cal["fecha_txt"]}</p>'
+          )
+        st.markdown(
+            '<div class="res-cal-card">'
+            f'<p class="res-cal-card-title">{item_cal["etiqueta"]}</p>'
+            f'<p class="res-cal-card-sub">{item_cal["bloque"]} · {monto_txt}'
+            f" · {comentario_txt}</p>"
+            f"{fecha_html}"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+  else:
+    st.info(
+        "No hay productos identificados para recuperar esta semana (o la"
+        " pestaña Fill Rate aún no se procesó)."
+    )
+
+  st.divider()
+
+  # -----------------------------------------------------------------
+  # SI: venta por división  ·  SI PROYECCION: meta y cumplimiento
+  # -----------------------------------------------------------------
+  col_res_si, col_res_proy = st.columns(2)
+
+  with col_res_si:
+    st.markdown("#### 🏢 SI — Venta por División")
+    venta_div = resumen_data.get("venta_div")
+    if venta_div and venta_div["filas"]:
+      df_venta_div = pd.DataFrame(venta_div["filas"])
+      fig_venta_div = px.pie(
+          df_venta_div,
+          values="monto",
+          names="division",
+          hole=0.5,
+          color_discrete_sequence=["#0070f3", "#109618", "#f97316", "#ff9900"],
+      )
+      fig_venta_div.update_traces(
+          textposition="inside",
+          textinfo="percent+label",
+          marker=dict(line=dict(color="#0b0b0b", width=2)),
+      )
+      fig_venta_div.update_layout(
+          template="plotly_dark",
+          paper_bgcolor="rgba(0,0,0,0)",
+          plot_bgcolor="rgba(0,0,0,0)",
+          font=dict(color="#ffffff"),
+          height=320,
+          showlegend=True,
+          margin=dict(t=20, b=20, l=10, r=10),
+      )
+      st.plotly_chart(
+          fig_venta_div, use_container_width=True, key="resumen_venta_div"
+      )
+      st.caption(f"Monto total facturado: {formato_moneda(venta_div['monto_total'])}")
+    else:
+      st.info("No hay datos de venta por división disponibles.")
+
+  with col_res_proy:
+    st.markdown("#### 🎯 SI Proyección — Meta y Cumplimiento")
+    si_proy = resumen_data.get("si_proy")
+    if si_proy:
+      st.metric("🗓️ Mes en Curso", si_proy["mes_actual"].upper())
+      kp1, kp2 = st.columns(2)
+      kp1.metric("🎯 Meta Total", formato_moneda(si_proy["meta_total"]))
+      kp2.metric(
+          "💰 Facturado Actual",
+          formato_moneda(si_proy["facturado_total"]),
+          delta=f"{si_proy['cumplimiento_actual']:.1f}% Meta",
+      )
+      kp3, kp4 = st.columns(2)
+      kp3.metric(
+          "🚀 Cierre Proyectado", formato_moneda(si_proy["proyeccion_total"])
+      )
+      kp4.metric(
+          "📈 Cumplimiento Proyectado",
+          f"{si_proy['cumplimiento_proy']:.0f}%",
+          delta=formato_moneda(si_proy["diferencia_proy"]),
+      )
+      pct_barra_res = min(
+          max(float(si_proy["cumplimiento_proy"]) / 100.0, 0.0), 1.0
+      )
+      st.progress(
+          pct_barra_res,
+          text=f"Avance de Proyección sobre la Meta: {si_proy['cumplimiento_proy']:.1f}%",
+      )
+    else:
+      st.info("No hay datos de proyección/meta disponibles.")
+
+  st.divider()
+
+  # -----------------------------------------------------------------
+  # STOCK: estado de caducidad  ·  Marcas con más quiebre (SB + PU)
+  # -----------------------------------------------------------------
+  col_res_stock, col_res_marca = st.columns(2)
+
+  with col_res_stock:
+    st.markdown("#### 📦 Stock — Estado de Caducidad")
+    stock_cad = resumen_data.get("stock_caducidad")
+    if stock_cad and stock_cad["total_unidades"] > 0:
+      labels_res = ["Vencido", "< 6 meses", "6 a 13 meses", "Vigente (> 13m)"]
+      values_res = [
+          stock_cad["vencido"],
+          stock_cad["menos_6m"],
+          stock_cad["pronto_6_13m"],
+          stock_cad["vigente_13m"],
+      ]
+      colors_res = ["#8b0000", "#e74c3c", "#f1c40f", "#2ecc71"]
+      total_donut_res = sum(values_res)
+      textos_pct_res = [
+          f"{lbl}<br>{(v / total_donut_res * 100):.2f}%"
+          for lbl, v in zip(labels_res, values_res)
+      ]
+      fig_pie_res = go.Figure(
+          data=[
+              go.Pie(
+                  labels=labels_res,
+                  values=values_res,
+                  hole=0.55,
+                  marker=dict(
+                      colors=colors_res, line=dict(color="#0e1117", width=2)
+                  ),
+                  text=textos_pct_res,
+                  texttemplate="%{text}",
+                  textposition="outside",
+                  textfont=dict(size=11, color="#ffffff"),
+              )
+          ]
+      )
+      fig_pie_res.update_layout(
+          height=340,
+          margin=dict(t=20, b=50, l=40, r=40),
+          paper_bgcolor="rgba(0,0,0,0)",
+          font=dict(color="#ffffff"),
+          showlegend=True,
+          legend=dict(orientation="h", y=-0.15, x=0.5, xanchor="center"),
+      )
+      st.plotly_chart(
+          fig_pie_res, use_container_width=True, key="resumen_pie_stock"
+      )
+    else:
+      st.info("No hay datos de estado de caducidad disponibles.")
+
+  with col_res_marca:
+    st.markdown("#### 🏷️ Marcas con Más Quiebre (SB + PU)")
+    marca_sb = resumen_data.get("marca_quiebre_sb", {})
+    marca_pu = resumen_data.get("marca_quiebre_pu", {})
+    if marca_sb or marca_pu:
+      marcas_combinadas = {}
+      for marca_nombre, monto_q in marca_sb.items():
+        marcas_combinadas[marca_nombre] = (
+            marcas_combinadas.get(marca_nombre, 0) + monto_q
+        )
+      for marca_nombre, monto_q in marca_pu.items():
+        marcas_combinadas[marca_nombre] = (
+            marcas_combinadas.get(marca_nombre, 0) + monto_q
+        )
+      top_marcas = sorted(
+          marcas_combinadas.items(), key=lambda x: x[1], reverse=True
+      )[:10]
+      if top_marcas:
+        df_top_marcas = pd.DataFrame(top_marcas, columns=["Marca", "Quiebre"])
+        fig_marcas = go.Figure(
+            go.Bar(
+                x=df_top_marcas["Quiebre"],
+                y=df_top_marcas["Marca"],
+                orientation="h",
+                marker_color="#e34948",
+                text=[formato_moneda(v) for v in df_top_marcas["Quiebre"]],
+                textposition="auto",
+            )
+        )
+        fig_marcas.update_layout(
+            height=340,
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            font=dict(color="#ffffff"),
+            xaxis=dict(gridcolor="#222222"),
+            yaxis=dict(autorange="reversed"),
+            margin=dict(t=20, l=10, r=10),
+        )
+        st.plotly_chart(
+            fig_marcas, use_container_width=True, key="resumen_marcas"
+        )
+      else:
+        st.info("No hay marcas con quiebre registrado.")
+    else:
+      st.info("No hay datos de quiebre por marca disponibles.")
 
 
 # =================================================================
