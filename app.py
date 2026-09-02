@@ -3329,6 +3329,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
               {
                   "semana": fmt_sem(r[col_semana]),
                   "fr_monto_pct": float(r["FR_Monto_pct"]),
+                  "fr_unds_pct": float(r["FR_Unds_pct"]),
               }
               for _, r in grp.iterrows()
           ]
@@ -3429,6 +3430,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                   "semana": fmt_sem(r[col_semana]),
                   "division": str(r[col_div]),
                   "fr_monto_pct": float(r["FR_Monto_pct"]),
+                  "fr_unds_pct": float(r["FR_Unds_pct"]),
               }
               for _, r in grp.iterrows()
           ]
@@ -4386,7 +4388,15 @@ with tabs[0]:
   # -----------------------------------------------------------------
   # Fill Rate últimas 4 semanas: SB (por división) y PU
   # -----------------------------------------------------------------
-  st.markdown("#### 🔄 Fill Rate Monto — Últimas 4 Semanas")
+  st.markdown("#### 🔄 Fill Rate — Últimas 4 Semanas")
+  metrica_fr4 = st.radio(
+      "Ver por:",
+      options=["Monto ($)", "Unidades"],
+      horizontal=True,
+      key="resumen_fr4_metric",
+  )
+  campo_fr4 = "fr_monto_pct" if metrica_fr4 == "Monto ($)" else "fr_unds_pct"
+
   col_res_sb, col_res_pu = st.columns(2)
 
   with col_res_sb:
@@ -4394,20 +4404,36 @@ with tabs[0]:
     fr4_sb = resumen_data.get("fr4_sb")
     if fr4_sb:
       df_fr4_sb = pd.DataFrame(fr4_sb)
+      orden_semanas_sb = list(dict.fromkeys(df_fr4_sb["semana"]))
+      pivot_sb = df_fr4_sb.pivot_table(
+          index="semana", columns="division", values=campo_fr4, aggfunc="first"
+      ).reindex(orden_semanas_sb)
+      divisiones_sb = list(pivot_sb.columns)
+
       fig_fr4_sb = go.Figure()
-      for div_nombre_r in df_fr4_sb["division"].unique():
-        sub = df_fr4_sb[df_fr4_sb["division"] == div_nombre_r]
+      for div_nombre_r in divisiones_sb:
         color_linea = (
             "#f97316" if "CONSUMO" in str(div_nombre_r).upper() else "#00adb5"
         )
+        valores = pivot_sb[div_nombre_r]
+        otras = pivot_sb.drop(columns=[div_nombre_r])
+        # Etiqueta arriba si esta división es la más alta en esa semana;
+        # si no, abajo. Así, cuando las líneas quedan pegadas, los
+        # porcentajes no se superponen.
+        text_positions = [
+            "top center"
+            if (otras.loc[sem].max() if not otras.empty else -1) <= val
+            else "bottom center"
+            for sem, val in valores.items()
+        ]
         fig_fr4_sb.add_trace(
             go.Scatter(
-                x=[f"Sem {s}" for s in sub["semana"]],
-                y=sub["fr_monto_pct"],
+                x=[f"Sem {s}" for s in valores.index],
+                y=valores.values,
                 name=str(div_nombre_r).title(),
                 mode="lines+markers+text",
-                text=[f"{v:.1f}%" for v in sub["fr_monto_pct"]],
-                textposition="top center",
+                text=[f"{v:.1f}%" for v in valores.values],
+                textposition=text_positions,
                 line=dict(color=color_linea, width=3),
             )
         )
@@ -4416,13 +4442,13 @@ with tabs[0]:
           paper_bgcolor="rgba(0,0,0,0)",
           plot_bgcolor="rgba(0,0,0,0)",
           font=dict(color="#ffffff"),
-          yaxis=dict(range=[0, 115], gridcolor="#222222", ticksuffix="%"),
+          yaxis=dict(range=[0, 118], gridcolor="#222222", ticksuffix="%"),
           xaxis=dict(gridcolor="#222222"),
           legend=dict(orientation="h", y=-0.2),
           margin=dict(t=20),
       )
       st.plotly_chart(
-          fig_fr4_sb, use_container_width=True, key="resumen_fr4_sb"
+          fig_fr4_sb, use_container_width=True, key=f"resumen_fr4_sb_{campo_fr4}"
       )
     else:
       st.info("No hay datos de Fill Rate SB disponibles.")
@@ -4435,9 +4461,9 @@ with tabs[0]:
       fig_fr4_pu = go.Figure(
           go.Scatter(
               x=[f"Sem {s}" for s in df_fr4_pu["semana"]],
-              y=df_fr4_pu["fr_monto_pct"],
+              y=df_fr4_pu[campo_fr4],
               mode="lines+markers+text",
-              text=[f"{v:.1f}%" for v in df_fr4_pu["fr_monto_pct"]],
+              text=[f"{v:.1f}%" for v in df_fr4_pu[campo_fr4]],
               textposition="top center",
               line=dict(color="#0070f3", width=3),
           )
@@ -4447,12 +4473,12 @@ with tabs[0]:
           paper_bgcolor="rgba(0,0,0,0)",
           plot_bgcolor="rgba(0,0,0,0)",
           font=dict(color="#ffffff"),
-          yaxis=dict(range=[0, 115], gridcolor="#222222", ticksuffix="%"),
+          yaxis=dict(range=[0, 118], gridcolor="#222222", ticksuffix="%"),
           xaxis=dict(gridcolor="#222222"),
           margin=dict(t=20),
       )
       st.plotly_chart(
-          fig_fr4_pu, use_container_width=True, key="resumen_fr4_pu"
+          fig_fr4_pu, use_container_width=True, key=f"resumen_fr4_pu_{campo_fr4}"
       )
     else:
       st.info("No hay datos de Fill Rate PU disponibles.")
