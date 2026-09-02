@@ -593,6 +593,11 @@ nombres_hojas = [
     h for h in hojas.keys() if h.strip().lower() not in HOJAS_A_EXCLUIR
 ]
 
+# Mover la pestaña "STOCK" al final (justo antes de "Escanear").
+nombres_hojas = [
+    h for h in nombres_hojas if h.strip().upper() != "STOCK"
+] + [h for h in nombres_hojas if h.strip().upper() == "STOCK"]
+
 tabs = st.tabs([f"📊 {h}" for h in nombres_hojas] + ["📷 Escanear"])
 
 for i, nombre_hoja in enumerate(nombres_hojas):
