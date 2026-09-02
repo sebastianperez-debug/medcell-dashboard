@@ -2794,14 +2794,35 @@ for i, nombre_hoja in enumerate(nombres_hojas):
       if is_pu and col_oc and col_m_compra:
         st.markdown("#### 📊 Resumen General de Órdenes y Compras PU")
 
+        # Cálculo de Solares (columna "glosa" que contenga "SOLARES"),
+        # igual que en SB: se separa del resto para no mezclarlo con el
+        # total general de PU.
+        if col_glosa and col_glosa in df_filt.columns:
+          mask_solares_pu = (
+              df_filt[col_glosa]
+              .astype(str)
+              .str.upper()
+              .str.contains("SOLARES", na=False)
+          )
+          oc_solares_pu = df_filt[mask_solares_pu][col_oc].nunique()
+          monto_solares_pu = df_filt[mask_solares_pu][col_m_compra].sum()
+        else:
+          mask_solares_pu = pd.Series(False, index=df_filt.index)
+          oc_solares_pu = 0
+          monto_solares_pu = 0
+
         # En PU se consideran todas las divisiones juntas.
         cantidad_oc_pu = df_filt[col_oc].nunique()
         monto_total_pu = df_filt[col_m_compra].sum()
 
-        # UI (2 KPIs, sin separar por división)
+        # UI: KPIs generales + Solares aparte (mismo estilo que SB)
         kpu1, kpu2 = st.columns(2)
         kpu1.metric("📦 Cantidad de OC", str(cantidad_oc_pu))
         kpu2.metric("💰 Monto Total de Compra", formato_moneda(monto_total_pu))
+
+        kpu_s1, kpu_s2 = st.columns(2)
+        kpu_s1.metric("☀️ OC Solares", str(oc_solares_pu))
+        kpu_s2.metric("💵 Monto Solares", formato_moneda(monto_solares_pu))
 
         st.divider()
       # =================================================================
