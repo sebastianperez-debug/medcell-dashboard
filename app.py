@@ -2687,6 +2687,28 @@ for i, nombre_hoja in enumerate(nombres_hojas):
           semanas_con_datos = semanas_con_datos[:-1]
       ultimas_4_semanas = semanas_con_datos[-4:] if semanas_con_datos else []
 
+      # Captura para RESUMEN: SKU con quiebre en 2 o más de las últimas 4
+      # semanas (quiebre recurrente / crónico, no puntual).
+      if ultimas_4_semanas:
+        df_rec = df[df[col_semana].isin(ultimas_4_semanas)]
+        df_rec = df_rec[df_rec["quiebre_monto_calc"] > 0]
+        if not df_rec.empty:
+          grp_rec = df_rec.groupby([col_sku, col_desc], as_index=False).agg(
+              semanas_con_quiebre=(col_semana, "nunique"),
+              monto_quiebre_total=("quiebre_monto_calc", "sum"),
+          )
+          grp_rec = grp_rec[grp_rec["semanas_con_quiebre"] >= 2]
+          resumen_data[f"quiebre_recurrente_{'pu' if is_pu else 'sb'}"] = [
+              {
+                  "sku": str(r[col_sku]),
+                  "descripcion": str(r[col_desc]),
+                  "semanas": int(r["semanas_con_quiebre"]),
+                  "monto": float(r["monto_quiebre_total"]),
+                  "canal": "PU" if is_pu else "SB",
+              }
+              for _, r in grp_rec.iterrows()
+          ]
+
       st.markdown("### 📅 Seleccionar Semana")
       opciones_semanas = {"Todas": "Todas"}
       for s in semanas_todas:
@@ -3333,6 +3355,16 @@ for i, nombre_hoja in enumerate(nombres_hojas):
               }
               for _, r in grp.iterrows()
           ]
+          resumen_data["fr4_pu_raw"] = [
+              {
+                  "semana": fmt_sem(r[col_semana]),
+                  "m_compra": float(r[col_m_compra]),
+                  "m_recib": float(r[col_m_recib]),
+                  "u_compra": float(r[col_u_compra]),
+                  "u_recib": float(r[col_u_recib]),
+              }
+              for _, r in grp.iterrows()
+          ]
 
           df_disp = grp.copy()
           df_disp[col_semana] = df_disp[col_semana].apply(fmt_sem)
@@ -3478,6 +3510,17 @@ for i, nombre_hoja in enumerate(nombres_hojas):
           tot_sem["Total_FR_Monto"] = (
               tot_sem[col_m_recib] / tot_sem[col_m_compra] * 100
           ).fillna(0)
+
+          resumen_data["fr4_sb_raw"] = [
+              {
+                  "semana": fmt_sem(r[col_semana]),
+                  "m_compra": float(r[col_m_compra]),
+                  "m_recib": float(r[col_m_recib]),
+                  "u_compra": float(r[col_u_compra]),
+                  "u_recib": float(r[col_u_recib]),
+              }
+              for _, r in tot_sem.iterrows()
+          ]
 
           with col_g1:
             st.markdown("##### Fill Rate por Unidades")
@@ -4341,6 +4384,22 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                   {**_item, "bloque": titulo_mostrar}
               )
 
+            # Captura para RESUMEN: tasa de resolución = % de los items
+            # identificados que el comentario ya marca como "Recuperado"
+            # (no es un delta semana-contra-semana, ya que la app no
+            # guarda un historial de comentarios entre sesiones; es la
+            # foto de la semana actual).
+            resumen_data.setdefault(
+                "fill_rate_resolucion", {"total": 0, "recuperados": 0}
+            )
+            for _items_cat in columnas_kanban_fr.values():
+              resumen_data["fill_rate_resolucion"]["total"] += len(_items_cat)
+            resumen_data["fill_rate_resolucion"]["recuperados"] += sum(
+                1
+                for _item in columnas_kanban_fr.get("Esta semana", [])
+                if _item.get("tipo_fecha") == "Recuperado"
+            )
+
             st.markdown("##### 🗂️ Tablero de urgencia de resolución")
             st.caption(
                 "Agrupado según la fecha estimada extraída del "
@@ -4707,6 +4766,249 @@ with tabs[0]:
         st.info("No hay marcas con quiebre registrado.")
     else:
       st.info("No hay datos de quiebre por marca disponibles.")
+
+  st.divider()
+
+  # -----------------------------------------------------------------
+  # KPI: Fill Rate combinado SB + PU (últimas 4 semanas)
+  # -----------------------------------------------------------------
+  st.markdown("#### 🔗 Fill Rate Combinado SB + PU — Últimas 4 Semanas")
+  fr4_sb_raw = resumen_data.get("fr4_sb_raw", [])
+  fr4_pu_raw = resumen_data.get("fr4_pu_raw", [])
+
+  def _orden_sem_resumen(s):
+    try:
+      return (0, int(float(s)))
+    except (ValueError, TypeError):
+      return (1, str(s))
+
+  if fr4_sb_raw or fr4_pu_raw:
+    combinado_fr = {}
+    for _fila in list(fr4_sb_raw) + list(fr4_pu_raw):
+      _s = _fila["semana"]
+      _acc = combinado_fr.setdefault(
+          _s, {"m_compra": 0.0, "m_recib": 0.0, "u_compra": 0.0, "u_recib": 0.0}
+      )
+      _acc["m_compra"] += _fila["m_compra"]
+      _acc["m_recib"] += _fila["m_recib"]
+      _acc["u_compra"] += _fila["u_compra"]
+      _acc["u_recib"] += _fila["u_recib"]
+
+    semanas_comb = sorted(combinado_fr.keys(), key=_orden_sem_resumen)
+    valores_comb = []
+    for _s in semanas_comb:
+      _c = combinado_fr[_s]
+      if campo_fr4 == "fr_monto_pct":
+        _val = (_c["m_recib"] / _c["m_compra"] * 100) if _c["m_compra"] else 0.0
+      else:
+        _val = (_c["u_recib"] / _c["u_compra"] * 100) if _c["u_compra"] else 0.0
+      valores_comb.append(_val)
+
+    fig_fr_comb = go.Figure(
+        go.Scatter(
+            x=[f"Sem {s}" for s in semanas_comb],
+            y=valores_comb,
+            mode="lines+markers+text",
+            text=[f"{v:.1f}%" for v in valores_comb],
+            textposition="top center",
+            line=dict(color="#a855f7", width=3),
+            fill="tozeroy",
+            fillcolor="rgba(168, 85, 247, 0.12)",
+        )
+    )
+    fig_fr_comb.update_layout(
+        height=300,
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#ffffff"),
+        yaxis=dict(range=[0, 118], gridcolor="#222222", ticksuffix="%"),
+        xaxis=dict(gridcolor="#222222"),
+        margin=dict(t=20),
+    )
+    st.plotly_chart(
+        fig_fr_comb, use_container_width=True, key=f"resumen_fr_comb_{campo_fr4}"
+    )
+  else:
+    st.info("No hay datos suficientes para el Fill Rate combinado.")
+
+  st.divider()
+
+  # -----------------------------------------------------------------
+  # KPI: Quiebres recurrentes (mismo SKU en 2+ de las últimas 4 semanas)
+  # -----------------------------------------------------------------
+  st.markdown("#### 🔁 Quiebres Recurrentes (mismo SKU, 2+ semanas seguidas)")
+  st.caption(
+      "SKU con quiebre registrado en 2 o más de las últimas 4 semanas en"
+      " SB y/o PU: distingue un quiebre puntual de un problema crónico de"
+      " abastecimiento."
+  )
+  rec_sb = resumen_data.get("quiebre_recurrente_sb", [])
+  rec_pu = resumen_data.get("quiebre_recurrente_pu", [])
+  rec_todos = list(rec_sb) + list(rec_pu)
+  if rec_todos:
+    df_rec_disp = pd.DataFrame(rec_todos).sort_values(
+        by="monto", ascending=False
+    )
+    df_rec_disp = df_rec_disp.rename(
+        columns={
+            "sku": "SKU",
+            "descripcion": "Descripción",
+            "canal": "Canal",
+            "semanas": "N° Semanas en Quiebre",
+            "monto": "Monto Quiebre Acumulado",
+        }
+    )
+    df_rec_disp["Monto Quiebre Acumulado"] = df_rec_disp[
+        "Monto Quiebre Acumulado"
+    ].apply(formato_moneda)
+    st.dataframe(
+        df_rec_disp[
+            [
+                "SKU",
+                "Descripción",
+                "Canal",
+                "N° Semanas en Quiebre",
+                "Monto Quiebre Acumulado",
+            ]
+        ],
+        hide_index=True,
+        use_container_width=True,
+    )
+  else:
+    st.info("No hay SKU con quiebre recurrente en las últimas 4 semanas.")
+
+  st.divider()
+
+  # -----------------------------------------------------------------
+  # KPI: Tasa de resolución (Fill Rate)
+  # -----------------------------------------------------------------
+  st.markdown("#### ✅ Tasa de Resolución — Fill Rate")
+  fr_resolucion = resumen_data.get("fill_rate_resolucion")
+  if fr_resolucion and fr_resolucion["total"] > 0:
+    pct_resolucion = (
+        fr_resolucion["recuperados"] / fr_resolucion["total"] * 100
+    )
+    st.metric(
+        "Productos ya marcados como 'Recuperado'",
+        f"{pct_resolucion:.1f}%",
+        delta=f"{fr_resolucion['recuperados']} de {fr_resolucion['total']} identificados",
+        delta_color="off",
+    )
+    st.caption(
+        "⚠️ Es una foto de la semana actual (comentarios de Fill Rate ya"
+        " marcados como 'Recuperado' sobre el total de productos"
+        " identificados), no una comparación contra la semana anterior: la"
+        " app no guarda un historial de comentarios entre sesiones."
+    )
+  else:
+    st.info("No hay suficiente información en Fill Rate para calcular la tasa de resolución.")
+
+  st.divider()
+
+  # -----------------------------------------------------------------
+  # KPI: Semáforo de salud operativa
+  # -----------------------------------------------------------------
+  st.markdown("#### 🚦 Semáforo de Salud Operativa")
+
+  def _estado_fr(pct):
+    if pct >= 85:
+      return "verde"
+    elif pct >= 70:
+      return "amarillo"
+    return "rojo"
+
+  def _estado_stock(pct):
+    if pct < 5:
+      return "verde"
+    elif pct < 15:
+      return "amarillo"
+    return "rojo"
+
+  def _estado_recurrentes(n):
+    if n == 0:
+      return "verde"
+    elif n <= 5:
+      return "amarillo"
+    return "rojo"
+
+  _colores_semaforo = {"verde": "#2ecc71", "amarillo": "#f1c40f", "rojo": "#e74c3c"}
+  _orden_severidad = {"verde": 0, "amarillo": 1, "rojo": 2}
+
+  fr_reciente_pct = None
+  if fr4_sb_raw or fr4_pu_raw:
+    _sem_mas_reciente = semanas_comb[-1] if fr4_sb_raw or fr4_pu_raw else None
+    if _sem_mas_reciente is not None:
+      _c = combinado_fr[_sem_mas_reciente]
+      fr_reciente_pct = (
+          (_c["m_recib"] / _c["m_compra"] * 100) if _c["m_compra"] else 0.0
+      )
+
+  stock_cad_semaforo = resumen_data.get("stock_caducidad")
+  pct_critico_semaforo = None
+  if stock_cad_semaforo and stock_cad_semaforo["total_unidades"] > 0:
+    pct_critico_semaforo = (
+        (stock_cad_semaforo["vencido"] + stock_cad_semaforo["menos_6m"])
+        / stock_cad_semaforo["total_unidades"]
+        * 100
+    )
+
+  n_recurrentes = len(rec_todos)
+
+  sub_estados = []
+  if fr_reciente_pct is not None:
+    sub_estados.append(
+        ("Fill Rate reciente (SB+PU)", f"{fr_reciente_pct:.1f}%", _estado_fr(fr_reciente_pct))
+    )
+  if pct_critico_semaforo is not None:
+    sub_estados.append(
+        ("Stock crítico (vencido + <6m)", f"{pct_critico_semaforo:.1f}%", _estado_stock(pct_critico_semaforo))
+    )
+  sub_estados.append(
+      ("SKU con quiebre recurrente", str(n_recurrentes), _estado_recurrentes(n_recurrentes))
+  )
+
+  if sub_estados:
+    estado_general = max(sub_estados, key=lambda x: _orden_severidad[x[2]])[2]
+    color_general = _colores_semaforo[estado_general]
+    etiqueta_general = {
+        "verde": "OK",
+        "amarillo": "ATENCIÓN",
+        "rojo": "CRÍTICO",
+    }[estado_general]
+
+    st.markdown(
+        f"""
+        <div style="display:flex; align-items:center; gap:14px;
+            background-color:#141414; border:1px solid #2b2b2b;
+            border-radius:8px; padding:16px 20px; margin-bottom:14px;">
+          <div style="width:22px; height:22px; border-radius:50%;
+              background-color:{color_general}; flex-shrink:0;"></div>
+          <div style="font-size:20px; font-weight:700; color:{color_general};">
+              ESTADO GENERAL: {etiqueta_general}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    cols_semaforo = st.columns(len(sub_estados))
+    for col_sf, (nombre_sf, valor_sf, estado_sf) in zip(cols_semaforo, sub_estados):
+      with col_sf:
+        color_sf = _colores_semaforo[estado_sf]
+        st.markdown(
+            f"""
+            <div style="background-color:#141414; border:1px solid #2b2b2b;
+                border-left:4px solid {color_sf}; border-radius:0 8px 8px 0;
+                padding:12px 14px;">
+              <p style="font-size:12px; color:#aaaaaa; margin:0 0 4px 0;
+                  text-transform:uppercase;">{nombre_sf}</p>
+              <p style="font-size:22px; font-weight:700; color:{color_sf};
+                  margin:0;">{valor_sf}</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+  else:
+    st.info("No hay suficiente información para calcular el semáforo de salud operativa.")
 
 
 # =================================================================
