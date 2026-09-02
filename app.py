@@ -1,12 +1,11 @@
-import os
 import re
+import os
 from datetime import datetime, timedelta
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import streamlit as st
-import streamlit.components.v1 as components
 
 # 1. Configuración de la página
 st.set_page_config(page_title="Medcell Operaciones", layout="wide")
@@ -594,27 +593,24 @@ nombres_hojas = [
     h for h in hojas.keys() if h.strip().lower() not in HOJAS_A_EXCLUIR
 ]
 
-# Mover la pestaña "STOCK" al final (justo antes de "Escanear").
-nombres_hojas = [
-    h for h in nombres_hojas if h.strip().upper() != "STOCK"
-] + [h for h in nombres_hojas if h.strip().upper() == "STOCK"]
-
-# Colocar "FILL RATE" como la 3ra pestaña.
-nombres_fr = [h for h in nombres_hojas if h.strip().upper() == "FILL RATE"]
-nombres_resto = [h for h in nombres_hojas if h.strip().upper() != "FILL RATE"]
-nombres_hojas = nombres_resto[:2] + nombres_fr + nombres_resto[2:]
-
-tabs = st.tabs(
-    ["📊 RESUMEN"] + [f"📊 {h}" for h in nombres_hojas] + ["📷 Escanear"]
+# Orden de pestañas: todas las hojas operativas primero, STOCK justo
+# antes de ESCANEAR. Así el flujo queda:
+# ... → STOCK → 📷 Escanear
+stock_tab = next(
+    (h for h in nombres_hojas if h.strip().lower() == "stock"),
+    None,
 )
 
-# Diccionario donde cada pestaña original va dejando los indicadores que
-# necesita la pestaña "RESUMEN" (se rellena durante el for de abajo y se
-# consume recién al final, cuando ya se procesaron todas las hojas).
-resumen_data = {}
+if stock_tab is not None:
+    nombres_hojas = [
+        h for h in nombres_hojas
+        if h != stock_tab
+    ] + [stock_tab]
+
+tabs = st.tabs([f"📊 {h}" for h in nombres_hojas] + ["📷 Escanear"])
 
 for i, nombre_hoja in enumerate(nombres_hojas):
-  with tabs[i + 1]:
+  with tabs[i]:
     df = hojas[nombre_hoja].copy()
     nombre_clean = nombre_hoja.strip().upper()
 
@@ -784,18 +780,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
               (grp_div[col_monto] / monto_total) if monto_total > 0 else 0
           )
           grp_div = grp_div.sort_values(by=col_monto, ascending=False)
-
-          resumen_data["venta_div"] = {
-              "filas": [
-                  {
-                      "division": str(r[col_div]),
-                      "monto": float(r[col_monto]),
-                      "participacion": float(r["Participación"]) * 100,
-                  }
-                  for _, r in grp_div.iterrows()
-              ],
-              "monto_total": float(monto_total),
-          }
 
           fig_donut = px.pie(
               grp_div,
@@ -1076,9 +1060,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
           if c in df_proy.columns:
             df_proy[c] = df_proy[c].apply(limpiar_numero)
 
-        canales_principales = [
-            "Consumo", "Consumo SB", "Consumo PU", "Farma", "Terceros"
-        ]
+        canales_principales = ["Consumo", "Farma", "Terceros"]
 
         df_resumen = df_proy[df_proy[mes_col].isin(canales_principales)].copy()
         df_resumen = df_resumen.drop_duplicates(subset=[mes_col], keep="first")
@@ -1104,16 +1086,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             (facturado_total / meta_total * 100) if meta_total > 0 else 0
         )
         diferencia_proy = proyeccion_total - meta_total
-
-        resumen_data["si_proy"] = {
-            "mes_actual": str(mes_actual),
-            "meta_total": float(meta_total),
-            "facturado_total": float(facturado_total),
-            "proyeccion_total": float(proyeccion_total),
-            "cumplimiento_actual": float(cumplimiento_actual),
-            "cumplimiento_proy": float(cumplimiento_proy),
-            "diferencia_proy": float(diferencia_proy),
-        }
 
         st.markdown("#### 🎯 Resumen de Cumplimiento Meta")
         k1, k2, k3, k4, k5 = st.columns(5)
@@ -1233,11 +1205,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
               font=dict(color="#ffffff"),
               margin=dict(t=10, b=10, l=10, r=10),
               xaxis=dict(gridcolor="#222222"),
-              yaxis=dict(
-                  gridcolor="#222222",
-                  categoryorder="array",
-                  categoryarray=list(df_resumen[mes_col])[::-1],
-              ),
+              yaxis=dict(gridcolor="#222222"),
               legend=dict(orientation="h", y=1.15),
           )
           st.plotly_chart(
@@ -1391,125 +1359,64 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         with col_oc_grafico:
           st.markdown("##### 📊 Comparativo Monto OC vs Proyección Salida")
 
-          def _agregar_barras_oc(fig, df_sub, row=None, col=None, mostrar_leyenda=True):
-              """Agrega las barras Monto OC / Proyección Salida (a un Figure simple o a un subplot)."""
-              kwargs_pos = {"row": row, "col": col} if row is not None else {}
-              fig.add_trace(
-                  go.Bar(
-                      x=df_sub["Canal"],
-                      y=df_sub["Monto OC"],
-                      name="Monto OC",
-                      marker_color="#0070f3",
-                      text=[
-                          f"${round(v/1e6):,.0f}M" if v > 0 else "$0"
-                          for v in df_sub["Monto OC"]
-                      ],
-                      textposition="inside",
-                      insidetextanchor="end",
-                      textangle=0,
-                      textfont=dict(size=13, color="#ffffff", family="Arial Black"),
-                      cliponaxis=False,
-                      showlegend=mostrar_leyenda,
-                      legendgroup="Monto OC",
-                  ),
-                  **kwargs_pos,
+          # Modelo limpio: Barras Verticales Agrupadas por Canal y Categoría con valores formateados en Millones ($M)
+          df_oc_plot = df_oc_tab.copy()
+          df_oc_plot["Etiqueta"] = (
+              df_oc_plot["Canal"]
+              + "<br><sub>("
+              + df_oc_plot["Concepto"]
+              + ")</sub>"
+          )
+
+          fig_oc = go.Figure()
+
+          # Barra Monto OC
+          fig_oc.add_trace(
+              go.Bar(
+                  x=df_oc_plot["Etiqueta"],
+                  y=df_oc_plot["Monto OC"],
+                  name="Monto OC",
+                  marker_color="#0070f3",
+                  text=[
+                      f"${v/1e6:.1f}M" if v > 0 else "$0"
+                      for v in df_oc_plot["Monto OC"]
+                  ],
+                  textposition="outside",
+                  textfont=dict(size=10, color="#ffffff"),
               )
-              fig.add_trace(
-                  go.Bar(
-                      x=df_sub["Canal"],
-                      y=df_sub["Proyección salida"],
-                      name="Proyección Salida",
-                      marker_color="#109618",
-                      text=[
-                          f"${round(v/1e6):,.0f}M" if v > 0 else "$0"
-                          for v in df_sub["Proyección salida"]
-                      ],
-                      textposition="inside",
-                      insidetextanchor="end",
-                      textangle=0,
-                      textfont=dict(size=13, color="#ffffff", family="Arial Black"),
-                      cliponaxis=False,
-                      showlegend=mostrar_leyenda,
-                      legendgroup="Proyección Salida",
-                  ),
-                  **kwargs_pos,
+          )
+
+          # Barra Proyección Salida
+          fig_oc.add_trace(
+              go.Bar(
+                  x=df_oc_plot["Etiqueta"],
+                  y=df_oc_plot["Proyección salida"],
+                  name="Proyección Salida",
+                  marker_color="#109618",
+                  text=[
+                      f"${v/1e6:.1f}M" if v > 0 else "$0"
+                      for v in df_oc_plot["Proyección salida"]
+                  ],
+                  textposition="outside",
+                  textfont=dict(size=10, color="#ffffff"),
               )
+          )
 
-          if vista_oc == "Ambos":
-              # "Ambos" mezcla montos muy dispares (ej. $9M vs $1.200M) en una
-              # misma escala, lo que hacía que las etiquetas de las barras
-              # chicas no entraran y se superpusieran. Se separan en dos
-              # paneles, cada uno con su propio eje Y, para que cada grupo
-              # use el rango de escala que le corresponde.
-              df_vig = df_oc_tab[df_oc_tab["Concepto"] == "OC vigente"]
-              df_proy = df_oc_tab[df_oc_tab["Concepto"] == "Proyección Compra"]
-
-              fig_oc = make_subplots(
-                  rows=1, cols=2,
-                  subplot_titles=("OC vigente", "Proyección Compra"),
-                  horizontal_spacing=0.1,
-              )
-
-              _agregar_barras_oc(fig_oc, df_vig, row=1, col=1, mostrar_leyenda=True)
-              _agregar_barras_oc(fig_oc, df_proy, row=1, col=2, mostrar_leyenda=False)
-
-              max_vig = df_vig["Monto OC"].max() if not df_vig.empty else 100
-              max_proy = df_proy["Monto OC"].max() if not df_proy.empty else 100
-
-              fig_oc.update_yaxes(
-                  gridcolor="#222222", showticklabels=False,
-                  range=[0, max_vig * 1.15], row=1, col=1,
-              )
-              fig_oc.update_yaxes(
-                  gridcolor="#222222", showticklabels=False,
-                  range=[0, max_proy * 1.15], row=1, col=2,
-              )
-              fig_oc.update_xaxes(gridcolor="#222222", tickangle=0, tickfont=dict(size=12), row=1, col=1)
-              fig_oc.update_xaxes(gridcolor="#222222", tickangle=0, tickfont=dict(size=12), row=1, col=2)
-
-              fig_oc.update_layout(
-                  barmode="group",
-                  bargap=0.35,
-                  bargroupgap=0.15,
-                  height=440,
-                  paper_bgcolor="rgba(0,0,0,0)",
-                  plot_bgcolor="rgba(0,0,0,0)",
-                  font=dict(color="#ffffff"),
-                  margin=dict(t=50, b=10, l=10, r=10),
-                  legend=dict(orientation="h", y=1.2, x=0.2, font=dict(size=13)),
-                  uniformtext_minsize=10,
-                  uniformtext_mode="show",
-              )
-              # Los títulos de cada panel (subplot_titles) usan el color por
-              # defecto de Plotly; se fuerza blanco para que se vean sobre
-              # el fondo oscuro del dashboard.
-              fig_oc.update_annotations(font=dict(color="#ffffff", size=13))
-          else:
-              df_oc_plot = df_oc_tab.copy()
-
-              fig_oc = go.Figure()
-              _agregar_barras_oc(fig_oc, df_oc_plot, mostrar_leyenda=True)
-
-              fig_oc.update_layout(
-                  barmode="group",
-                  bargap=0.35,
-                  bargroupgap=0.15,
-                  height=440,
-                  paper_bgcolor="rgba(0,0,0,0)",
-                  plot_bgcolor="rgba(0,0,0,0)",
-                  font=dict(color="#ffffff"),
-                  margin=dict(t=40, b=10, l=10, r=10),
-                  xaxis=dict(gridcolor="#222222", tickangle=0, tickfont=dict(size=12)),
-                  yaxis=dict(
-                      gridcolor="#222222",
-                      showticklabels=False,
-                      range=[0, df_oc_plot["Monto OC"].max() * 1.15] if not df_oc_plot.empty else [0, 100],
-                  ),
-                  legend=dict(orientation="h", y=1.15, x=0.2, font=dict(size=13)),
-                  uniformtext_minsize=10,
-                  uniformtext_mode="show",
-              )
-
+          fig_oc.update_layout(
+              barmode="group",
+              height=360,
+              paper_bgcolor="rgba(0,0,0,0)",
+              plot_bgcolor="rgba(0,0,0,0)",
+              font=dict(color="#ffffff"),
+              margin=dict(t=30, b=10, l=10, r=10),
+              xaxis=dict(gridcolor="#222222", tickangle=0),
+              yaxis=dict(
+                  gridcolor="#222222",
+                  showticklabels=False,
+                  range=[0, df_oc_plot["Monto OC"].max() * 1.22] if not df_oc_plot.empty else [0, 100],
+              ),
+              legend=dict(orientation="h", y=1.15, x=0.2),
+          )
           st.plotly_chart(
               fig_oc, use_container_width=True, key=f"bar_oc_comp_{i}"
           )
@@ -1921,14 +1828,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         total_vigentes = len(
             df_dash[df_dash["Alerta_Caducidad"] == "Vigente (> 13m)"]
         )
-
-      resumen_data["stock_caducidad"] = {
-          "total_unidades": float(total_unidades),
-          "vencido": float(total_vencido),
-          "menos_6m": float(total_menos_6m),
-          "pronto_6_13m": float(total_pronto),
-          "vigente_13m": float(total_vigentes),
-      }
 
       # % de Stock Crítico: unidades ya vencidas + que vencen en menos de 6 meses,
       # sobre el total de unidades registradas (con la selección de filtros activa).
@@ -2687,28 +2586,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
           semanas_con_datos = semanas_con_datos[:-1]
       ultimas_4_semanas = semanas_con_datos[-4:] if semanas_con_datos else []
 
-      # Captura para RESUMEN: SKU con quiebre en 2 o más de las últimas 4
-      # semanas (quiebre recurrente / crónico, no puntual).
-      if ultimas_4_semanas:
-        df_rec = df[df[col_semana].isin(ultimas_4_semanas)]
-        df_rec = df_rec[df_rec["quiebre_monto_calc"] > 0]
-        if not df_rec.empty:
-          grp_rec = df_rec.groupby([col_sku, col_desc], as_index=False).agg(
-              semanas_con_quiebre=(col_semana, "nunique"),
-              monto_quiebre_total=("quiebre_monto_calc", "sum"),
-          )
-          grp_rec = grp_rec[grp_rec["semanas_con_quiebre"] >= 2]
-          resumen_data[f"quiebre_recurrente_{'pu' if is_pu else 'sb'}"] = [
-              {
-                  "sku": str(r[col_sku]),
-                  "descripcion": str(r[col_desc]),
-                  "semanas": int(r["semanas_con_quiebre"]),
-                  "monto": float(r["monto_quiebre_total"]),
-                  "canal": "PU" if is_pu else "SB",
-              }
-              for _, r in grp_rec.iterrows()
-          ]
-
       st.markdown("### 📅 Seleccionar Semana")
       opciones_semanas = {"Todas": "Todas"}
       for s in semanas_todas:
@@ -3095,18 +2972,19 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                   lbl_metric = f"Fill Rate Unidades (Sem {fmt_sem(sem_top)})"
 
                 st.markdown(f"#### 📌 {str(div_nombre).upper()}")
-                col_metric_fr, col_metric_oc = st.columns(2)
-                with col_metric_fr:
-                  st.metric(
-                      label=lbl_metric,
-                      value=f"{fr_div_pct:.1f}%",
-                      delta=delta_str,
-                  )
 
                 # % de OC cumplidas al 100% (sin quiebre en ninguna de sus
-                # líneas) vs OC que tuvieron algún quiebre, para esta
-                # división y la semana seleccionada.
+                # líneas) para esta división, en el mismo estilo que el
+                # indicador gris de la pestaña PU.
                 if col_oc and col_oc in df_div.columns:
+                  col_metric_fr_div, col_metric_oc_div = st.columns(2)
+                  with col_metric_fr_div:
+                    st.metric(
+                        label=lbl_metric,
+                        value=f"{fr_div_pct:.1f}%",
+                        delta=delta_str,
+                    )
+
                   grp_oc_cumpl_div = df_div.groupby(col_oc)[
                       "quiebre_unid_calc"
                   ].sum()
@@ -3119,7 +2997,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                       else 0.0
                   )
 
-                  with col_metric_oc:
+                  with col_metric_oc_div:
                     st.metric(
                         label="OC Cumplidas al 100%",
                         value=f"{pct_oc_cumplidas_div:.1f}%",
@@ -3129,6 +3007,12 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                         ),
                         delta_color="off",
                     )
+                else:
+                  st.metric(
+                      label=lbl_metric,
+                      value=f"{fr_div_pct:.1f}%",
+                      delta=delta_str,
+                  )
 
                 grp_top = df_div.groupby(
                     [col_sku, col_desc], as_index=False
@@ -3347,25 +3231,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
               grp[col_m_recib] / grp[col_m_compra] * 100
           ).fillna(0)
 
-          resumen_data["fr4_pu"] = [
-              {
-                  "semana": fmt_sem(r[col_semana]),
-                  "fr_monto_pct": float(r["FR_Monto_pct"]),
-                  "fr_unds_pct": float(r["FR_Unds_pct"]),
-              }
-              for _, r in grp.iterrows()
-          ]
-          resumen_data["fr4_pu_raw"] = [
-              {
-                  "semana": fmt_sem(r[col_semana]),
-                  "m_compra": float(r[col_m_compra]),
-                  "m_recib": float(r[col_m_recib]),
-                  "u_compra": float(r[col_u_compra]),
-                  "u_recib": float(r[col_u_recib]),
-              }
-              for _, r in grp.iterrows()
-          ]
-
           df_disp = grp.copy()
           df_disp[col_semana] = df_disp[col_semana].apply(fmt_sem)
           df_disp[col_u_compra] = df_disp[col_u_compra].apply(formato_unidades)
@@ -3457,16 +3322,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
               grp[col_m_recib] / grp[col_m_compra] * 100
           ).fillna(0)
 
-          resumen_data["fr4_sb"] = [
-              {
-                  "semana": fmt_sem(r[col_semana]),
-                  "division": str(r[col_div]),
-                  "fr_monto_pct": float(r["FR_Monto_pct"]),
-                  "fr_unds_pct": float(r["FR_Unds_pct"]),
-              }
-              for _, r in grp.iterrows()
-          ]
-
           df_disp = grp.copy()
           df_disp[col_semana] = df_disp[col_semana].apply(fmt_sem)
           df_disp[col_u_compra] = df_disp[col_u_compra].apply(formato_unidades)
@@ -3510,17 +3365,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
           tot_sem["Total_FR_Monto"] = (
               tot_sem[col_m_recib] / tot_sem[col_m_compra] * 100
           ).fillna(0)
-
-          resumen_data["fr4_sb_raw"] = [
-              {
-                  "semana": fmt_sem(r[col_semana]),
-                  "m_compra": float(r[col_m_compra]),
-                  "m_recib": float(r[col_m_recib]),
-                  "u_compra": float(r[col_u_compra]),
-                  "u_recib": float(r[col_u_recib]),
-              }
-              for _, r in tot_sem.iterrows()
-          ]
 
           with col_g1:
             st.markdown("##### Fill Rate por Unidades")
@@ -3612,18 +3456,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
       if sem_top is not None and col_marca:
         st.subheader("🏷️ Resumen Quiebres por Marca")
         df_sem_marca = df[df[col_semana] == sem_top].copy()
-
-        # Captura para la pestaña RESUMEN: quiebre por marca de ESTA hoja
-        # (SB o PU), sin separar por división, para poder sumarlas luego
-        # entre ambas hojas y armar el ranking combinado.
-        _grp_m_total = df_sem_marca.groupby(col_marca, as_index=False).agg(
-            {"quiebre_monto_calc": "sum"}
-        )
-        _grp_m_total = _grp_m_total[_grp_m_total["quiebre_monto_calc"] > 0]
-        resumen_data[f"marca_quiebre_{'pu' if is_pu else 'sb'}"] = {
-            str(r[col_marca]): float(r["quiebre_monto_calc"])
-            for _, r in _grp_m_total.iterrows()
-        }
 
         if is_pu:
           grp_m = df_sem_marca.groupby(col_marca, as_index=False).agg(
@@ -3960,7 +3792,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
           return disp, tabla.columns.tolist()
 
         # -----------------------------------------------------------
-        # Tablero de urgencia (Kanban) a partir de la columna
+        # Línea de tiempo de resolución (Gantt) a partir de la columna
         # "Comentario"/"Observacion": se parsean fechas exactas (ETA
         # dd/mm), meses aproximados (Nov-26), semanas de un mes
         # ("3era Semana Septiembre") y referencias relativas
@@ -4375,31 +4207,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
           # -------------------------------------------------------
           columnas_kanban_fr = _fr_build_kanban(bloque["tabla"])
           if columnas_kanban_fr is not None:
-            # Captura para la pestaña RESUMEN: productos que deberían
-            # recuperarse esta semana, con el nombre del bloque de origen
-            # (Consumo Masivo, Farma, Preunic, Terceros).
-            resumen_data.setdefault("fill_rate_calendar", [])
-            for _item in columnas_kanban_fr.get("Esta semana", []):
-              resumen_data["fill_rate_calendar"].append(
-                  {**_item, "bloque": titulo_mostrar}
-              )
-
-            # Captura para RESUMEN: tasa de resolución = % de los items
-            # identificados que el comentario ya marca como "Recuperado"
-            # (no es un delta semana-contra-semana, ya que la app no
-            # guarda un historial de comentarios entre sesiones; es la
-            # foto de la semana actual).
-            resumen_data.setdefault(
-                "fill_rate_resolucion", {"total": 0, "recuperados": 0}
-            )
-            for _items_cat in columnas_kanban_fr.values():
-              resumen_data["fill_rate_resolucion"]["total"] += len(_items_cat)
-            resumen_data["fill_rate_resolucion"]["recuperados"] += sum(
-                1
-                for _item in columnas_kanban_fr.get("Esta semana", [])
-                if _item.get("tipo_fecha") == "Recuperado"
-            )
-
             st.markdown("##### 🗂️ Tablero de urgencia de resolución")
             st.caption(
                 "Agrupado según la fecha estimada extraída del "
@@ -4431,1072 +4238,616 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
 
 # =================================================================
-# PESTAÑA RESUMEN: indicadores clave tomados de SB, PU, FILL RATE, SI,
-# SI PROYECCION y STOCK. Se arma al final, una vez que el for de arriba
-# ya recorrió todas las hojas y dejó sus datos en resumen_data.
-# =================================================================
-with tabs[0]:
-  st.markdown("### 📊 Resumen Ejecutivo")
-  st.caption(
-      "Vista consolidada con lo más relevante de cada pestaña: Fill Rate"
-      " reciente, urgencias de recuperación, venta, cumplimiento de meta y"
-      " estado de caducidad."
-  )
-  st.divider()
-
-  # -----------------------------------------------------------------
-  # Fill Rate últimas 4 semanas: SB (por división) y PU
-  # -----------------------------------------------------------------
-  st.markdown("#### 🔄 Fill Rate — Últimas 4 Semanas")
-  metrica_fr4 = st.radio(
-      "Ver por:",
-      options=["Monto ($)", "Unidades"],
-      horizontal=True,
-      key="resumen_fr4_metric",
-  )
-  campo_fr4 = "fr_monto_pct" if metrica_fr4 == "Monto ($)" else "fr_unds_pct"
-
-  col_res_sb, col_res_pu = st.columns(2)
-
-  with col_res_sb:
-    st.markdown("##### SB (Consumo Masivo y Farma)")
-    fr4_sb = resumen_data.get("fr4_sb")
-    if fr4_sb:
-      df_fr4_sb = pd.DataFrame(fr4_sb)
-      orden_semanas_sb = list(dict.fromkeys(df_fr4_sb["semana"]))
-      pivot_sb = df_fr4_sb.pivot_table(
-          index="semana", columns="division", values=campo_fr4, aggfunc="first"
-      ).reindex(orden_semanas_sb)
-      divisiones_sb = list(pivot_sb.columns)
-
-      fig_fr4_sb = go.Figure()
-      for div_nombre_r in divisiones_sb:
-        color_linea = (
-            "#f97316" if "CONSUMO" in str(div_nombre_r).upper() else "#00adb5"
-        )
-        valores = pivot_sb[div_nombre_r]
-        otras = pivot_sb.drop(columns=[div_nombre_r])
-        # Etiqueta arriba si esta división es la más alta en esa semana;
-        # si no, abajo. Así, cuando las líneas quedan pegadas, los
-        # porcentajes no se superponen.
-        text_positions = [
-            "top center"
-            if (otras.loc[sem].max() if not otras.empty else -1) <= val
-            else "bottom center"
-            for sem, val in valores.items()
-        ]
-        fig_fr4_sb.add_trace(
-            go.Scatter(
-                x=[f"Sem {s}" for s in valores.index],
-                y=valores.values,
-                name=str(div_nombre_r).title(),
-                mode="lines+markers+text",
-                text=[f"{v:.1f}%" for v in valores.values],
-                textposition=text_positions,
-                line=dict(color=color_linea, width=3),
-            )
-        )
-      fig_fr4_sb.update_layout(
-          height=320,
-          paper_bgcolor="rgba(0,0,0,0)",
-          plot_bgcolor="rgba(0,0,0,0)",
-          font=dict(color="#ffffff"),
-          yaxis=dict(range=[0, 118], gridcolor="#222222", ticksuffix="%"),
-          xaxis=dict(gridcolor="#222222"),
-          legend=dict(orientation="h", y=-0.2),
-          margin=dict(t=20),
-      )
-      st.plotly_chart(
-          fig_fr4_sb, use_container_width=True, key=f"resumen_fr4_sb_{campo_fr4}"
-      )
-    else:
-      st.info("No hay datos de Fill Rate SB disponibles.")
-
-  with col_res_pu:
-    st.markdown("##### PU")
-    fr4_pu = resumen_data.get("fr4_pu")
-    if fr4_pu:
-      df_fr4_pu = pd.DataFrame(fr4_pu)
-      fig_fr4_pu = go.Figure(
-          go.Scatter(
-              x=[f"Sem {s}" for s in df_fr4_pu["semana"]],
-              y=df_fr4_pu[campo_fr4],
-              mode="lines+markers+text",
-              text=[f"{v:.1f}%" for v in df_fr4_pu[campo_fr4]],
-              textposition="top center",
-              line=dict(color="#0070f3", width=3),
-          )
-      )
-      fig_fr4_pu.update_layout(
-          height=320,
-          paper_bgcolor="rgba(0,0,0,0)",
-          plot_bgcolor="rgba(0,0,0,0)",
-          font=dict(color="#ffffff"),
-          yaxis=dict(range=[0, 118], gridcolor="#222222", ticksuffix="%"),
-          xaxis=dict(gridcolor="#222222"),
-          margin=dict(t=20),
-      )
-      st.plotly_chart(
-          fig_fr4_pu, use_container_width=True, key=f"resumen_fr4_pu_{campo_fr4}"
-      )
-    else:
-      st.info("No hay datos de Fill Rate PU disponibles.")
-
-  st.divider()
-
-  # -----------------------------------------------------------------
-  # Fill Rate: calendario de productos que deberían recuperar esta semana
-  # -----------------------------------------------------------------
-  st.markdown("#### 🗓️ Fill Rate — Deberían Recuperar Esta Semana")
-  calendario_fr = resumen_data.get("fill_rate_calendar")
-  if calendario_fr:
-    calendario_fr_ordenado = sorted(
-        calendario_fr, key=lambda x: x["quiebre"], reverse=True
-    )
-    st.markdown(
-        """
-        <style>
-        .res-cal-card { background-color:#141414; border:1px solid #2b2b2b;
-          border-left:3px solid #e34948; border-radius:0 8px 8px 0;
-          padding:10px 12px; margin-bottom:8px; }
-        .res-cal-card-title { font-size:13px; font-weight:600;
-          color:#ffffff; margin:0 0 2px 0; }
-        .res-cal-card-sub { font-size:12px; color:#aaaaaa; margin:0; }
-        .res-cal-card-fecha { font-size:11px; font-weight:600;
-          color:#e34948; margin:4px 0 0 0; }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-    n_cols_cal = 3
-    cols_cal = st.columns(n_cols_cal)
-    for idx_cal, item_cal in enumerate(calendario_fr_ordenado):
-      with cols_cal[idx_cal % n_cols_cal]:
-        monto_txt = (
-            formato_moneda(item_cal["quiebre"]) if item_cal["quiebre"] else "$0"
-        )
-        comentario_txt = item_cal.get("comentario") or "Sin comentario"
-        fecha_html = ""
-        if item_cal.get("fecha_txt"):
-          fecha_html = (
-              f'<p class="res-cal-card-fecha">→ {item_cal["fecha_txt"]}</p>'
-          )
-        st.markdown(
-            '<div class="res-cal-card">'
-            f'<p class="res-cal-card-title">{item_cal["etiqueta"]}</p>'
-            f'<p class="res-cal-card-sub">{item_cal["bloque"]} · {monto_txt}'
-            f" · {comentario_txt}</p>"
-            f"{fecha_html}"
-            "</div>",
-            unsafe_allow_html=True,
-        )
-  else:
-    st.info(
-        "No hay productos identificados para recuperar esta semana (o la"
-        " pestaña Fill Rate aún no se procesó)."
-    )
-
-  st.divider()
-
-  # -----------------------------------------------------------------
-  # SI: venta por división  ·  SI PROYECCION: meta y cumplimiento
-  # -----------------------------------------------------------------
-  col_res_si, col_res_proy = st.columns(2)
-
-  with col_res_si:
-    st.markdown("#### 🏢 SI — Venta por División")
-    venta_div = resumen_data.get("venta_div")
-    if venta_div and venta_div["filas"]:
-      df_venta_div = pd.DataFrame(venta_div["filas"])
-      fig_venta_div = px.pie(
-          df_venta_div,
-          values="monto",
-          names="division",
-          hole=0.5,
-          color_discrete_sequence=["#0070f3", "#109618", "#f97316", "#ff9900"],
-      )
-      fig_venta_div.update_traces(
-          textposition="inside",
-          textinfo="percent+label",
-          marker=dict(line=dict(color="#0b0b0b", width=2)),
-      )
-      fig_venta_div.update_layout(
-          template="plotly_dark",
-          paper_bgcolor="rgba(0,0,0,0)",
-          plot_bgcolor="rgba(0,0,0,0)",
-          font=dict(color="#ffffff"),
-          height=320,
-          showlegend=True,
-          margin=dict(t=20, b=20, l=10, r=10),
-      )
-      st.plotly_chart(
-          fig_venta_div, use_container_width=True, key="resumen_venta_div"
-      )
-      st.caption(f"Monto total facturado: {formato_moneda(venta_div['monto_total'])}")
-    else:
-      st.info("No hay datos de venta por división disponibles.")
-
-  with col_res_proy:
-    st.markdown("#### 🎯 SI Proyección — Meta y Cumplimiento")
-    si_proy = resumen_data.get("si_proy")
-    if si_proy:
-      st.metric("🗓️ Mes en Curso", si_proy["mes_actual"].upper())
-      kp1, kp2 = st.columns(2)
-      kp1.metric("🎯 Meta Total", formato_moneda(si_proy["meta_total"]))
-      kp2.metric(
-          "💰 Facturado Actual",
-          formato_moneda(si_proy["facturado_total"]),
-          delta=f"{si_proy['cumplimiento_actual']:.1f}% Meta",
-      )
-      kp3, kp4 = st.columns(2)
-      kp3.metric(
-          "🚀 Cierre Proyectado", formato_moneda(si_proy["proyeccion_total"])
-      )
-      kp4.metric(
-          "📈 Cumplimiento Proyectado",
-          f"{si_proy['cumplimiento_proy']:.0f}%",
-          delta=formato_moneda(si_proy["diferencia_proy"]),
-      )
-      pct_barra_res = min(
-          max(float(si_proy["cumplimiento_proy"]) / 100.0, 0.0), 1.0
-      )
-      st.progress(
-          pct_barra_res,
-          text=f"Avance de Proyección sobre la Meta: {si_proy['cumplimiento_proy']:.1f}%",
-      )
-    else:
-      st.info("No hay datos de proyección/meta disponibles.")
-
-  st.divider()
-
-  # -----------------------------------------------------------------
-  # STOCK: estado de caducidad  ·  Marcas con más quiebre (SB + PU)
-  # -----------------------------------------------------------------
-  col_res_stock, col_res_marca = st.columns(2)
-
-  with col_res_stock:
-    st.markdown("#### 📦 Stock — Estado de Caducidad")
-    stock_cad = resumen_data.get("stock_caducidad")
-    if stock_cad and stock_cad["total_unidades"] > 0:
-      labels_res = ["Vencido", "< 6 meses", "6 a 13 meses", "Vigente (> 13m)"]
-      values_res = [
-          stock_cad["vencido"],
-          stock_cad["menos_6m"],
-          stock_cad["pronto_6_13m"],
-          stock_cad["vigente_13m"],
-      ]
-      colors_res = ["#8b0000", "#e74c3c", "#f1c40f", "#2ecc71"]
-      total_donut_res = sum(values_res)
-      textos_pct_res = [
-          f"{lbl}<br>{(v / total_donut_res * 100):.2f}%"
-          for lbl, v in zip(labels_res, values_res)
-      ]
-      fig_pie_res = go.Figure(
-          data=[
-              go.Pie(
-                  labels=labels_res,
-                  values=values_res,
-                  hole=0.55,
-                  marker=dict(
-                      colors=colors_res, line=dict(color="#0e1117", width=2)
-                  ),
-                  text=textos_pct_res,
-                  texttemplate="%{text}",
-                  textposition="outside",
-                  textfont=dict(size=11, color="#ffffff"),
-              )
-          ]
-      )
-      fig_pie_res.update_layout(
-          height=340,
-          margin=dict(t=20, b=50, l=40, r=40),
-          paper_bgcolor="rgba(0,0,0,0)",
-          font=dict(color="#ffffff"),
-          showlegend=True,
-          legend=dict(orientation="h", y=-0.15, x=0.5, xanchor="center"),
-      )
-      st.plotly_chart(
-          fig_pie_res, use_container_width=True, key="resumen_pie_stock"
-      )
-    else:
-      st.info("No hay datos de estado de caducidad disponibles.")
-
-  with col_res_marca:
-    st.markdown("#### 🏷️ Marcas con Más Quiebre (SB + PU)")
-    marca_sb = resumen_data.get("marca_quiebre_sb", {})
-    marca_pu = resumen_data.get("marca_quiebre_pu", {})
-    if marca_sb or marca_pu:
-      marcas_combinadas = {}
-      for marca_nombre, monto_q in marca_sb.items():
-        marcas_combinadas[marca_nombre] = (
-            marcas_combinadas.get(marca_nombre, 0) + monto_q
-        )
-      for marca_nombre, monto_q in marca_pu.items():
-        marcas_combinadas[marca_nombre] = (
-            marcas_combinadas.get(marca_nombre, 0) + monto_q
-        )
-      top_marcas = sorted(
-          marcas_combinadas.items(), key=lambda x: x[1], reverse=True
-      )[:10]
-      if top_marcas:
-        df_top_marcas = pd.DataFrame(top_marcas, columns=["Marca", "Quiebre"])
-        fig_marcas = go.Figure(
-            go.Bar(
-                x=df_top_marcas["Quiebre"],
-                y=df_top_marcas["Marca"],
-                orientation="h",
-                marker_color="#e34948",
-                text=[formato_moneda(v) for v in df_top_marcas["Quiebre"]],
-                textposition="auto",
-            )
-        )
-        fig_marcas.update_layout(
-            height=340,
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(0,0,0,0)",
-            font=dict(color="#ffffff"),
-            xaxis=dict(gridcolor="#222222"),
-            yaxis=dict(autorange="reversed"),
-            margin=dict(t=20, l=10, r=10),
-        )
-        st.plotly_chart(
-            fig_marcas, use_container_width=True, key="resumen_marcas"
-        )
-      else:
-        st.info("No hay marcas con quiebre registrado.")
-    else:
-      st.info("No hay datos de quiebre por marca disponibles.")
-
-  st.divider()
-
-  # -----------------------------------------------------------------
-  # KPI: Fill Rate combinado SB + PU (últimas 4 semanas)
-  # -----------------------------------------------------------------
-  st.markdown("#### 🔗 Fill Rate Combinado SB + PU — Últimas 4 Semanas")
-  fr4_sb_raw = resumen_data.get("fr4_sb_raw", [])
-  fr4_pu_raw = resumen_data.get("fr4_pu_raw", [])
-
-  def _orden_sem_resumen(s):
-    try:
-      return (0, int(float(s)))
-    except (ValueError, TypeError):
-      return (1, str(s))
-
-  if fr4_sb_raw or fr4_pu_raw:
-    combinado_fr = {}
-    for _fila in list(fr4_sb_raw) + list(fr4_pu_raw):
-      _s = _fila["semana"]
-      _acc = combinado_fr.setdefault(
-          _s, {"m_compra": 0.0, "m_recib": 0.0, "u_compra": 0.0, "u_recib": 0.0}
-      )
-      _acc["m_compra"] += _fila["m_compra"]
-      _acc["m_recib"] += _fila["m_recib"]
-      _acc["u_compra"] += _fila["u_compra"]
-      _acc["u_recib"] += _fila["u_recib"]
-
-    semanas_comb = sorted(combinado_fr.keys(), key=_orden_sem_resumen)
-    valores_comb = []
-    for _s in semanas_comb:
-      _c = combinado_fr[_s]
-      if campo_fr4 == "fr_monto_pct":
-        _val = (_c["m_recib"] / _c["m_compra"] * 100) if _c["m_compra"] else 0.0
-      else:
-        _val = (_c["u_recib"] / _c["u_compra"] * 100) if _c["u_compra"] else 0.0
-      valores_comb.append(_val)
-
-    fig_fr_comb = go.Figure(
-        go.Scatter(
-            x=[f"Sem {s}" for s in semanas_comb],
-            y=valores_comb,
-            mode="lines+markers+text",
-            text=[f"{v:.1f}%" for v in valores_comb],
-            textposition="top center",
-            line=dict(color="#a855f7", width=3),
-            fill="tozeroy",
-            fillcolor="rgba(168, 85, 247, 0.12)",
-        )
-    )
-    fig_fr_comb.update_layout(
-        height=300,
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        font=dict(color="#ffffff"),
-        yaxis=dict(range=[0, 118], gridcolor="#222222", ticksuffix="%"),
-        xaxis=dict(gridcolor="#222222"),
-        margin=dict(t=20),
-    )
-    st.plotly_chart(
-        fig_fr_comb, use_container_width=True, key=f"resumen_fr_comb_{campo_fr4}"
-    )
-  else:
-    st.info("No hay datos suficientes para el Fill Rate combinado.")
-
-  st.divider()
-
-  # -----------------------------------------------------------------
-  # KPI: Quiebres recurrentes (mismo SKU en 2+ de las últimas 4 semanas)
-  # -----------------------------------------------------------------
-  st.markdown("#### 🔁 Quiebres Recurrentes (mismo SKU, 2+ semanas seguidas)")
-  st.caption(
-      "SKU con quiebre registrado en 2 o más de las últimas 4 semanas en"
-      " SB y/o PU: distingue un quiebre puntual de un problema crónico de"
-      " abastecimiento."
-  )
-  rec_sb = resumen_data.get("quiebre_recurrente_sb", [])
-  rec_pu = resumen_data.get("quiebre_recurrente_pu", [])
-  rec_todos = list(rec_sb) + list(rec_pu)
-  if rec_todos:
-    df_rec_disp = pd.DataFrame(rec_todos).sort_values(
-        by="monto", ascending=False
-    )
-    df_rec_disp = df_rec_disp.rename(
-        columns={
-            "sku": "SKU",
-            "descripcion": "Descripción",
-            "canal": "Canal",
-            "semanas": "N° Semanas en Quiebre",
-            "monto": "Monto Quiebre Acumulado",
-        }
-    )
-    df_rec_disp["Monto Quiebre Acumulado"] = df_rec_disp[
-        "Monto Quiebre Acumulado"
-    ].apply(formato_moneda)
-    st.dataframe(
-        df_rec_disp[
-            [
-                "SKU",
-                "Descripción",
-                "Canal",
-                "N° Semanas en Quiebre",
-                "Monto Quiebre Acumulado",
-            ]
-        ],
-        hide_index=True,
-        use_container_width=True,
-    )
-  else:
-    st.info("No hay SKU con quiebre recurrente en las últimas 4 semanas.")
-
-  st.divider()
-
-  # -----------------------------------------------------------------
-  # KPI: Tasa de resolución (Fill Rate)
-  # -----------------------------------------------------------------
-  st.markdown("#### ✅ Tasa de Resolución — Fill Rate")
-  fr_resolucion = resumen_data.get("fill_rate_resolucion")
-  if fr_resolucion and fr_resolucion["total"] > 0:
-    pct_resolucion = (
-        fr_resolucion["recuperados"] / fr_resolucion["total"] * 100
-    )
-    st.metric(
-        "Productos ya marcados como 'Recuperado'",
-        f"{pct_resolucion:.1f}%",
-        delta=f"{fr_resolucion['recuperados']} de {fr_resolucion['total']} identificados",
-        delta_color="off",
-    )
-    st.caption(
-        "⚠️ Es una foto de la semana actual (comentarios de Fill Rate ya"
-        " marcados como 'Recuperado' sobre el total de productos"
-        " identificados), no una comparación contra la semana anterior: la"
-        " app no guarda un historial de comentarios entre sesiones."
-    )
-  else:
-    st.info("No hay suficiente información en Fill Rate para calcular la tasa de resolución.")
-
-  st.divider()
-
-  # -----------------------------------------------------------------
-  # KPI: Semáforo de salud operativa
-  # -----------------------------------------------------------------
-  st.markdown("#### 🚦 Semáforo de Salud Operativa")
-
-  def _estado_fr(pct):
-    if pct >= 85:
-      return "verde"
-    elif pct >= 70:
-      return "amarillo"
-    return "rojo"
-
-  def _estado_stock(pct):
-    if pct < 5:
-      return "verde"
-    elif pct < 15:
-      return "amarillo"
-    return "rojo"
-
-  def _estado_recurrentes(n):
-    if n == 0:
-      return "verde"
-    elif n <= 5:
-      return "amarillo"
-    return "rojo"
-
-  _colores_semaforo = {"verde": "#2ecc71", "amarillo": "#f1c40f", "rojo": "#e74c3c"}
-  _orden_severidad = {"verde": 0, "amarillo": 1, "rojo": 2}
-
-  fr_reciente_pct = None
-  if fr4_sb_raw or fr4_pu_raw:
-    _sem_mas_reciente = semanas_comb[-1] if fr4_sb_raw or fr4_pu_raw else None
-    if _sem_mas_reciente is not None:
-      _c = combinado_fr[_sem_mas_reciente]
-      fr_reciente_pct = (
-          (_c["m_recib"] / _c["m_compra"] * 100) if _c["m_compra"] else 0.0
-      )
-
-  stock_cad_semaforo = resumen_data.get("stock_caducidad")
-  pct_critico_semaforo = None
-  if stock_cad_semaforo and stock_cad_semaforo["total_unidades"] > 0:
-    pct_critico_semaforo = (
-        (stock_cad_semaforo["vencido"] + stock_cad_semaforo["menos_6m"])
-        / stock_cad_semaforo["total_unidades"]
-        * 100
-    )
-
-  n_recurrentes = len(rec_todos)
-
-  sub_estados = []
-  if fr_reciente_pct is not None:
-    sub_estados.append(
-        ("Fill Rate reciente (SB+PU)", f"{fr_reciente_pct:.1f}%", _estado_fr(fr_reciente_pct))
-    )
-  if pct_critico_semaforo is not None:
-    sub_estados.append(
-        ("Stock crítico (vencido + <6m)", f"{pct_critico_semaforo:.1f}%", _estado_stock(pct_critico_semaforo))
-    )
-  sub_estados.append(
-      ("SKU con quiebre recurrente", str(n_recurrentes), _estado_recurrentes(n_recurrentes))
-  )
-
-  if sub_estados:
-    estado_general = max(sub_estados, key=lambda x: _orden_severidad[x[2]])[2]
-    color_general = _colores_semaforo[estado_general]
-    etiqueta_general = {
-        "verde": "OK",
-        "amarillo": "ATENCIÓN",
-        "rojo": "CRÍTICO",
-    }[estado_general]
-
-    st.markdown(
-        f"""
-        <div style="display:flex; align-items:center; gap:14px;
-            background-color:#141414; border:1px solid #2b2b2b;
-            border-radius:8px; padding:16px 20px; margin-bottom:14px;">
-          <div style="width:22px; height:22px; border-radius:50%;
-              background-color:{color_general}; flex-shrink:0;"></div>
-          <div style="font-size:20px; font-weight:700; color:{color_general};">
-              ESTADO GENERAL: {etiqueta_general}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    cols_semaforo = st.columns(len(sub_estados))
-    for col_sf, (nombre_sf, valor_sf, estado_sf) in zip(cols_semaforo, sub_estados):
-      with col_sf:
-        color_sf = _colores_semaforo[estado_sf]
-        st.markdown(
-            f"""
-            <div style="background-color:#141414; border:1px solid #2b2b2b;
-                border-left:4px solid {color_sf}; border-radius:0 8px 8px 0;
-                padding:12px 14px;">
-              <p style="font-size:12px; color:#aaaaaa; margin:0 0 4px 0;
-                  text-transform:uppercase;">{nombre_sf}</p>
-              <p style="font-size:22px; font-weight:700; color:{color_sf};
-                  margin:0;">{valor_sf}</p>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-  else:
-    st.info("No hay suficiente información para calcular el semáforo de salud operativa.")
-
-
-# =================================================================
-# PESTAÑA: ESCANEAR POSICIÓN (LOCALIZADOR) - híbrido: OCR + código de barras
+# PESTAÑA: ESCANEAR POSICIÓN (LOCALIZADOR)
+# Cámara nativa + lectura de código + OCR del texto MCD
 # =================================================================
 with tabs[-1]:
-  st.markdown("### 📷 Escanear Localizador")
-  st.caption("Apunta la cámara al texto MCD de la posición. Si el texto no se reconoce, el lector intenta también el código de barras.")
-
-  components.html(
-      """
-      <div style="position:relative; width:100%; max-height:320px; overflow:hidden;
-                  border-radius:8px; background:#000;">
-        <video id="video" style="width:100%; max-height:320px; object-fit:cover;
-               display:block;" muted playsinline autoplay></video>
-        <div style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
-                    width:82%; height:105px; border:3px solid #00e676; border-radius:6px;
-                    box-shadow:0 0 0 2000px rgba(0,0,0,0.35); pointer-events:none;"></div>
-      </div>
-      <div style="text-align:center; margin-top:10px; display:flex; gap:8px; justify-content:center;">
-        <button id="btn-torch" style="background:#0070f3; color:#fff; border:none;
-                border-radius:8px; padding:8px 16px; font-weight:600; cursor:pointer;">
-          💡 Linterna
-        </button>
-      </div>
-      <p id="estado-scan" style="color:#888; font-size:13px; text-align:center; margin-top:6px;">
-        🎥 Activando cámara...
-      </p>
-      <p id="detalle-scan" style="color:#666; font-size:12px; text-align:center; margin:0 8px;">
-        Primero intentará reconocer el Localizador MCD directamente.
-      </p>
-
-      <!-- Código de barras: se mantiene como respaldo -->
-      <script src="https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js"></script>
-      <!-- OCR: reconoce el texto visible MCD.0.3.G.4.120 -->
-      <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-      <script>
-        const estado = document.getElementById("estado-scan");
-        const detalle = document.getElementById("detalle-scan");
-        const video = document.getElementById("video");
-        const torchBtn = document.getElementById("btn-torch");
-        let yaEnvio = false;
-        let streamActual = null;
-        let ocrWorker = null;
-        let ocrActivo = false;
-
-        function mostrarError(msg) {
-          estado.textContent = msg;
-        }
-
-        function normalizarLocalizador(texto) {
-          if (!texto) return null;
-          let s = String(texto).toUpperCase();
-          s = s.replace(/[\n\r\t]/g, " ");
-          // Corrige errores OCR habituales antes de buscar el patrón.
-          s = s.replace(/[|]/g, "I");
-          s = s.replace(/\s+/g, " ");
-
-          // El patrón real de las etiquetas es MCD.0.3.G.4.120, etc.
-          // Permitimos letras/números por segmento para soportar otras posiciones.
-          const m = s.match(/MCD\s*[.\-\s]\s*\d+\s*[.\-\s]\s*\d+\s*[.\-\s]\s*[A-Z0-9]+\s*[.\-\s]\s*\d+\s*[.\-\s]\s*\d+/);
-          if (!m) return null;
-
-          let loc = m[0]
-            .replace(/\s+/g, "")
-            .replace(/-/g, ".");
-
-          // Normaliza separadores repetidos y algunos errores comunes de OCR.
-          loc = loc.replace(/\.\.+/g, ".");
-          loc = loc.replace(/^MCD/i, "MCD");
-
-          if (/^MCD\.\d+\.\d+\.[A-Z0-9]+\.\d+\.\d+$/.test(loc)) {
-            return loc;
-          }
-          return null;
-        }
-
-        function enviarValor(valor, origen) {
-          if (yaEnvio || !valor) return;
-          const loc = normalizarLocalizador(valor);
-          if (!loc) return;
-
-          yaEnvio = true;
-          estado.textContent = "✅ Localizador detectado: " + loc;
-          detalle.textContent = origen === "ocr"
-            ? "🔎 Reconocido desde el texto de la etiqueta. Buscando productos..."
-            : "📦 Obtenido desde el código de barras. Buscando productos...";
-
-          try {
-            const url = new URL(window.parent.location.href);
-            url.searchParams.set("loc", loc);
-            window.parent.location.href = url.href;
-          } catch (e) {
-            window.location.href = "?loc=" + encodeURIComponent(loc);
-          }
-        }
-
-        function enviarCodigoBarras(codigo) {
-          if (yaEnvio || !codigo) return;
-          const valor = String(codigo).trim();
-
-          // No aceptamos falsos positivos como B4B.
-          if (!/^\d{8,14}$/.test(valor)) return;
-
-          // Si el lector de barras entrega directamente un Localizador, también sirve.
-          const loc = normalizarLocalizador(valor);
-          if (loc) {
-            enviarValor(loc, "barcode");
-            return;
-          }
-
-          // Para códigos numéricos que no contienen el MCD, enviamos el número
-          // como loc SOLO como último recurso. La lógica Python resolverá una
-          // equivalencia si existe en el Excel.
-          yaEnvio = true;
-          estado.textContent = "✅ Código detectado: " + valor;
-          detalle.textContent = "🔎 Buscando la relación código → Localizador...";
-          try {
-            const url = new URL(window.parent.location.href);
-            url.searchParams.set("loc", valor);
-            window.parent.location.href = url.href;
-          } catch (e) {
-            window.location.href = "?loc=" + encodeURIComponent(valor);
-          }
-        }
-
-        async function iniciarOCR() {
-          if (ocrActivo || typeof Tesseract === "undefined" || yaEnvio) return;
-          ocrActivo = true;
-          try {
-            detalle.textContent = "🔎 OCR activo: busca el texto MCD.0.3.G.x.xxx...";
-            ocrWorker = await Tesseract.createWorker("eng", 1, {
-              logger: function(m) {
-                if (m.status === "recognizing text") {
-                  const pct = Math.round((m.progress || 0) * 100);
-                  estado.textContent = "🔎 Reconociendo Localizador... " + pct + "%";
-                }
-              }
-            });
-            await ocrWorker.setParameters({
-              tessedit_char_whitelist: "MCD.0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ-",
-              preserve_interword_spaces: "0"
-            });
-
-            const canvas = document.createElement("canvas");
-            const ctx = canvas.getContext("2d", {willReadFrequently:true});
-
-            while (!yaEnvio) {
-              if (!video.videoWidth || !video.videoHeight) {
-                await new Promise(r => setTimeout(r, 700));
-                continue;
-              }
-
-              // Captura principalmente la zona del recuadro verde.
-              const vw = video.videoWidth;
-              const vh = video.videoHeight;
-              const cropW = Math.floor(vw * 0.82);
-              const cropH = Math.floor(vh * 0.34);
-              const sx = Math.floor((vw - cropW) / 2);
-              const sy = Math.floor((vh - cropH) / 2);
-              canvas.width = cropW;
-              canvas.height = cropH;
-              ctx.drawImage(video, sx, sy, cropW, cropH, 0, 0, cropW, cropH);
-
-              try {
-                const resultado = await ocrWorker.recognize(canvas);
-                const texto = resultado?.data?.text || "";
-                const loc = normalizarLocalizador(texto);
-                if (loc) {
-                  enviarValor(loc, "ocr");
-                  break;
-                }
-              } catch (e) {
-                // OCR puede fallar en un fotograma; continuamos con el siguiente.
-              }
-
-              if (!yaEnvio) {
-                estado.textContent = "📷 Buscando Localizador MCD...";
-                await new Promise(r => setTimeout(r, 400));
-              }
-            }
-          } catch (e) {
-            detalle.textContent = "⚠️ OCR no disponible; se mantiene el lector de barras.";
-          } finally {
-            ocrActivo = false;
-          }
-        }
-
-        async function iniciarCamara() {
-          try {
-            streamActual = await navigator.mediaDevices.getUserMedia({
-              video: {
-                facingMode: {ideal: "environment"},
-                width: {ideal: 1920},
-                height: {ideal: 1080},
-                focusMode: {ideal: "continuous"}
-              },
-              audio: false
-            });
-            video.srcObject = streamActual;
-            await video.play();
-            estado.textContent = "📷 Buscando Localizador MCD...";
-
-            try {
-              const track = streamActual.getVideoTracks()[0];
-              const caps = track.getCapabilities ? track.getCapabilities() : {};
-              if (caps.focusMode && caps.focusMode.includes("continuous")) {
-                await track.applyConstraints({advanced:[{focusMode:"continuous"}]});
-              }
-            } catch (e) {}
-
-            // Iniciamos OCR sin bloquear el lector de barras.
-            iniciarOCR();
-          } catch (e) {
-            mostrarError("❌ No se pudo acceder a la cámara: " + (e.message || e));
-          }
-        }
-
-        function iniciarBarras() {
-          if (typeof ZXing === "undefined") return;
-          try {
-            const hints = new Map();
-            hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [
-              ZXing.BarcodeFormat.CODE_128,
-              ZXing.BarcodeFormat.CODE_39,
-              ZXing.BarcodeFormat.EAN_13,
-              ZXing.BarcodeFormat.EAN_8,
-              ZXing.BarcodeFormat.ITF,
-              ZXing.BarcodeFormat.UPC_A
-            ]);
-            hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
-            const reader = new ZXing.BrowserMultiFormatReader(hints);
-            reader.decodeFromVideoDevice(null, video, (result, err) => {
-              if (!result || yaEnvio) return;
-              enviarCodigoBarras(result.getText());
-            });
-          } catch (e) {
-            // OCR continúa siendo el método principal.
-          }
-        }
-
-        torchBtn.onclick = function() {
-          try {
-            const track = streamActual && streamActual.getVideoTracks()[0];
-            if (!track) throw new Error("No hay cámara activa");
-            const settings = track.getSettings();
-            track.applyConstraints({advanced:[{torch:!settings.torch}]})
-              .catch(() => alert("Este dispositivo no permite linterna desde el navegador."));
-          } catch (e) {
-            alert("No se pudo acceder a la linterna.");
-          }
-        };
-
-        let intentos = 0;
-        const esperarLibrerias = setInterval(() => {
-          intentos++;
-          if (typeof ZXing !== "undefined" && typeof Tesseract !== "undefined") {
-            clearInterval(esperarLibrerias);
-            iniciarCamara();
-            setTimeout(iniciarBarras, 1200);
-          } else if (intentos >= 100) {
-            clearInterval(esperarLibrerias);
-            if (typeof Tesseract !== "undefined") {
-              iniciarCamara();
-            } else {
-              mostrarError("❌ No se pudieron cargar los lectores. Recarga la página.");
-            }
-          }
-        }, 100);
-      </script>
-      """,
-      height=430,
-  )
-
-  st.caption(
-      "💡 Recomendado: centra el texto MCD.0.3.G.x.xxx dentro del recuadro verde, "
-      "a unos 10-20 cm. El sistema intenta reconocer primero el Localizador visible "
-      "y usa el código de barras como respaldo."
-  )
-
-  with st.expander("⌨️ ¿No lee el código? Ingresa el Localizador manualmente", expanded=True):
-    loc_manual = st.text_input(
-        "Localizador (ej: MCD.0.3.C.2.013):", key="loc_manual_input"
+    st.markdown("### 📷 Escanear Localizador")
+    st.caption(
+        "Toma una foto de la etiqueta. Se prioriza el Localizador MCD "
+        "impreso debajo del código de barras. El código de barras también "
+        "puede utilizarse como alternativa."
     )
-    buscar_click = st.button("Buscar", key="btn_buscar_manual")
 
-  # Resuelve el Localizador a usar en esta misma ejecución: prioriza el
-  # ingreso manual recién enviado; si no, usa el que venga de la cámara
-  # (parámetro de URL). Evita depender de un segundo round-trip de rerun.
-  loc_query = st.query_params.get("loc", None)
-  loc_escaneado = None
-  if buscar_click and loc_manual.strip():
-    loc_escaneado = loc_manual.strip()
-    st.query_params["loc"] = loc_escaneado
-  elif loc_query:
-    loc_escaneado = loc_query
+    if "activar_camara_scan" not in st.session_state:
+        st.session_state.activar_camara_scan = False
 
-  if st.button("🔄 Limpiar escaneo", key="btn_limpiar_scan"):
-    st.query_params.clear()
-    st.rerun()
+    c1, c2 = st.columns([1, 1])
 
-  if loc_escaneado:
-    df_stock_scan = hojas.get("STOCK")
-    if df_stock_scan is None:
-      st.error("No se encontró la hoja 'STOCK' en el Excel.")
-    else:
-      df_stock_scan = df_stock_scan.copy()
+    with c1:
+        if st.button(
+            "▶️ Activar cámara",
+            key="btn_activar_camara_nativa",
+            use_container_width=True,
+        ):
+            st.session_state.activar_camara_scan = True
+            st.rerun()
 
-      col_loc_scan = next(
-          (c for c in df_stock_scan.columns
-           if c.strip().lower() in ["localizador", "ubicacion"]),
-          None,
-      )
-      col_cod_scan = next(
-          (c for c in df_stock_scan.columns
-           if c.strip().lower() in ["codigo_articulo", "id_producto", "sku", "codigo"]),
-          None,
-      )
-      col_desc_scan = next(
-          (c for c in df_stock_scan.columns if "descripcion" in c.lower()), None
-      )
-      if not col_desc_scan and len(df_stock_scan.columns) > 3:
-        col_desc_scan = df_stock_scan.columns[3]
-      col_lote_scan = next(
-          (c for c in df_stock_scan.columns if c.strip().lower() == "lote_proveedor"),
-          None,
-      )
-      col_cant_scan = next(
-          (c for c in df_stock_scan.columns
-           if c.strip().lower() in ["cantidad", "stock", "unidades"]),
-          None,
-      )
-      col_fecha_scan = next(
-          (c for c in df_stock_scan.columns
-           if c.strip().lower() in ["fecha_expiracion_lote", "vencimiento", "fecha_expiracion"]),
-          None,
-      )
+    with c2:
+        if st.button(
+            "⏹️ Cerrar cámara",
+            key="btn_cerrar_camara_nativa",
+            use_container_width=True,
+        ):
+            st.session_state.activar_camara_scan = False
+            st.session_state.pop("foto_scan_procesada", None)
+            st.rerun()
 
-      if not col_loc_scan:
-        st.error("La hoja STOCK no tiene columna de Localizador reconocible.")
-      else:
-        # ================================================================
-        # RESOLUCIÓN CÓDIGO DE BARRAS -> LOCALIZADOR
-        # ================================================================
-        def _norm_scan_value(v):
-            if v is None or pd.isna(v):
-                return ""
-            s = str(v).strip().upper()
-            if s.endswith(".0"):
-                s = s[:-2]
-            return s
+    if st.session_state.activar_camara_scan:
+        st.info(
+            "📱 Centra en la foto el texto MCD.0.3.G.x.xxx y el código de "
+            "barras. El texto MCD impreso debajo de la barra tiene prioridad."
+        )
 
-        def _parece_localizador(v):
-            s = _norm_scan_value(v)
-            if not s:
-                return False
-            partes = s.split(".")
-            return len(partes) >= 5 and partes[0] == "MCD" and all(part.strip() for part in partes)
+        foto_scan = st.camera_input(
+            "📸 Toma una foto del Localizador MCD",
+            key="camera_scan_native",
+            help=(
+                "Para una lectura más segura, acerca el celular y procura "
+                "que el texto MCD y el código de barras queden nítidos."
+            ),
+        )
 
-        scan_norm = _norm_scan_value(loc_escaneado)
-        localizadores_encontrados = []
-        hoja_mapeo = None
+        if foto_scan is not None:
+            foto_id = (
+                getattr(foto_scan, "file_id", None)
+                or getattr(foto_scan, "name", None)
+                or hash(foto_scan.getvalue())
+            )
 
-        # Respaldo para las etiquetas probadas.
-        MAPEO_PRUEBA = {
-            "9631187073887": "MCD.0.3.G.2.120",
-            "11111283": "MCD.0.3.G.4.120",
-        }
+            if st.session_state.get("foto_scan_procesada") != foto_id:
+                st.session_state["foto_scan_procesada"] = foto_id
 
-        resultado = df_stock_scan[
-            df_stock_scan[col_loc_scan].apply(_norm_scan_value) == scan_norm
-        ].copy()
-
-        if not resultado.empty:
-            localizadores_encontrados = [str(loc_escaneado).strip()]
-            hoja_mapeo = "STOCK"
-
-        if resultado.empty and scan_norm and scan_norm in MAPEO_PRUEBA:
-            localizadores_encontrados = [MAPEO_PRUEBA[scan_norm]]
-            hoja_mapeo = "MAPEO_PRUEBA"
-            loc_norms = {_norm_scan_value(x) for x in localizadores_encontrados}
-            resultado = df_stock_scan[
-                df_stock_scan[col_loc_scan].apply(_norm_scan_value).isin(loc_norms)
-            ].copy()
-
-        # Busca códigos en todas las hojas para encontrar una relación
-        # código -> Localizador si existe en el Excel.
-        if resultado.empty and scan_norm:
-            for nombre_hoja, df_mapeo in hojas.items():
-                if df_mapeo is None or not hasattr(df_mapeo, "columns"):
-                    continue
                 try:
-                    df_mapeo = df_mapeo.copy()
-                except Exception:
-                    continue
+                    import io
+                    import re
+                    import shutil
+                    import subprocess
+                    from PIL import Image, ImageOps, ImageEnhance
 
-                for col in df_mapeo.columns:
+                    imagen = Image.open(
+                        io.BytesIO(foto_scan.getvalue())
+                    ).convert("RGB")
+
+                    st.image(
+                        imagen,
+                        caption="Imagen capturada",
+                        use_container_width=True,
+                    )
+
+                    # -------------------------------------------------
+                    # Normalización MUY estricta del Localizador.
+                    # Importante: no convertir un código de producto en
+                    # un Localizador por medio de un mapeo inventado.
+                    # -------------------------------------------------
+                    def normalizar_localizador_scan(valor):
+                        if valor is None:
+                            return None
+
+                        s = str(valor).upper()
+                        s = (
+                            s.replace("\n", " ")
+                            .replace("\r", " ")
+                            .replace("\t", " ")
+                        )
+
+                        # Errores OCR habituales.
+                        s = s.replace("MCO", "MCD")
+                        s = s.replace("MCDO", "MCD.0")
+                        s = s.replace("MCD0", "MCD.0")
+
+                        # Quitar espacios alrededor de separadores.
+                        s = re.sub(r"\s*[\.\-]\s*", ".", s)
+                        s = re.sub(r"\s+", " ", s).strip()
+
+                        patron = re.compile(
+                            r"\bMCD\.\d+\.\d+\.[A-Z0-9]+\.\d+\.\d+\b"
+                        )
+
+                        m = patron.search(s)
+                        if not m:
+                            return None
+
+                        loc = m.group(0)
+                        loc = re.sub(r"\.{2,}", ".", loc)
+
+                        return loc
+
+                    # -------------------------------------------------
+                    # 1) CÓDIGO DE BARRAS
+                    # -------------------------------------------------
+                    valores_codigo = []
+
                     try:
-                        mask_codigo = df_mapeo[col].apply(_norm_scan_value) == scan_norm
+                        import zxingcpp
+
+                        lecturas = zxingcpp.read_barcodes(imagen)
+
+                        for lectura in lecturas:
+                            try:
+                                valor = str(lectura.text).strip()
+                            except Exception:
+                                valor = ""
+
+                            if valor:
+                                valores_codigo.append(valor)
+
+                    except ImportError:
+                        pass
                     except Exception:
-                        continue
-                    if not mask_codigo.any():
-                        continue
+                        pass
 
-                    filas_match = df_mapeo.loc[mask_codigo]
-                    columnas_loc = [
-                        c for c in df_mapeo.columns
-                        if any(palabra in str(c).strip().lower()
-                               for palabra in ["localizador", "ubicacion", "ubicación", "loc"])
+                    # -------------------------------------------------
+                    # 2) OCR.
+                    #
+                    # Primero intenta pytesseract.
+                    # Si no está disponible, intenta llamar directamente
+                    # al ejecutable "tesseract". Esto permite que funcione
+                    # en Streamlit Cloud cuando está en packages.txt.
+                    # -------------------------------------------------
+                    loc_detectado = None
+                    texto_ocr_total = []
+                    ocr_disponible = False
+
+                    try:
+                        import pytesseract
+
+                        ocr_disponible = True
+                        tesseract_cmd = shutil.which("tesseract")
+
+                        if tesseract_cmd:
+                            pytesseract.pytesseract.tesseract_cmd = (
+                                tesseract_cmd
+                            )
+
+                        w, h = imagen.size
+
+                        # La etiqueta del usuario coloca el Localizador
+                        # debajo de la barra. Se da prioridad a esa zona.
+                        regiones = [
+                            imagen.crop(
+                                (
+                                    0,
+                                    int(h * 0.45),
+                                    w,
+                                    int(h * 0.95),
+                                )
+                            ),
+                            imagen.crop(
+                                (
+                                    int(w * 0.05),
+                                    int(h * 0.55),
+                                    int(w * 0.95),
+                                    int(h * 0.90),
+                                )
+                            ),
+                            imagen,
+                        ]
+
+                        for region in regiones:
+                            if loc_detectado:
+                                break
+
+                            rw, rh = region.size
+                            escala = 4
+
+                            preparada = region.resize(
+                                (
+                                    max(1, rw * escala),
+                                    max(1, rh * escala),
+                                ),
+                                Image.Resampling.LANCZOS,
+                            )
+
+                            gris = ImageOps.grayscale(preparada)
+                            gris = ImageOps.autocontrast(gris)
+                            gris = ImageEnhance.Sharpness(
+                                gris
+                            ).enhance(3.0)
+                            gris = ImageEnhance.Contrast(
+                                gris
+                            ).enhance(2.5)
+
+                            versiones = [
+                                gris,
+                                gris.point(
+                                    lambda p: 255 if p > 135 else 0
+                                ),
+                                gris.point(
+                                    lambda p: 255 if p > 170 else 0
+                                ),
+                            ]
+
+                            for version in versiones:
+                                try:
+                                    texto = pytesseract.image_to_string(
+                                        version,
+                                        config=(
+                                            "--psm 6 "
+                                            "-c "
+                                            "tessedit_char_whitelist="
+                                            "MCD.0123456789"
+                                            "ABCDEFGHIJKLMNOPQRSTUVWXYZ-"
+                                        ),
+                                    )
+                                except Exception:
+                                    texto = ""
+
+                                texto_ocr_total.append(texto)
+                                loc_detectado = (
+                                    normalizar_localizador_scan(texto)
+                                )
+
+                                if loc_detectado:
+                                    break
+
+                    except ImportError:
+                        ocr_disponible = False
+                    except Exception:
+                        ocr_disponible = False
+
+                    # -------------------------------------------------
+                    # 3) Si OCR no encuentra el texto MCD, también
+                    # intentamos que ZXing haya leído directamente el
+                    # Localizador desde el código.
+                    # -------------------------------------------------
+                    if not loc_detectado:
+                        for valor in valores_codigo:
+                            posible = normalizar_localizador_scan(valor)
+                            if posible:
+                                loc_detectado = posible
+                                break
+
+                    # -------------------------------------------------
+                    # 4) RESULTADO.
+                    #
+                    # PRIORIDAD ABSOLUTA:
+                    #    Localizador MCD leído de la etiqueta.
+                    #
+                    # Nunca reemplazar un MCD válido con un mapeo
+                    # genérico de código de barras.
+                    # -------------------------------------------------
+                    if loc_detectado:
+                        st.session_state["loc_scan_detectado"] = (
+                            loc_detectado
+                        )
+                        st.query_params["loc"] = loc_detectado
+
+                        st.success(
+                            f"📍 Localizador detectado: **{loc_detectado}**"
+                        )
+
+                        if valores_codigo:
+                            st.caption(
+                                "Código de barras leído: "
+                                + ", ".join(valores_codigo[:3])
+                            )
+
+                        # Continuamos automáticamente con STOCK.
+                        st.rerun()
+
+                    if valores_codigo:
+                        # Si no hay Localizador MCD, mostramos el código
+                        # para que pueda utilizarse en la búsqueda.
+                        st.info(
+                            "🔢 Código de barras detectado: "
+                            + ", ".join(valores_codigo[:3])
+                        )
+
+                    if not ocr_disponible:
+                        st.error(
+                            "⚠️ OCR no está instalado en el servidor. "
+                            "La cámara funciona, pero el texto MCD no "
+                            "puede leerse automáticamente."
+                        )
+                        st.caption(
+                            "En Streamlit Cloud verifica que requirements.txt "
+                            "contenga pytesseract y que packages.txt contenga "
+                            "tesseract-ocr. Después de subirlos, reinicia "
+                            "la aplicación."
+                        )
+                    elif not loc_detectado and not valores_codigo:
+                        st.warning(
+                            "⚠️ No pude reconocer automáticamente el "
+                            "Localizador MCD ni el código de barras."
+                        )
+                        st.caption(
+                            "Acerca más el celular y procura que el texto "
+                            "MCD.0.3.G.x.xxx quede enfocado."
+                        )
+
+                except Exception as e:
+                    st.error(
+                        f"❌ No se pudo procesar la imagen de la cámara: {e}"
+                    )
+
+    st.caption(
+        "💡 El texto MCD impreso debajo del código de barras es válido "
+        "y tiene prioridad sobre cualquier código numérico."
+    )
+
+    with st.expander(
+        "⌨️ ¿No lee el código? Ingresa el Localizador manualmente",
+        expanded=True,
+    ):
+        loc_manual = st.text_input(
+            "Localizador (ej: MCD.0.3.C.2.013):",
+            key="loc_manual_input",
+        )
+
+        buscar_click = st.button(
+            "Buscar",
+            key="btn_buscar_manual",
+        )
+
+    loc_query = st.query_params.get("loc", None)
+    loc_escaneado = None
+
+    if buscar_click and loc_manual.strip():
+        loc_escaneado = loc_manual.strip().upper()
+        st.query_params["loc"] = loc_escaneado
+    elif loc_query:
+        loc_escaneado = loc_query
+
+    if st.button("🔄 Limpiar escaneo", key="btn_limpiar_scan"):
+        st.query_params.clear()
+        st.session_state.pop("loc_scan_detectado", None)
+        st.session_state.pop("foto_scan_procesada", None)
+        st.rerun()
+
+    if loc_escaneado:
+        df_stock_scan = hojas.get("STOCK")
+
+        if df_stock_scan is None:
+            st.error("No se encontró la hoja 'STOCK' en el Excel.")
+        else:
+            df_stock_scan = df_stock_scan.copy()
+
+            col_loc_scan = next(
+                (
+                    c
+                    for c in df_stock_scan.columns
+                    if c.strip().lower()
+                    in [
+                        "localizador",
+                        "ubicacion",
+                        "ubicación",
                     ]
-                    candidatos = []
-                    for c_loc in columnas_loc:
-                        try:
-                            candidatos.extend(filas_match[c_loc].dropna().astype(str).str.strip().tolist())
-                        except Exception:
-                            pass
-                    if not candidatos:
-                        for _, fila_match in filas_match.iterrows():
-                            for valor in fila_match.tolist():
-                                if _parece_localizador(valor):
-                                    candidatos.append(str(valor).strip())
+                ),
+                None,
+            )
 
-                    candidatos = [x for x in candidatos if _parece_localizador(x)]
-                    candidatos = list(dict.fromkeys(candidatos))
-                    if candidatos:
-                        localizadores_encontrados.extend(candidatos)
-                        hoja_mapeo = nombre_hoja
-                        break
-                if localizadores_encontrados:
-                    break
+            col_cod_scan = next(
+                (
+                    c
+                    for c in df_stock_scan.columns
+                    if c.strip().lower()
+                    in [
+                        "codigo_articulo",
+                        "id_producto",
+                        "sku",
+                        "codigo",
+                        "código",
+                        "ean",
+                        "ean13",
+                        "gtin",
+                        "codigo_barras",
+                        "código_barras",
+                        "codigo_barra",
+                        "código_barra",
+                    ]
+                ),
+                None,
+            )
 
-            localizadores_encontrados = list(dict.fromkeys(localizadores_encontrados))
-            if localizadores_encontrados:
-                loc_norms = {_norm_scan_value(x) for x in localizadores_encontrados}
+            col_desc_scan = next(
+                (
+                    c
+                    for c in df_stock_scan.columns
+                    if "descripcion" in c.lower()
+                    or "descripción" in c.lower()
+                ),
+                None,
+            )
+
+            if not col_desc_scan and len(df_stock_scan.columns) > 3:
+                col_desc_scan = df_stock_scan.columns[3]
+
+            col_lote_scan = next(
+                (
+                    c
+                    for c in df_stock_scan.columns
+                    if c.strip().lower()
+                    in [
+                        "lote_proveedor",
+                        "lote proveedor",
+                        "lote",
+                    ]
+                ),
+                None,
+            )
+
+            col_cant_scan = next(
+                (
+                    c
+                    for c in df_stock_scan.columns
+                    if c.strip().lower()
+                    in [
+                        "cantidad",
+                        "stock",
+                        "unidades",
+                    ]
+                ),
+                None,
+            )
+
+            col_fecha_scan = next(
+                (
+                    c
+                    for c in df_stock_scan.columns
+                    if c.strip().lower()
+                    in [
+                        "fecha_expiracion_lote",
+                        "vencimiento",
+                        "fecha_expiracion",
+                        "fecha expiracion lote",
+                    ]
+                ),
+                None,
+            )
+
+            if not col_loc_scan:
+                st.error(
+                    "La hoja STOCK no tiene columna de Localizador "
+                    "reconocible."
+                )
+            else:
+
+                def _norm_scan_value(v):
+                    if v is None or pd.isna(v):
+                        return ""
+
+                    s = str(v).strip().upper()
+
+                    if s.endswith(".0"):
+                        s = s[:-2]
+
+                    s = re.sub(r"\s+", "", s)
+
+                    return s
+
+                scan_norm = _norm_scan_value(loc_escaneado)
+
+                # -----------------------------------------------------
+                # Búsqueda PRINCIPAL: Localizador exacto en STOCK.
+                # -----------------------------------------------------
                 resultado = df_stock_scan[
-                    df_stock_scan[col_loc_scan].apply(_norm_scan_value).isin(loc_norms)
+                    df_stock_scan[col_loc_scan].apply(
+                        _norm_scan_value
+                    )
+                    == scan_norm
                 ].copy()
 
-        if localizadores_encontrados and not resultado.empty:
-            loc_mostrado = ", ".join(localizadores_encontrados)
-            if hoja_mapeo and hoja_mapeo != "STOCK":
-                st.success(f"📍 Localizador detectado: **{loc_mostrado}**")
-            else:
-                st.success(f"📍 Localizador: **{loc_mostrado}**")
-        elif scan_norm:
-            st.warning(
-                f"⚠️ Se detectó **{loc_escaneado}**, pero no encontré ese Localizador ni una relación código → Localizador en el Excel."
-            )
+                # -----------------------------------------------------
+                # Si no se encontró un Localizador, intentamos el
+                # código de barras directamente en la hoja STOCK.
+                # Esto NO inventa un Localizador.
+                # -----------------------------------------------------
+                if resultado.empty and col_cod_scan:
+                    resultado = df_stock_scan[
+                        df_stock_scan[col_cod_scan].apply(
+                            _norm_scan_value
+                        )
+                        == scan_norm
+                    ].copy()
 
-        # ================================================================
-        # MOSTRAR LOS PRODUCTOS: MISMA LÓGICA QUE LA BÚSQUEDA MANUAL
-        # ================================================================
-        if resultado.empty:
-          st.warning("No se encontró ningún producto registrado en esa posición.")
-        else:
-          if col_cant_scan:
-            resultado[col_cant_scan] = resultado[col_cant_scan].apply(limpiar_numero)
-          if col_cod_scan:
-            resultado[col_cod_scan] = resultado[col_cod_scan].apply(fmt_code)
-          if col_fecha_scan:
-            resultado[col_fecha_scan] = pd.to_datetime(
-                resultado[col_fecha_scan], errors="coerce"
-            ).dt.strftime("%d-%m-%Y")
+                # -----------------------------------------------------
+                # NO usar MAPEO_PRUEBA.
+                #
+                # Ese tipo de diccionario puede transformar un código
+                # válido en una posición equivocada. En este escáner
+                # el MCD visible en la etiqueta es la fuente principal.
+                # -----------------------------------------------------
 
-          for _, fila in resultado.iterrows():
-            desc_txt = fila[col_desc_scan] if col_desc_scan else "Sin descripción"
-            cod_txt = fila[col_cod_scan] if col_cod_scan else "S/N"
-            cant_txt = (
-                formato_unidades(fila[col_cant_scan]) if col_cant_scan else "N/A"
-            )
-            lote_txt = fila[col_lote_scan] if col_lote_scan else "N/A"
-            fecha_txt = fila[col_fecha_scan] if col_fecha_scan else "N/A"
+                if not resultado.empty:
+                    st.success(
+                        f"📍 Localizador: **{loc_escaneado}**"
+                    )
+                else:
+                    st.warning(
+                        f"⚠️ No encontré **{loc_escaneado}** en la hoja STOCK."
+                    )
 
-            st.markdown(
-                f"""
-                <div style="background-color:#141414; border:1px solid #0070f3;
-                            border-radius:10px; padding:16px; margin-bottom:12px;">
-                    <div style="color:#aaaaaa; font-size:12px; text-transform:uppercase;">Producto</div>
-                    <div style="color:#ffffff; font-size:20px; font-weight:bold;">{desc_txt}</div>
-                    <div style="margin-top:8px; color:#cccccc; font-size:14px;">
-                        Código: <b>{cod_txt}</b> · Lote: <b>{lote_txt}</b> · Vence: <b>{fecha_txt}</b>
-                    </div>
-                    <div style="margin-top:8px; color:#2ecc71; font-size:22px; font-weight:bold;">
-                        Stock: {cant_txt} unidades
-                    </div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-  else:
-    st.info("Aún no se ha escaneado ningún código.")
+                if resultado.empty:
+                    st.warning(
+                        "No se encontró ningún producto registrado "
+                        "en esa posición."
+                    )
+                else:
+                    if col_cant_scan:
+                        resultado[col_cant_scan] = resultado[
+                            col_cant_scan
+                        ].apply(limpiar_numero)
+
+                    if col_cod_scan:
+                        resultado[col_cod_scan] = resultado[
+                            col_cod_scan
+                        ].apply(fmt_code)
+
+                    if col_fecha_scan:
+                        resultado[col_fecha_scan] = pd.to_datetime(
+                            resultado[col_fecha_scan],
+                            errors="coerce",
+                        ).dt.strftime("%d-%m-%Y")
+
+                    st.markdown("#### 📦 Productos encontrados")
+
+                    # IMPORTANTE:
+                    # textwrap.dedent evita que Streamlit interprete
+                    # el HTML como bloque de código por la indentación.
+                    import textwrap
+
+                    for _, fila in resultado.iterrows():
+                        desc_txt = (
+                            fila[col_desc_scan]
+                            if col_desc_scan
+                            else "Sin descripción"
+                        )
+
+                        cod_txt = (
+                            fila[col_cod_scan]
+                            if col_cod_scan
+                            else "S/N"
+                        )
+
+                        cant_txt = (
+                            formato_unidades(
+                                fila[col_cant_scan]
+                            )
+                            if col_cant_scan
+                            else "N/A"
+                        )
+
+                        lote_txt = (
+                            fila[col_lote_scan]
+                            if col_lote_scan
+                            else "N/A"
+                        )
+
+                        fecha_txt = (
+                            fila[col_fecha_scan]
+                            if col_fecha_scan
+                            else "N/A"
+                        )
+
+                        # HTML en una sola línea por bloque evita que
+                        # Streamlit interprete los atributos multilínea
+                        # como un bloque de código Markdown.
+                        tarjeta = (
+                            f'<div style="background-color:#141414;'
+                            f'border:1px solid #0070f3;border-radius:10px;'
+                            f'padding:16px;margin-bottom:12px;">'
+                            f'<div style="color:#aaaaaa;font-size:12px;'
+                            f'text-transform:uppercase;">PRODUCTO</div>'
+                            f'<div style="color:#ffffff;font-size:20px;'
+                            f'font-weight:bold;margin-top:6px;">'
+                            f'{desc_txt}</div>'
+                            f'<div style="margin-top:8px;color:#cccccc;'
+                            f'font-size:14px;">'
+                            f'Código: <b>{cod_txt}</b>'
+                            f' · Lote: <b>{lote_txt}</b>'
+                            f' · Vence: <b>{fecha_txt}</b>'
+                            f'</div>'
+                            f'<div style="margin-top:8px;color:#2ecc71;'
+                            f'font-size:22px;font-weight:bold;">'
+                            f'Stock: {cant_txt} unidades</div>'
+                            f'</div>'
+                        )
+
+                        st.markdown(
+                            tarjeta,
+                            unsafe_allow_html=True,
+                        )
+
+    else:
+        st.info("Aún no se ha escaneado ningún código.")
