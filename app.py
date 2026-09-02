@@ -4846,48 +4846,68 @@ with tabs[0]:
   st.caption(
       "SKU con quiebre registrado en 2 o más de las últimas 4 semanas en"
       " SB y/o PU: distingue un quiebre puntual de un problema crónico de"
-      " abastecimiento. Se muestra el Top 20 ordenado por monto."
+      " abastecimiento. Top 10 por canal, ordenado por monto."
   )
   rec_sb = resumen_data.get("quiebre_recurrente_sb", [])
   rec_pu = resumen_data.get("quiebre_recurrente_pu", [])
   rec_todos = list(rec_sb) + list(rec_pu)
-  if rec_todos:
-    df_rec_disp = (
-        pd.DataFrame(rec_todos)
+
+  def _fr_top10_recurrentes(lista_rec):
+    if not lista_rec:
+      return None
+    df_r = (
+        pd.DataFrame(lista_rec)
         .sort_values(by="monto", ascending=False)
-        .head(20)
+        .head(10)
+        .reset_index(drop=True)
     )
-    df_rec_disp = df_rec_disp.rename(
+    df_r.index = df_r.index + 1
+    df_r = df_r.rename(
         columns={
             "sku": "SKU",
             "descripcion": "Descripción",
-            "canal": "Canal",
-            "semanas": "N° Semanas en Quiebre",
-            "monto": "Monto Quiebre Acumulado",
-            "unidades": "Unidades Quiebre Acumuladas",
+            "semanas": "N° Semanas",
+            "monto": "Monto Quiebre",
+            "unidades": "Unidades Quiebre",
         }
     )
-    df_rec_disp["Monto Quiebre Acumulado"] = df_rec_disp[
-        "Monto Quiebre Acumulado"
-    ].apply(formato_moneda)
-    df_rec_disp["Unidades Quiebre Acumuladas"] = df_rec_disp[
-        "Unidades Quiebre Acumuladas"
-    ].apply(lambda v: formato_unidades(v or 0))
-    st.dataframe(
-        df_rec_disp[
-            [
-                "SKU",
-                "Descripción",
-                "Canal",
-                "N° Semanas en Quiebre",
-                "Unidades Quiebre Acumuladas",
-                "Monto Quiebre Acumulado",
-            ]
-        ],
-        hide_index=True,
-        use_container_width=True,
-        height=min(38 * len(df_rec_disp) + 38, 740),
+    df_r["Monto Quiebre"] = df_r["Monto Quiebre"].apply(formato_moneda)
+    df_r["Unidades Quiebre"] = df_r["Unidades Quiebre"].apply(
+        lambda v: formato_unidades(v or 0)
     )
+    df_r.insert(0, "#", df_r.index)
+    return df_r[
+        ["#", "SKU", "Descripción", "N° Semanas", "Unidades Quiebre", "Monto Quiebre"]
+    ]
+
+  if rec_todos:
+    col_rec_sb, col_rec_pu = st.columns(2)
+
+    with col_rec_sb:
+      st.markdown("###### 🏬 SALCOBRAND (SB)")
+      df_rec_sb_top = _fr_top10_recurrentes(rec_sb)
+      if df_rec_sb_top is not None:
+        st.dataframe(
+            df_rec_sb_top,
+            hide_index=True,
+            use_container_width=True,
+            height=min(38 * len(df_rec_sb_top) + 38, 420),
+        )
+      else:
+        st.info("No hay SKU con quiebre recurrente en SB.")
+
+    with col_rec_pu:
+      st.markdown("###### 🏪 PREUNIC (PU)")
+      df_rec_pu_top = _fr_top10_recurrentes(rec_pu)
+      if df_rec_pu_top is not None:
+        st.dataframe(
+            df_rec_pu_top,
+            hide_index=True,
+            use_container_width=True,
+            height=min(38 * len(df_rec_pu_top) + 38, 420),
+        )
+      else:
+        st.info("No hay SKU con quiebre recurrente en PU.")
   else:
     st.info("No hay SKU con quiebre recurrente en las últimas 4 semanas.")
 
@@ -4923,25 +4943,10 @@ with tabs[0]:
   _orden_severidad = {"verde": 0, "amarillo": 1, "rojo": 2}
 
   fr_reciente_pct = None
-  sem_semaforo_sel = None
+  _sem_mas_reciente = None
   if fr4_sb_raw or fr4_pu_raw:
-    # Filtro por semana: por defecto la más reciente, pero permite
-    # elegir otra si esa semana todavía está en curso y sus datos
-    # parciales distorsionan el % (ej. semana que aún no termina).
-    sem_semaforo_sel = st.selectbox(
-        "Semana a evaluar en el semáforo",
-        options=semanas_comb,
-        index=len(semanas_comb) - 1,
-        format_func=lambda s: f"Sem {s}",
-        key="semaforo_sem_sel",
-    )
-    if sem_semaforo_sel == semanas_comb[-1]:
-      st.caption(
-          "⚠️ Esta es la última semana registrada; si aún está en curso,"
-          " el % puede subestimar el Fill Rate porque todavía faltan"
-          " recepciones por ingresar. Puedes elegir otra semana arriba."
-      )
-    _c = combinado_fr[sem_semaforo_sel]
+    _sem_mas_reciente = semanas_comb[-1]
+    _c = combinado_fr[_sem_mas_reciente]
     fr_reciente_pct = (
         (_c["m_recib"] / _c["m_compra"] * 100) if _c["m_compra"] else 0.0
     )
@@ -4961,7 +4966,7 @@ with tabs[0]:
   if fr_reciente_pct is not None:
     sub_estados.append(
         (
-            f"Fill Rate Sem {sem_semaforo_sel} (SB+PU)",
+            f"Fill Rate Sem {_sem_mas_reciente} (SB+PU)",
             f"{fr_reciente_pct:.1f}%",
             _estado_fr(fr_reciente_pct),
         )
@@ -5010,6 +5015,48 @@ with tabs[0]:
                   text-transform:uppercase;">{nombre_sf}</p>
               <p style="font-size:22px; font-weight:700; color:{color_sf};
                   margin:0;">{valor_sf}</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    # ---------------------------------------------------------------
+    # Comparativo Fill Rate por semana (tarjetas apiladas, sin filtrar
+    # ninguna semana): permite ver de un vistazo si la caída es de la
+    # última semana en curso o una tendencia sostenida.
+    # ---------------------------------------------------------------
+    if fr4_sb_raw or fr4_pu_raw:
+      st.markdown("###### 📊 Fill Rate por semana (comparativo)")
+      st.caption(
+          "La última semana puede estar en curso: si su % es bajo,"
+          " compáralo con las anteriores antes de sacar conclusiones."
+      )
+      for _idx_sem, _sem in enumerate(semanas_comb):
+        _c_sem = combinado_fr[_sem]
+        _pct_sem = (
+            (_c_sem["m_recib"] / _c_sem["m_compra"] * 100)
+            if _c_sem["m_compra"]
+            else 0.0
+        )
+        _estado_sem = _estado_fr(_pct_sem)
+        _color_sem = _colores_semaforo[_estado_sem]
+        _es_ultima = _idx_sem == len(semanas_comb) - 1
+        _nota_ultima = (
+            ' <span style="color:#888888; font-weight:400;">'
+            "(última semana, posiblemente en curso)</span>"
+            if _es_ultima
+            else ""
+        )
+        st.markdown(
+            f"""
+            <div style="display:flex; align-items:center; justify-content:space-between;
+                background-color:#141414; border:1px solid #2b2b2b;
+                border-left:4px solid {_color_sem}; border-radius:0 8px 8px 0;
+                padding:10px 16px; margin-bottom:8px;">
+              <p style="font-size:14px; color:#dddddd; margin:0;">
+                  Sem {_sem}{_nota_ultima}</p>
+              <p style="font-size:18px; font-weight:700; color:{_color_sem};
+                  margin:0;">{_pct_sem:.1f}%</p>
             </div>
             """,
             unsafe_allow_html=True,
