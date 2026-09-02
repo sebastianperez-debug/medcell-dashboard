@@ -1370,11 +1370,11 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                   name="Monto OC",
                   marker_color="#0070f3",
                   text=[
-                      f"${v/1e6:.1f}M" if v > 0 else "$0"
+                      f"${round(v/1e6):,.0f}M" if v > 0 else "$0"
                       for v in df_oc_plot["Monto OC"]
                   ],
                   textposition="outside",
-                  textfont=dict(size=10, color="#ffffff"),
+                  textfont=dict(size=14, color="#ffffff", family="Arial Black"),
               )
           )
 
@@ -1386,28 +1386,30 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                   name="Proyección Salida",
                   marker_color="#109618",
                   text=[
-                      f"${v/1e6:.1f}M" if v > 0 else "$0"
+                      f"${round(v/1e6):,.0f}M" if v > 0 else "$0"
                       for v in df_oc_plot["Proyección salida"]
                   ],
                   textposition="outside",
-                  textfont=dict(size=10, color="#ffffff"),
+                  textfont=dict(size=14, color="#ffffff", family="Arial Black"),
               )
           )
 
           fig_oc.update_layout(
               barmode="group",
-              height=360,
+              height=420,
               paper_bgcolor="rgba(0,0,0,0)",
               plot_bgcolor="rgba(0,0,0,0)",
               font=dict(color="#ffffff"),
-              margin=dict(t=30, b=10, l=10, r=10),
-              xaxis=dict(gridcolor="#222222", tickangle=0),
+              margin=dict(t=40, b=10, l=10, r=10),
+              xaxis=dict(gridcolor="#222222", tickangle=0, tickfont=dict(size=12)),
               yaxis=dict(
                   gridcolor="#222222",
                   showticklabels=False,
-                  range=[0, df_oc_plot["Monto OC"].max() * 1.22] if not df_oc_plot.empty else [0, 100],
+                  range=[0, df_oc_plot["Monto OC"].max() * 1.35] if not df_oc_plot.empty else [0, 100],
               ),
-              legend=dict(orientation="h", y=1.15, x=0.2),
+              legend=dict(orientation="h", y=1.15, x=0.2, font=dict(size=13)),
+              uniformtext_minsize=12,
+              uniformtext_mode="show",
           )
           st.plotly_chart(
               fig_oc, use_container_width=True, key=f"bar_oc_comp_{i}"
