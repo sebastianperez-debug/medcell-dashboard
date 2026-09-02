@@ -1,5 +1,6 @@
 import os
-from datetime import datetime
+import re
+from datetime import datetime, timedelta
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -3732,11 +3733,40 @@ for i, nombre_hoja in enumerate(nombres_hojas):
               "No se encontraron bloques de datos reconocibles en esta hoja."
           )
 
+        def _fr_es_col_sku(nombre_col):
+          """Detecta si una columna corresponde al código/SKU del
+          producto, aceptando tanto el encabezado 'SKU' como variantes
+          de 'Código' (con o sin tilde, con o sin prefijo '0-')."""
+          n = str(nombre_col).strip().lower()
+          n_sin_guion = n.replace("-", " ").replace("_", " ")
+          return (
+              "sku" in n
+              or "codigo" in n_sin_guion
+              or "código" in n_sin_guion
+              or n_sin_guion.strip() == "0 med"
+          )
+
+        def _fr_renombrar_encabezados(tabla):
+          """Renombra encabezados crudos poco claros (ej. '0- MED') para
+          que en todas las vistas de la tabla (resumen y detalle
+          completo) se muestren de forma consistente como 'Código'."""
+          mapa_renombre = {}
+          for c in tabla.columns:
+            normalizado = (
+                str(c).strip().lower().replace("-", " ").replace("_", " ")
+            )
+            normalizado = " ".join(normalizado.split())
+            if normalizado in ("0 med", "med", "codigo", "código"):
+              mapa_renombre[c] = "Código"
+          if mapa_renombre:
+            return tabla.rename(columns=mapa_renombre)
+          return tabla
+
         def _fr_tabla_display(tabla):
           """Arma la tabla de detalle con el mismo estilo visual (columnas
           formateadas como texto) que 'TOP 15 Quiebres' en SB/PU."""
           col_sku_fr = next(
-              (c for c in tabla.columns if "sku" in c.lower()), None
+              (c for c in tabla.columns if _fr_es_col_sku(c)), None
           )
           col_desc_fr = next(
               (c for c in tabla.columns if "descrip" in c.lower()), None
@@ -3786,7 +3816,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
           disp = pd.DataFrame()
           if col_sku_fr:
-            disp["SKU"] = tabla[col_sku_fr].astype(str)
+            disp["Código"] = tabla[col_sku_fr].astype(str)
           if col_desc_fr:
             disp["Descripción"] = tabla[col_desc_fr]
           if col_marca_fr:
@@ -3818,7 +3848,334 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
           return disp, tabla.columns.tolist()
 
+        # -----------------------------------------------------------
+        # Tablero de urgencia (Kanban) a partir de la columna
+        # "Comentario"/"Observacion": se parsean fechas exactas (ETA
+        # dd/mm), meses aproximados (Nov-26), semanas de un mes
+        # ("3era Semana Septiembre") y referencias relativas
+        # ("esta semana", "próxima semana").
+        # -----------------------------------------------------------
+        _MESES_ES = {
+            "enero": 1, "febrero": 2, "marzo": 3, "abril": 4, "mayo": 5,
+            "junio": 6, "julio": 7, "agosto": 8, "septiembre": 9,
+            "setiembre": 9, "octubre": 10, "noviembre": 11, "diciembre": 12,
+            "ene": 1, "feb": 2, "mar": 3, "abr": 4, "may": 5, "jun": 6,
+            "jul": 7, "ago": 8, "sep": 9, "set": 9, "oct": 10, "nov": 11,
+            "dic": 12,
+        }
+        _ORDINALES_SEM = {
+            "1": 1, "1era": 1, "1ra": 1, "primera": 1,
+            "2": 2, "2da": 2, "segunda": 2,
+            "3": 3, "3era": 3, "3ra": 3, "tercera": 3,
+            "4": 4, "4ta": 4, "cuarta": 4,
+            "5": 5, "5ta": 5, "quinta": 5,
+        }
+
+        def _fr_intentar_fecha_en_texto(txt, anio_ref, hoy):
+          """Intenta los patrones de fecha conocidos (fecha exacta,
+          mes-año, semana del mes, referencias relativas) sobre un
+          fragmento de texto ya en minúsculas. Devuelve (fecha, tipo)
+          o (None, None)."""
+          # 1) Fecha exacta dd/mm o dd-mm (con año opcional)
+          m = re.search(r"(\d{1,2})[/\-](\d{1,2})(?:[/\-](\d{2,4}))?", txt)
+          if m:
+            d_str, mo_str, y_str = m.groups()
+            try:
+              d, mo = int(d_str), int(mo_str)
+              if 1 <= mo <= 12 and 1 <= d <= 31:
+                y = int(y_str) if y_str else anio_ref
+                if y < 100:
+                  y += 2000
+                fecha = datetime(y, mo, d)
+                # Si la fecha quedó muy en el pasado, se asume el año
+                # siguiente (referencia rueda de un año a otro).
+                if fecha < hoy - timedelta(days=180):
+                  fecha = datetime(y + 1, mo, d)
+                return fecha, "Fecha exacta"
+            except ValueError:
+              pass
+
+          # 2) Mes-Año abreviado, ej. "Nov-26"
+          m = re.search(
+              r"\b(ene|feb|mar|abr|may|jun|jul|ago|sep|set|oct|nov|dic)"
+              r"[a-zñ]*[\-/](\d{2,4})\b",
+              txt,
+          )
+          if m:
+            mes_str, y_str = m.groups()
+            mes = _MESES_ES.get(mes_str)
+            y = int(y_str)
+            if y < 100:
+              y += 2000
+            if mes:
+              return datetime(y, mes, 1), "Mes aproximado"
+
+          # 3) "N-ésima semana de <mes>", ej. "3era Semana Septiembre"
+          m = re.search(
+              r"(\d+era|\d+ra|\d+da|\d+ta|\d+|primera|segunda|tercera|"
+              r"cuarta|quinta)\s*semana\s+(?:de\s+)?([a-zñ]+)",
+              txt,
+          )
+          if m:
+            ord_str, mes_str = m.groups()
+            n = _ORDINALES_SEM.get(ord_str)
+            mes = _MESES_ES.get(mes_str)
+            if n and mes:
+              dia = min(28, (n - 1) * 7 + 1)
+              try:
+                return datetime(anio_ref, mes, dia), "Semana del mes"
+              except ValueError:
+                pass
+
+          # 4) Referencias relativas: "esta semana" / "próxima semana"
+          if "esta semana" in txt:
+            dias_hasta_viernes = (4 - hoy.weekday()) % 7
+            return hoy + timedelta(days=dias_hasta_viernes), "Esta semana"
+          if (
+              "proxima semana" in txt
+              or "próxima semana" in txt
+              or "semana que viene" in txt
+          ):
+            return hoy + timedelta(days=7), "Próximas semanas"
+
+          return None, None
+
+        def _fr_parse_fecha_comentario(comentario, hoy=None):
+          """Intenta extraer una fecha estimada de resolución desde un
+          comentario en español. Devuelve (fecha, tipo) o (None, None)
+          si no se pudo identificar nada.
+
+          Reglas de prioridad:
+          1) 'Recuperado' -> ya se resolvió, cuenta como esta semana.
+          2) Si el comentario menciona 'Sell in' o 'SI' junto a una
+             fecha (dd/mm, semana del mes, etc.), esa fecha manda por
+             sobre cualquier ETA que también aparezca en el texto.
+          3) En cualquier otro caso, se usa la primera fecha detectable
+             con los patrones estándar (ETA, mes-año, semana del mes,
+             referencias relativas)."""
+          if not comentario or not isinstance(comentario, str):
+            return None, None
+          original = comentario.strip()
+          txt = original.lower()
+          if not txt:
+            return None, None
+          hoy = hoy or datetime.now()
+          anio_ref = hoy.year
+
+          # 1) Ya recuperado: se considera resuelto esta semana.
+          if "recuperad" in txt:
+            return hoy, "Recuperado"
+
+          # 2) Priorizar fecha de Sell In / SI sobre una ETA anterior.
+          m_si = re.search(r"sell\s*in", txt)
+          if not m_si:
+            m_si = re.search(r"\bSI\b", original)
+          if m_si:
+            fecha_si, _tipo_si = _fr_intentar_fecha_en_texto(
+                txt[m_si.start():], anio_ref, hoy
+            )
+            if fecha_si is not None:
+              return fecha_si, "Sell In"
+
+          # 3) Fallback: primera fecha detectable en todo el comentario.
+          return _fr_intentar_fecha_en_texto(txt, anio_ref, hoy)
+
+        _FR_MESES_ABREV = {
+            1: "ene", 2: "feb", 3: "mar", 4: "abr", 5: "may", 6: "jun",
+            7: "jul", 8: "ago", 9: "sep", 10: "oct", 11: "nov", 12: "dic",
+        }
+
+        def _fr_build_kanban(tabla, hoy=None):
+          """Arma las 4 columnas del tablero de urgencia (Sin fecha /
+          Esta semana / Próximas 2 semanas / Este mes) a partir de las
+          fechas estimadas parseadas desde la columna de comentario /
+          observación de la tabla original.
+
+          Las columnas se calculan con semanas de calendario reales
+          (lunes a domingo), no con ventanas de "7 días corridos desde
+          hoy": así el 07-09, por ejemplo, cae en la semana calendario
+          que le corresponde y no en 'Esta semana' solo por estar a
+          pocos días de distancia."""
+          col_sku = next(
+              (c for c in tabla.columns if _fr_es_col_sku(c)), None
+          )
+          col_desc = next(
+              (c for c in tabla.columns if "descrip" in c.lower()), None
+          )
+          col_quiebre = next(
+              (
+                  c
+                  for c in tabla.columns
+                  if c.strip().lower().startswith("quiebre $")
+              ),
+              None,
+          )
+          col_estado = next(
+              (
+                  c
+                  for c in tabla.columns
+                  if c.strip().lower() == "observacion"
+              ),
+              None,
+          )
+
+          if col_estado is None or (col_sku is None and col_desc is None):
+            return None
+
+          hoy = hoy or datetime.now()
+          hoy_fecha = hoy.date() if hasattr(hoy, "date") else hoy
+
+          # Límites de semana de calendario (lunes a domingo).
+          lunes_actual = hoy_fecha - timedelta(days=hoy_fecha.weekday())
+          fin_semana_actual = lunes_actual + timedelta(days=6)
+          fin_proximas_2_semanas = fin_semana_actual + timedelta(days=14)
+
+          columnas = {
+              "Sin fecha / más adelante": [],
+              "Esta semana": [],
+              "Próximas 2 semanas": [],
+              "Este mes": [],
+          }
+
+          for _, row in tabla.iterrows():
+            comentario = row.get(col_estado)
+            fecha, tipo_fecha = _fr_parse_fecha_comentario(comentario, hoy)
+
+            etiqueta_sku = (
+                str(row.get(col_sku, "")).strip() if col_sku else ""
+            )
+            etiqueta_desc = (
+                str(row.get(col_desc, "")).strip() if col_desc else ""
+            )
+            if etiqueta_sku and etiqueta_desc:
+              etiqueta = f"{etiqueta_sku} · {etiqueta_desc}"
+            else:
+              etiqueta = etiqueta_desc or etiqueta_sku or "(sin SKU)"
+
+            quiebre_val = (
+                abs(_fr_num(row.get(col_quiebre)) or 0) if col_quiebre else 0
+            )
+
+            fecha_txt = (
+                f"{fecha.day} {_FR_MESES_ABREV.get(fecha.month, '')}"
+                if fecha is not None
+                else None
+            )
+
+            item = {
+                "etiqueta": etiqueta[:70],
+                "quiebre": quiebre_val,
+                "comentario": str(comentario) if comentario else "",
+                "fecha_txt": fecha_txt,
+                "tipo_fecha": tipo_fecha,
+            }
+
+            if fecha is None:
+              columnas["Sin fecha / más adelante"].append(item)
+              continue
+
+            fecha_date = fecha.date() if hasattr(fecha, "date") else fecha
+
+            if fecha_date <= fin_semana_actual:
+              # Incluye también fechas atrasadas (overdue): si ya
+              # debería haber llegado, es urgente ahora.
+              columnas["Esta semana"].append(item)
+            elif fecha_date <= fin_proximas_2_semanas:
+              columnas["Próximas 2 semanas"].append(item)
+            elif (
+                fecha_date.month == hoy_fecha.month
+                and fecha_date.year == hoy_fecha.year
+            ):
+              columnas["Este mes"].append(item)
+            else:
+              columnas["Sin fecha / más adelante"].append(item)
+
+          # Ordenar cada columna de mayor a menor quiebre ($), para que
+          # lo más urgente/costoso aparezca primero.
+          for nombre_col in columnas:
+            columnas[nombre_col].sort(
+                key=lambda x: x["quiebre"], reverse=True
+            )
+
+          if not any(columnas.values()):
+            return None
+
+          return columnas
+
+        _FR_KANBAN_COLORES = {
+            "Esta semana": "#e34948",
+            "Próximas 2 semanas": "#f1c40f",
+            "Este mes": "#5f5e5a",
+            "Sin fecha / más adelante": "#3d3d3a",
+        }
+
+        def _fr_render_kanban(columnas, key_prefix=""):
+          """Renderiza el tablero de 4 columnas con tarjetas por SKU,
+          usando el mismo estilo visual oscuro del resto de la app. Cada
+          tarjeta muestra la fecha estimada ya calculada (no solo el
+          comentario crudo), para que quede clara sin depender del
+          nombre de la columna."""
+          st.markdown(
+              """
+              <style>
+              .fr-kanban-col-title { font-size:13px; font-weight:600;
+                text-transform:uppercase; letter-spacing:0.5px;
+                margin-bottom:8px; }
+              .fr-kanban-card { background-color:#141414; border:1px solid #2b2b2b;
+                border-radius:0 8px 8px 0; padding:10px 12px; margin-bottom:8px; }
+              .fr-kanban-card-title { font-size:13px; font-weight:600;
+                color:#ffffff; margin:0 0 2px 0; }
+              .fr-kanban-card-sub { font-size:12px; color:#aaaaaa; margin:0; }
+              .fr-kanban-card-fecha { font-size:11px; font-weight:600;
+                margin:4px 0 0 0; }
+              </style>
+              """,
+              unsafe_allow_html=True,
+          )
+          cols_st = st.columns(4)
+          for col_st, (nombre_col, items) in zip(
+              cols_st, columnas.items()
+          ):
+            with col_st:
+              color_borde = _FR_KANBAN_COLORES.get(nombre_col, "#333333")
+              st.markdown(
+                  f'<div class="fr-kanban-col-title" style="color:{color_borde};">'
+                  f"{nombre_col} ({len(items)})</div>",
+                  unsafe_allow_html=True,
+              )
+              if not items:
+                st.markdown(
+                    '<p style="font-size:12px; color:#555555;">Sin quiebres</p>',
+                    unsafe_allow_html=True,
+                )
+                continue
+              for item in items:
+                monto_txt = (
+                    formato_moneda(item["quiebre"])
+                    if item["quiebre"]
+                    else "$0"
+                )
+                comentario_txt = item["comentario"] or "Sin comentario"
+                fecha_html = ""
+                if item.get("fecha_txt"):
+                  fecha_html = (
+                      f'<p class="fr-kanban-card-fecha" style="color:{color_borde};">'
+                      f'→ {item["fecha_txt"]}</p>'
+                  )
+                st.markdown(
+                    f'<div class="fr-kanban-card" style="border-left:3px solid {color_borde};">'
+                    f'<p class="fr-kanban-card-title">{item["etiqueta"]}</p>'
+                    f'<p class="fr-kanban-card-sub">{monto_txt} · {comentario_txt}</p>'
+                    f"{fecha_html}"
+                    "</div>",
+                    unsafe_allow_html=True,
+                )
+
         for idx_b, bloque in enumerate(bloques_fr):
+          # Normalizar encabezados poco claros (ej. '0- MED') a 'Código'
+          # para que se vean igual en todas las vistas de esta tabla.
+          bloque["tabla"] = _fr_renombrar_encabezados(bloque["tabla"])
+
           titulo_mostrar = (
               titulos_fallback[idx_b]
               if idx_b < len(titulos_fallback)
@@ -3899,6 +4256,26 @@ for i, nombre_hoja in enumerate(nombres_hojas):
               )
           else:
             st.info("No hay productos en este bloque para la semana actual.")
+
+          # -------------------------------------------------------
+          # Tablero de urgencia (Kanban) para este bloque: agrupa los
+          # quiebres en Esta semana / Próximas 2 semanas / Este mes / Sin
+          # fecha, según lo que se pudo interpretar del comentario.
+          # -------------------------------------------------------
+          columnas_kanban_fr = _fr_build_kanban(bloque["tabla"])
+          if columnas_kanban_fr is not None:
+            st.markdown("##### 🗂️ Tablero de urgencia de resolución")
+            st.caption(
+                "Agrupado según la fecha estimada extraída del "
+                "'Comentario' (ETA, semanas, meses). Ordenado de mayor a "
+                "menor quiebre ($) dentro de cada columna."
+            )
+            _fr_render_kanban(columnas_kanban_fr, key_prefix=f"fr_{idx_b}")
+          else:
+            st.caption(
+                "ℹ️ No hay suficiente información en los comentarios de "
+                "este bloque para armar el tablero de urgencia."
+            )
 
           st.divider()
 
