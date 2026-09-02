@@ -1193,7 +1193,11 @@ for i, nombre_hoja in enumerate(nombres_hojas):
               font=dict(color="#ffffff"),
               margin=dict(t=10, b=10, l=10, r=10),
               xaxis=dict(gridcolor="#222222"),
-              yaxis=dict(gridcolor="#222222"),
+              yaxis=dict(
+                  gridcolor="#222222",
+                  categoryorder="array",
+                  categoryarray=list(df_resumen[mes_col])[::-1],
+              ),
               legend=dict(orientation="h", y=1.15),
           )
           st.plotly_chart(
