@@ -1373,9 +1373,10 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                       f"${round(v/1e6):,.0f}M" if v > 0 else "$0"
                       for v in df_oc_plot["Monto OC"]
                   ],
-                  textposition="outside",
+                  textposition="inside",
+                  insidetextanchor="end",
                   textangle=0,
-                  textfont=dict(size=12, color="#ffffff", family="Arial Black"),
+                  textfont=dict(size=13, color="#ffffff", family="Arial Black"),
                   cliponaxis=False,
               )
           )
@@ -1391,9 +1392,10 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                       f"${round(v/1e6):,.0f}M" if v > 0 else "$0"
                       for v in df_oc_plot["Proyección salida"]
                   ],
-                  textposition="outside",
+                  textposition="inside",
+                  insidetextanchor="end",
                   textangle=0,
-                  textfont=dict(size=12, color="#ffffff", family="Arial Black"),
+                  textfont=dict(size=13, color="#ffffff", family="Arial Black"),
                   cliponaxis=False,
               )
           )
@@ -1411,7 +1413,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
               yaxis=dict(
                   gridcolor="#222222",
                   showticklabels=False,
-                  range=[0, df_oc_plot["Monto OC"].max() * 1.35] if not df_oc_plot.empty else [0, 100],
+                  range=[0, df_oc_plot["Monto OC"].max() * 1.15] if not df_oc_plot.empty else [0, 100],
               ),
               legend=dict(orientation="h", y=1.15, x=0.2, font=dict(size=13)),
               uniformtext_minsize=10,
