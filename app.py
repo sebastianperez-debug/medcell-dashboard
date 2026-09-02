@@ -3025,11 +3025,40 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                   lbl_metric = f"Fill Rate Unidades (Sem {fmt_sem(sem_top)})"
 
                 st.markdown(f"#### 📌 {str(div_nombre).upper()}")
-                st.metric(
-                    label=lbl_metric,
-                    value=f"{fr_div_pct:.1f}%",
-                    delta=delta_str,
-                )
+                col_metric_fr, col_metric_oc = st.columns(2)
+                with col_metric_fr:
+                  st.metric(
+                      label=lbl_metric,
+                      value=f"{fr_div_pct:.1f}%",
+                      delta=delta_str,
+                  )
+
+                # % de OC cumplidas al 100% (sin quiebre en ninguna de sus
+                # líneas) vs OC que tuvieron algún quiebre, para esta
+                # división y la semana seleccionada.
+                if col_oc and col_oc in df_div.columns:
+                  grp_oc_cumpl_div = df_div.groupby(col_oc)[
+                      "quiebre_unid_calc"
+                  ].sum()
+                  total_oc_div = grp_oc_cumpl_div.shape[0]
+                  oc_cumplidas_div = int((grp_oc_cumpl_div <= 0).sum())
+                  oc_con_quiebre_div = total_oc_div - oc_cumplidas_div
+                  pct_oc_cumplidas_div = (
+                      (oc_cumplidas_div / total_oc_div * 100)
+                      if total_oc_div > 0
+                      else 0.0
+                  )
+
+                  with col_metric_oc:
+                    st.metric(
+                        label="OC Cumplidas al 100%",
+                        value=f"{pct_oc_cumplidas_div:.1f}%",
+                        delta=(
+                            f"{oc_cumplidas_div} de {total_oc_div} OC"
+                            f" ({oc_con_quiebre_div} con quiebre)"
+                        ),
+                        delta_color="off",
+                    )
 
                 grp_top = df_div.groupby(
                     [col_sku, col_desc], as_index=False
