@@ -1351,74 +1351,125 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         with col_oc_grafico:
           st.markdown("##### 📊 Comparativo Monto OC vs Proyección Salida")
 
-          # Modelo limpio: Barras Verticales Agrupadas por Canal y Categoría con valores formateados en Millones ($M)
-          df_oc_plot = df_oc_tab.copy()
-          df_oc_plot["Etiqueta"] = (
-              df_oc_plot["Canal"]
-              + "<br><sub>("
-              + df_oc_plot["Concepto"]
-              + ")</sub>"
-          )
-
-          fig_oc = go.Figure()
-
-          # Barra Monto OC
-          fig_oc.add_trace(
-              go.Bar(
-                  x=df_oc_plot["Etiqueta"],
-                  y=df_oc_plot["Monto OC"],
-                  name="Monto OC",
-                  marker_color="#0070f3",
-                  text=[
-                      f"${round(v/1e6):,.0f}M" if v > 0 else "$0"
-                      for v in df_oc_plot["Monto OC"]
-                  ],
-                  textposition="inside",
-                  insidetextanchor="end",
-                  textangle=0,
-                  textfont=dict(size=13, color="#ffffff", family="Arial Black"),
-                  cliponaxis=False,
+          def _agregar_barras_oc(fig, df_sub, row=None, col=None, mostrar_leyenda=True):
+              """Agrega las barras Monto OC / Proyección Salida (a un Figure simple o a un subplot)."""
+              kwargs_pos = {"row": row, "col": col} if row is not None else {}
+              fig.add_trace(
+                  go.Bar(
+                      x=df_sub["Canal"],
+                      y=df_sub["Monto OC"],
+                      name="Monto OC",
+                      marker_color="#0070f3",
+                      text=[
+                          f"${round(v/1e6):,.0f}M" if v > 0 else "$0"
+                          for v in df_sub["Monto OC"]
+                      ],
+                      textposition="inside",
+                      insidetextanchor="end",
+                      textangle=0,
+                      textfont=dict(size=13, color="#ffffff", family="Arial Black"),
+                      cliponaxis=False,
+                      showlegend=mostrar_leyenda,
+                      legendgroup="Monto OC",
+                  ),
+                  **kwargs_pos,
               )
-          )
-
-          # Barra Proyección Salida
-          fig_oc.add_trace(
-              go.Bar(
-                  x=df_oc_plot["Etiqueta"],
-                  y=df_oc_plot["Proyección salida"],
-                  name="Proyección Salida",
-                  marker_color="#109618",
-                  text=[
-                      f"${round(v/1e6):,.0f}M" if v > 0 else "$0"
-                      for v in df_oc_plot["Proyección salida"]
-                  ],
-                  textposition="inside",
-                  insidetextanchor="end",
-                  textangle=0,
-                  textfont=dict(size=13, color="#ffffff", family="Arial Black"),
-                  cliponaxis=False,
+              fig.add_trace(
+                  go.Bar(
+                      x=df_sub["Canal"],
+                      y=df_sub["Proyección salida"],
+                      name="Proyección Salida",
+                      marker_color="#109618",
+                      text=[
+                          f"${round(v/1e6):,.0f}M" if v > 0 else "$0"
+                          for v in df_sub["Proyección salida"]
+                      ],
+                      textposition="inside",
+                      insidetextanchor="end",
+                      textangle=0,
+                      textfont=dict(size=13, color="#ffffff", family="Arial Black"),
+                      cliponaxis=False,
+                      showlegend=mostrar_leyenda,
+                      legendgroup="Proyección Salida",
+                  ),
+                  **kwargs_pos,
               )
-          )
 
-          fig_oc.update_layout(
-              barmode="group",
-              bargap=0.35,
-              bargroupgap=0.15,
-              height=440,
-              paper_bgcolor="rgba(0,0,0,0)",
-              plot_bgcolor="rgba(0,0,0,0)",
-              font=dict(color="#ffffff"),
-              margin=dict(t=40, b=10, l=10, r=10),
-              xaxis=dict(gridcolor="#222222", tickangle=0, tickfont=dict(size=12)),
-              yaxis=dict(
-                  gridcolor="#222222",
-                  showticklabels=False,
-                  range=[0, df_oc_plot["Monto OC"].max() * 1.15] if not df_oc_plot.empty else [0, 100],
-              ),
-              legend=dict(orientation="h", y=1.15, x=0.2, font=dict(size=13)),
-              uniformtext_minsize=10,
-              uniformtext_mode="show",
-          )
+          if vista_oc == "Ambos":
+              # "Ambos" mezcla montos muy dispares (ej. $9M vs $1.200M) en una
+              # misma escala, lo que hacía que las etiquetas de las barras
+              # chicas no entraran y se superpusieran. Se separan en dos
+              # paneles, cada uno con su propio eje Y, para que cada grupo
+              # use el rango de escala que le corresponde.
+              df_vig = df_oc_tab[df_oc_tab["Concepto"] == "OC vigente"]
+              df_proy = df_oc_tab[df_oc_tab["Concepto"] == "Proyección Compra"]
+
+              fig_oc = make_subplots(
+                  rows=1, cols=2,
+                  subplot_titles=("OC vigente", "Proyección Compra"),
+                  horizontal_spacing=0.1,
+              )
+
+              _agregar_barras_oc(fig_oc, df_vig, row=1, col=1, mostrar_leyenda=True)
+              _agregar_barras_oc(fig_oc, df_proy, row=1, col=2, mostrar_leyenda=False)
+
+              max_vig = df_vig["Monto OC"].max() if not df_vig.empty else 100
+              max_proy = df_proy["Monto OC"].max() if not df_proy.empty else 100
+
+              fig_oc.update_yaxes(
+                  gridcolor="#222222", showticklabels=False,
+                  range=[0, max_vig * 1.15], row=1, col=1,
+              )
+              fig_oc.update_yaxes(
+                  gridcolor="#222222", showticklabels=False,
+                  range=[0, max_proy * 1.15], row=1, col=2,
+              )
+              fig_oc.update_xaxes(gridcolor="#222222", tickangle=0, tickfont=dict(size=12), row=1, col=1)
+              fig_oc.update_xaxes(gridcolor="#222222", tickangle=0, tickfont=dict(size=12), row=1, col=2)
+
+              fig_oc.update_layout(
+                  barmode="group",
+                  bargap=0.35,
+                  bargroupgap=0.15,
+                  height=440,
+                  paper_bgcolor="rgba(0,0,0,0)",
+                  plot_bgcolor="rgba(0,0,0,0)",
+                  font=dict(color="#ffffff"),
+                  margin=dict(t=50, b=10, l=10, r=10),
+                  legend=dict(orientation="h", y=1.2, x=0.2, font=dict(size=13)),
+                  uniformtext_minsize=10,
+                  uniformtext_mode="show",
+              )
+              # Los títulos de cada panel (subplot_titles) usan el color por
+              # defecto de Plotly; se fuerza blanco para que se vean sobre
+              # el fondo oscuro del dashboard.
+              fig_oc.update_annotations(font=dict(color="#ffffff", size=13))
+          else:
+              df_oc_plot = df_oc_tab.copy()
+
+              fig_oc = go.Figure()
+              _agregar_barras_oc(fig_oc, df_oc_plot, mostrar_leyenda=True)
+
+              fig_oc.update_layout(
+                  barmode="group",
+                  bargap=0.35,
+                  bargroupgap=0.15,
+                  height=440,
+                  paper_bgcolor="rgba(0,0,0,0)",
+                  plot_bgcolor="rgba(0,0,0,0)",
+                  font=dict(color="#ffffff"),
+                  margin=dict(t=40, b=10, l=10, r=10),
+                  xaxis=dict(gridcolor="#222222", tickangle=0, tickfont=dict(size=12)),
+                  yaxis=dict(
+                      gridcolor="#222222",
+                      showticklabels=False,
+                      range=[0, df_oc_plot["Monto OC"].max() * 1.15] if not df_oc_plot.empty else [0, 100],
+                  ),
+                  legend=dict(orientation="h", y=1.15, x=0.2, font=dict(size=13)),
+                  uniformtext_minsize=10,
+                  uniformtext_mode="show",
+              )
+
           st.plotly_chart(
               fig_oc, use_container_width=True, key=f"bar_oc_comp_{i}"
           )
