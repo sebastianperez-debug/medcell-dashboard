@@ -15,201 +15,162 @@ st.set_page_config(page_title="Medcell Operaciones", layout="wide")
 st.markdown(
     """
     <style>
-    :root {
-        --mc-bg: #0b1220;
-        --mc-panel: #111c2e;
-        --mc-panel-2: #16243a;
-        --mc-border: rgba(148, 163, 184, .18);
-        --mc-text: #f8fafc;
-        --mc-muted: #94a3b8;
-        --mc-primary: #38bdf8;
-        --mc-primary-2: #0ea5e9;
-        --mc-success: #22c55e;
-        --mc-warning: #f59e0b;
-        --mc-danger: #ef4444;
+    .stApp { background-color: #0b0b0b; color: #ffffff; }
+    
+    .medcell-header { 
+        border-bottom: 3px solid #0070f3; 
+        padding-bottom: 12px; 
+        margin-bottom: 25px; 
+    }
+    .medcell-brand { 
+        font-size: 34px; 
+        font-weight: 900; 
+        letter-spacing: 2px; 
+        color: #ffffff; 
+        text-transform: uppercase; 
+        font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    }
+    .medcell-brand span { color: #0070f3; }
+    .medcell-subtitle { color: #aaaaaa; font-size: 13px; font-weight: 600; letter-spacing: 1px; margin-top: 2px; }
+    .medcell-author { color: #777777; font-size: 11px; margin-top: 4px; font-style: italic; }
+
+    /* Estilo de Tarjetas de Filtro por Semana */
+    div[data-testid="stRadio"] > label { display: none !important; }
+    div[data-testid="stRadio"] [role="radiogroup"] {
+        display: flex !important;
+        flex-wrap: wrap !important;
+        gap: 12px !important;
+        margin-top: 8px !important;
+    }
+    div[data-testid="stRadio"] [role="radiogroup"] > label {
+        background-color: #141414 !important;
+        border: 1px solid #2b2b2b !important;
+        padding: 10px 22px !important;
+        border-radius: 10px !important;
+        cursor: pointer !important;
+        transition: all 0.25s ease-in-out !important;
+        color: #cccccc !important;
+        font-weight: 600 !important;
+        font-size: 14px !important;
+        box-sizing: border-box !important;
+        margin: 0 !important;
+    }
+    div[data-testid="stRadio"] [role="radiogroup"] > label:hover {
+        border-color: #0070f3 !important;
+        background-color: #1e1e1e !important;
+        color: #ffffff !important;
+        transform: translateY(-2px);
+    }
+    div[data-testid="stRadio"] [role="radiogroup"] > label[data-checked="true"] {
+        background-color: #0070f3 !important;
+        border-color: #0070f3 !important;
+        color: #ffffff !important;
+        box-shadow: 0px 4px 14px rgba(0, 112, 243, 0.4);
     }
 
-    .stApp {
-        background:
-            radial-gradient(circle at 8% 0%, rgba(14,165,233,.14), transparent 28%),
-            radial-gradient(circle at 100% 10%, rgba(59,130,246,.10), transparent 24%),
-            var(--mc-bg);
-        color: var(--mc-text);
+    /* En celular: exactamente 2 semanas por fila, ocupando mejor el ancho. */
+    @media (max-width: 768px) {
+        div[data-testid="stRadio"] {
+            width: 100% !important;
+            max-width: none !important;
+            margin-top: 0 !important;
+            margin-bottom: 8px !important;
+        }
+        div[data-testid="stRadio"] > div {
+            width: 100% !important;
+            max-width: none !important;
+        }
+        div[data-testid="stRadio"] [role="radiogroup"] {
+            display: grid !important;
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            column-gap: 10px !important;
+            row-gap: 10px !important;
+            width: 100% !important;
+            max-width: none !important;
+            margin-top: 0 !important;
+        }
+        div[data-testid="stRadio"] [role="radiogroup"] > label {
+            width: 100% !important;
+            min-width: 0 !important;
+            height: 58px !important;
+            padding: 10px 12px !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: flex-start !important;
+            margin: 0 !important;
+        }
     }
 
-    [data-testid="stHeader"] {
-        background: transparent;
-    }
-
-    [data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #0d1728 0%, #0a1322 100%);
-        border-right: 1px solid var(--mc-border);
-    }
-
-    [data-testid="stSidebar"] > div:first-child {
-        padding-top: 1.25rem;
-    }
-
-    .block-container {
-        max-width: 1600px;
-        padding: 2rem 2.5rem 3rem;
-    }
-
-    .medcell-header {
-        padding: 1.4rem 1.6rem;
-        margin-bottom: 1.5rem;
-        border: 1px solid var(--mc-border);
-        border-radius: 20px;
-        background: linear-gradient(135deg, rgba(17,28,46,.96), rgba(22,36,58,.82));
-        box-shadow: 0 18px 45px rgba(0,0,0,.18);
-    }
-
-    .medcell-brand {
-        font-size: clamp(1.8rem, 3vw, 2.7rem);
-        font-weight: 850;
-        letter-spacing: -.04em;
-        color: var(--mc-text);
-        text-transform: none;
-    }
-
-    .medcell-brand span { color: var(--mc-primary); }
-    .medcell-subtitle { color: var(--mc-muted); font-size: .9rem; font-weight: 600; letter-spacing: .04em; }
-    .medcell-author { color: #64748b; font-size: .75rem; margin-top: .35rem; }
-
-    div[data-testid="stMetric"] {
-        background: linear-gradient(145deg, var(--mc-panel), var(--mc-panel-2));
-        border: 1px solid var(--mc-border);
-        border-radius: 16px;
-        padding: 1rem 1.1rem;
-        box-shadow: 0 10px 25px rgba(0,0,0,.12);
-    }
-
-    div[data-testid="stMetricLabel"] {
-        color: var(--mc-muted) !important;
-        font-weight: 650 !important;
-    }
-
-    div[data-testid="stMetricValue"] {
-        color: var(--mc-text) !important;
-        font-weight: 800 !important;
-    }
-
-    .stButton > button, .stDownloadButton > button {
-        border-radius: 10px;
-        border: 1px solid rgba(56,189,248,.35);
-        background: rgba(14,165,233,.12);
-        color: var(--mc-text);
-        font-weight: 700;
-        transition: all .2s ease;
-    }
-
-    .stButton > button:hover, .stDownloadButton > button:hover {
-        border-color: var(--mc-primary);
-        background: rgba(14,165,233,.24);
-        transform: translateY(-1px);
-    }
-
-    div[data-testid="stDataFrame"], .stTable {
-        border: 1px solid var(--mc-border);
-        border-radius: 14px;
-        overflow: hidden;
-    }
-
+    /* Pestañas generales */
     .stTabs [data-baseweb="tab-list"] {
-        gap: .45rem;
-        background: transparent;
+        gap: 8px; background-color: #121212; padding: 8px 12px; border-radius: 10px; border: 1px solid #262626; margin-bottom: 20px;
     }
-
     .stTabs [data-baseweb="tab"] {
-        border-radius: 10px;
-        padding: .65rem 1rem;
-        color: var(--mc-muted);
+        height: 42px; white-space: pre-wrap; background-color: #1a1a1a; border-radius: 8px; color: #888888; font-weight: 600; font-size: 14px; border: 1px solid #2b2b2b; padding: 0px 20px; transition: all 0.3s ease;
     }
+    .stTabs [data-baseweb="tab"]:hover { color: #ffffff; background-color: #242424; border-color: #0070f3; }
+    .stTabs [aria-selected="true"] { background-color: #0070f3 !important; color: #ffffff !important; border-color: #0070f3 !important; box-shadow: 0px 4px 12px rgba(0, 112, 243, 0.3); }
+    
+    div[data-testid="stMetricValue"] { color: #ffffff !important; font-size: 26px !important; font-weight: bold; }
+    div[data-testid="stMetricLabel"] { color: #888888 !important; }
+    div[data-testid="stDataFrame"] { background-color: #121212; border-radius: 8px; }
 
-    .stTabs [aria-selected="true"] {
-        background: rgba(56,189,248,.14);
-        color: var(--mc-primary);
-    }
-
-    .stExpander {
-        border: 1px solid var(--mc-border);
-        border-radius: 14px;
-        background: rgba(17,28,46,.55);
-    }
-
-    hr {
-        border-color: var(--mc-border);
-    }
-
-
-    /* Tablas HTML controladas */
-    .mc-table-wrap {
-        width: 100%;
-        max-height: 560px;
-        overflow: auto;
-        margin: .65rem 0 1.2rem;
-        border: 1px solid #29415f;
-        border-radius: 14px;
-        background: #0d1b2e;
-        box-shadow: 0 12px 28px rgba(0,0,0,.16);
-    }
-
-    .mc-html-table {
-        width: 100%;
-        min-width: 760px;
-        border-collapse: separate;
-        border-spacing: 0;
-        color: #e8f1fb;
-        font-size: 13px;
-        background: #0d1b2e;
-    }
-
-    .mc-html-table thead th {
-        position: sticky;
-        top: 0;
-        z-index: 2;
-        padding: 12px 10px;
-        text-align: left;
-        white-space: nowrap;
-        background: #173b5e !important;
-        color: #ffffff !important;
-        font-weight: 800;
-        border-bottom: 2px solid #38bdf8;
-    }
-
-    .mc-html-table tbody td {
-        padding: 10px;
-        white-space: nowrap;
-        border-bottom: 1px solid #20344d;
-        border-right: 1px solid #1b2d43;
-        color: #e5edf7 !important;
-        background: #102238 !important;
-    }
-
-    .mc-html-table tbody tr:nth-child(even) td {
-        background: #142b45 !important;
-    }
-
-    .mc-html-table tbody tr:hover td {
-        background: #1d466b !important;
-        color: #ffffff !important;
-    }
-
-    .mc-html-table tbody tr:last-child td {
-        border-bottom: 0;
-    }
-
-    @media (max-width: 900px) {
-    }
-
-    @media (max-width: 900px) {
-        .block-container { padding: 1rem 1rem 2rem; }
-        .medcell-header { padding: 1rem; border-radius: 14px; }
+    /* En celular: las grillas de indicadores (st.columns con st.metric,
+       como "Resumen de Órdenes y Montos") se acomodan de a 2 por fila en
+       vez de aplastarse todas en una sola línea horizontal ilegible.
+       Se EXCLUYEN explícitamente las filas que contienen una tabla
+       (st.dataframe) o un gráfico, para que esas sigan ocupando el ancho
+       completo, apiladas una debajo de la otra (de lo contrario las
+       columnas de la tabla quedan cortadas / ilegibles). */
+    @media (max-width: 768px) {
+        div[data-testid="stHorizontalBlock"]:not(:has(div[data-testid="stDataFrame"])):not(:has(div[data-testid="stDataFrameResizable"])):not(:has(div[data-testid="stPlotlyChart"])):not(:has(div[data-testid="stTable"])) {
+            flex-wrap: wrap !important;
+            row-gap: 16px !important;
+            column-gap: 12px !important;
+        }
+        div[data-testid="stHorizontalBlock"]:not(:has(div[data-testid="stDataFrame"])):not(:has(div[data-testid="stDataFrameResizable"])):not(:has(div[data-testid="stPlotlyChart"])):not(:has(div[data-testid="stTable"])) > div[data-testid="column"],
+        div[data-testid="stHorizontalBlock"]:not(:has(div[data-testid="stDataFrame"])):not(:has(div[data-testid="stDataFrameResizable"])):not(:has(div[data-testid="stPlotlyChart"])):not(:has(div[data-testid="stTable"])) > div[data-testid="stColumn"] {
+            min-width: 46% !important;
+            width: 46% !important;
+            flex: 1 1 46% !important;
+        }
+        /* Filas con tabla/gráfico: apiladas a ancho completo (comportamiento
+           estándar de Streamlit en pantallas angostas). */
+        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stDataFrame"]),
+        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stDataFrameResizable"]),
+        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stPlotlyChart"]),
+        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stTable"]) {
+            flex-wrap: wrap !important;
+        }
+        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stDataFrame"]) > div[data-testid="column"],
+        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stDataFrameResizable"]) > div[data-testid="column"],
+        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stPlotlyChart"]) > div[data-testid="column"],
+        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stTable"]) > div[data-testid="column"],
+        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stDataFrame"]) > div[data-testid="stColumn"],
+        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stDataFrameResizable"]) > div[data-testid="stColumn"],
+        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stPlotlyChart"]) > div[data-testid="stColumn"],
+        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stTable"]) > div[data-testid="stColumn"] {
+            min-width: 100% !important;
+            width: 100% !important;
+            flex: 1 1 100% !important;
+        }
+        div[data-testid="stMetric"] {
+            min-width: 0 !important;
+        }
+        div[data-testid="stMetricValue"] {
+            font-size: 19px !important;
+            overflow-wrap: break-word !important;
+        }
+        div[data-testid="stMetricLabel"] {
+            font-size: 12px !important;
+            white-space: normal !important;
+        }
     }
     </style>
-    """,
+""",
     unsafe_allow_html=True,
 )
+
 
 # --- Funciones auxiliares de formato y conversión ---
 def limpiar_numero(val):
@@ -641,35 +602,6 @@ def crear_reloj_gauge(titulo, porcentaje, color_barra):
   )
   return fig
 
-
-
-# ================================================================
-# TABLAS HTML CONTROLADAS
-# ================================================================
-# Se utiliza temporalmente un renderer HTML para probar el diseño
-# visual sin depender del componente interno de st.dataframe().
-def _mc_render_table_html(data, *args, **kwargs):
-    """Renderiza DataFrame/Styler con colores corporativos controlados."""
-    try:
-        if hasattr(data, "to_html"):
-            if hasattr(data, "hide_index") and hasattr(data, "to_html"):
-                html = data.to_html()
-            else:
-                html = data.to_html(index=False, border=0, classes="mc-html-table")
-        else:
-            html = pd.DataFrame(data).to_html(index=False, border=0, classes="mc-html-table")
-
-        st.markdown(
-            f'<div class="mc-table-wrap">{html}</div>',
-            unsafe_allow_html=True,
-        )
-    except Exception:
-        # Respaldo para objetos no compatibles.
-        st.write(data)
-
-# Activación global: todas las llamadas existentes a st.dataframe()
-# pasan por el renderer HTML durante esta prueba.
-st.dataframe = _mc_render_table_html
 
 # --- 5. PESTAÑAS ---
 HOJAS_A_EXCLUIR = [
@@ -5204,17 +5136,7 @@ with tabs[0]:
       return "amarillo"
     return "rojo"
 
-  # Tonos más luminosos para que se vean bien sobre el fondo azul oscuro.
-  _colores_semaforo = {
-      "verde": "#22c55e",
-      "amarillo": "#fbbf24",
-      "rojo": "#fb7185",
-  }
-  _fondos_semaforo = {
-      "verde": "rgba(34,197,94,.12)",
-      "amarillo": "rgba(251,191,36,.12)",
-      "rojo": "rgba(251,113,133,.12)",
-  }
+  _colores_semaforo = {"verde": "#2ecc71", "amarillo": "#f1c40f", "rojo": "#e74c3c"}
   _orden_severidad = {"verde": 0, "amarillo": 1, "rojo": 2}
 
   fr_reciente_pct = None
@@ -5237,14 +5159,6 @@ with tabs[0]:
 
   n_recurrentes = len(rec_todos)
 
-  # Productos identificados para recuperar durante la semana actual.
-  calendario_fr = resumen_data.get("fill_rate_calendar") or []
-  n_recuperar_semana = len(calendario_fr)
-  monto_recuperar_semana = sum(
-      abs(float(item.get("quiebre") or 0))
-      for item in calendario_fr
-  )
-
   sub_estados = []
   if fr_reciente_pct is not None:
     sub_estados.append(
@@ -5256,217 +5170,64 @@ with tabs[0]:
     )
   if pct_critico_semaforo is not None:
     sub_estados.append(
-        (
-            "Stock crítico (vencido + <6m)",
-            f"{pct_critico_semaforo:.1f}%",
-            _estado_stock(pct_critico_semaforo),
-        )
+        ("Stock crítico (vencido + <6m)", f"{pct_critico_semaforo:.1f}%", _estado_stock(pct_critico_semaforo))
     )
   sub_estados.append(
-      (
-          "SKU con quiebre recurrente",
-          str(n_recurrentes),
-          _estado_recurrentes(n_recurrentes),
-      )
+      ("SKU con quiebre recurrente", str(n_recurrentes), _estado_recurrentes(n_recurrentes))
   )
 
   if sub_estados:
-    estado_general = max(
-        sub_estados, key=lambda x: _orden_severidad[x[2]]
-    )[2]
+    estado_general = max(sub_estados, key=lambda x: _orden_severidad[x[2]])[2]
     color_general = _colores_semaforo[estado_general]
     etiqueta_general = {
-        "verde": "OPERACIÓN SALUDABLE",
-        "amarillo": "ATENCIÓN REQUERIDA",
-        "rojo": "RIESGO OPERATIVO",
+        "verde": "OK",
+        "amarillo": "ATENCIÓN",
+        "rojo": "CRÍTICO",
     }[estado_general]
 
     st.markdown(
         f"""
-        <div style="
-            display:flex; align-items:center; justify-content:space-between;
-            gap:18px; background:linear-gradient(135deg,#102238,#142d49);
-            border:1px solid #29415f; border-radius:16px; padding:18px 20px;
-            margin-bottom:16px; box-shadow:0 10px 24px rgba(0,0,0,.14);">
-          <div style="display:flex; align-items:center; gap:14px;">
-            <div style="
-                width:18px; height:18px; border-radius:50%;
-                background:{color_general};
-                box-shadow:0 0 0 6px {_fondos_semaforo[estado_general]},
-                           0 0 16px {color_general}; flex-shrink:0;"></div>
-            <div>
-              <div style="font-size:11px; color:#91a4bb; text-transform:uppercase;
-                          letter-spacing:.08em; font-weight:700;">
-                Salud operativa
-              </div>
-              <div style="font-size:21px; font-weight:850; color:#f8fafc;">
-                {etiqueta_general}
-              </div>
-            </div>
-          </div>
-          <div style="
-              padding:7px 12px; border-radius:999px;
-              background:{_fondos_semaforo[estado_general]};
-              color:{color_general}; font-size:12px; font-weight:800;">
-            SEMÁFORO
-          </div>
+        <div style="display:flex; align-items:center; gap:14px;
+            background-color:#141414; border:1px solid #2b2b2b;
+            border-radius:8px; padding:16px 20px; margin-bottom:14px;">
+          <div style="width:22px; height:22px; border-radius:50%;
+              background-color:{color_general}; flex-shrink:0;"></div>
+          <div style="font-size:20px; font-weight:700; color:{color_general};">
+              ESTADO GENERAL: {etiqueta_general}</div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
     cols_semaforo = st.columns(len(sub_estados))
-    for col_sf, (nombre_sf, valor_sf, estado_sf) in zip(
-        cols_semaforo, sub_estados
-    ):
+    for col_sf, (nombre_sf, valor_sf, estado_sf) in zip(cols_semaforo, sub_estados):
       with col_sf:
         color_sf = _colores_semaforo[estado_sf]
         st.markdown(
             f"""
-            <div style="
-                background:linear-gradient(145deg,#102238,#142b45);
-                border:1px solid #29415f;
-                border-top:3px solid {color_sf};
-                border-radius:14px; padding:14px 15px; min-height:108px;
-                box-shadow:0 8px 18px rgba(0,0,0,.11);">
-              <div style="font-size:11px; color:#9eb1c7;
-                          text-transform:uppercase; letter-spacing:.06em;
-                          font-weight:750; margin-bottom:7px;">
-                {nombre_sf}
-              </div>
-              <div style="display:flex; align-items:center; gap:9px;">
-                <span style="
-                    display:inline-block; width:9px; height:9px; border-radius:50%;
-                    background:{color_sf};
-                    box-shadow:0 0 10px {color_sf};"></span>
-                <span style="
-                    font-size:26px; font-weight:850; color:{color_sf};">
-                  {valor_sf}
-                </span>
-              </div>
-              <div style="margin-top:5px; font-size:10px; color:#647b93;">
-                Estado: <span style="color:{color_sf}; font-weight:800;">
-                {estado_sf.upper()}</span>
-              </div>
+            <div style="background-color:#141414; border:1px solid #2b2b2b;
+                border-left:4px solid {color_sf}; border-radius:0 8px 8px 0;
+                padding:12px 14px;">
+              <p style="font-size:12px; color:#aaaaaa; margin:0 0 4px 0;
+                  text-transform:uppercase;">{nombre_sf}</p>
+              <p style="font-size:22px; font-weight:700; color:{color_sf};
+                  margin:0;">{valor_sf}</p>
             </div>
             """,
             unsafe_allow_html=True,
         )
 
     # ---------------------------------------------------------------
-    # Bloque destacado: Fill Rate que debería recuperarse esta semana.
-    # ---------------------------------------------------------------
-    st.markdown("##### 🎯 Fill Rate — Recuperación de Esta Semana")
-
-    if n_recuperar_semana > 0:
-      st.markdown(
-          f"""
-          <div style="
-              display:flex; align-items:center; justify-content:space-between;
-              gap:20px; background:linear-gradient(135deg,#162f47,#183d59);
-              border:1px solid #285979; border-radius:16px; padding:18px 20px;
-              margin:8px 0 14px 0;
-              box-shadow:0 12px 26px rgba(0,0,0,.14);">
-            <div>
-              <div style="font-size:12px; color:#8fc2df; font-weight:800;
-                          text-transform:uppercase; letter-spacing:.07em;">
-                Oportunidad de recuperación
-              </div>
-              <div style="font-size:28px; color:#f8fafc; font-weight:900;
-                          margin-top:2px;">
-                {n_recuperar_semana} SKU
-              </div>
-              <div style="font-size:12px; color:#9eb1c7; margin-top:3px;">
-                Identificados para recuperar durante esta semana
-              </div>
-            </div>
-            <div style="text-align:right;">
-              <div style="font-size:12px; color:#8fc2df; font-weight:800;
-                          text-transform:uppercase;">
-                Quiebre a recuperar
-              </div>
-              <div style="font-size:25px; color:#fbbf24; font-weight:900;
-                          margin-top:3px;">
-                {formato_moneda(monto_recuperar_semana)}
-              </div>
-              <div style="font-size:11px; color:#9eb1c7;">
-                según comentarios / ETA
-              </div>
-            </div>
-          </div>
-          """,
-          unsafe_allow_html=True,
-      )
-
-      calendario_fr_ordenado = sorted(
-          calendario_fr, key=lambda x: abs(float(x.get("quiebre") or 0)),
-          reverse=True
-      )
-
-      n_cols_cal = 3
-      cols_cal = st.columns(n_cols_cal)
-      for idx_cal, item_cal in enumerate(calendario_fr_ordenado[:12]):
-        with cols_cal[idx_cal % n_cols_cal]:
-          monto_item = abs(float(item_cal.get("quiebre") or 0))
-          monto_txt = formato_moneda(monto_item) if monto_item else "$0"
-          comentario_txt = item_cal.get("comentario") or "Sin comentario"
-          fecha_txt = item_cal.get("fecha_txt") or "Sin fecha estimada"
-          st.markdown(
-              f"""
-              <div style="
-                  background:#102238; border:1px solid #29415f;
-                  border-left:4px solid #fbbf24; border-radius:0 12px 12px 0;
-                  padding:11px 13px; margin-bottom:9px; min-height:92px;">
-                <div style="font-size:12px; color:#f8fafc; font-weight:800;">
-                  {item_cal.get("etiqueta","SKU sin identificar")}
-                </div>
-                <div style="font-size:11px; color:#95aac1; margin-top:4px;">
-                  {item_cal.get("bloque","")} · {monto_txt}
-                </div>
-                <div style="font-size:11px; color:#fbbf24; font-weight:750;
-                            margin-top:4px;">
-                  → {fecha_txt}
-                </div>
-                <div style="font-size:10px; color:#6f859c; margin-top:4px;">
-                  {comentario_txt}
-                </div>
-              </div>
-              """,
-              unsafe_allow_html=True,
-          )
-
-      if len(calendario_fr_ordenado) > 12:
-        st.caption(
-            f"Se muestran los 12 casos de mayor quiebre. "
-            f"Hay {len(calendario_fr_ordenado) - 12} casos adicionales."
-        )
-    else:
-      st.markdown(
-          """
-          <div style="
-              background:rgba(34,197,94,.10); border:1px solid rgba(34,197,94,.30);
-              border-radius:14px; padding:16px 18px;">
-            <div style="font-size:14px; color:#22c55e; font-weight:850;">
-              ✓ Sin casos pendientes identificados para recuperar esta semana
-            </div>
-            <div style="font-size:11px; color:#8fa6bd; margin-top:4px;">
-              No se encontraron productos con fecha de recuperación inmediata.
-            </div>
-          </div>
-          """,
-          unsafe_allow_html=True,
-      )
-
-    # ---------------------------------------------------------------
-    # Comparativo Fill Rate por semana.
+    # Comparativo Fill Rate por semana (tarjetas apiladas, sin filtrar
+    # ninguna semana): permite ver de un vistazo si la caída es de la
+    # última semana en curso o una tendencia sostenida.
     # ---------------------------------------------------------------
     if fr4_sb_raw or fr4_pu_raw:
       st.markdown("###### 📊 Fill Rate por semana (comparativo)")
       st.caption(
-          "La última semana puede estar en curso. El color indica el nivel "
-          "del Fill Rate y la tendencia permite ver la recuperación."
+          "La última semana puede estar en curso: si su % es bajo,"
+          " compáralo con las anteriores antes de sacar conclusiones."
       )
-
       for _idx_sem, _sem in enumerate(semanas_comb):
         _c_sem = combinado_fr[_sem]
         _pct_sem = (
@@ -5476,42 +5237,29 @@ with tabs[0]:
         )
         _estado_sem = _estado_fr(_pct_sem)
         _color_sem = _colores_semaforo[_estado_sem]
-        _bg_sem = _fondos_semaforo[_estado_sem]
         _es_ultima = _idx_sem == len(semanas_comb) - 1
         _nota_ultima = (
-            " · semana en curso" if _es_ultima else ""
+            ' <span style="color:#888888; font-weight:400;">'
+            "(última semana, posiblemente en curso)</span>"
+            if _es_ultima
+            else ""
         )
-
         st.markdown(
             f"""
-            <div style="
-                display:flex; align-items:center; justify-content:space-between;
-                background:#102238; border:1px solid #29415f;
-                border-left:4px solid {_color_sem}; border-radius:0 11px 11px 0;
-                padding:11px 15px; margin-bottom:8px;">
-              <div>
-                <div style="font-size:13px; color:#e7eef7; font-weight:750;">
-                  Sem {_sem}
-                </div>
-                <div style="font-size:10px; color:#71889f;">
-                  {"Última semana" if _es_ultima else "Semana cerrada"}
-                  {_nota_ultima if _es_ultima else ""}
-                </div>
-              </div>
-              <div style="
-                  padding:5px 10px; border-radius:999px;
-                  background:{_bg_sem}; color:{_color_sem};
-                  font-size:16px; font-weight:900;">
-                {_pct_sem:.1f}%
-              </div>
+            <div style="display:flex; align-items:center; justify-content:space-between;
+                background-color:#141414; border:1px solid #2b2b2b;
+                border-left:4px solid {_color_sem}; border-radius:0 8px 8px 0;
+                padding:10px 16px; margin-bottom:8px;">
+              <p style="font-size:14px; color:#dddddd; margin:0;">
+                  Sem {_sem}{_nota_ultima}</p>
+              <p style="font-size:18px; font-weight:700; color:{_color_sem};
+                  margin:0;">{_pct_sem:.1f}%</p>
             </div>
             """,
             unsafe_allow_html=True,
         )
   else:
-    st.info(
-        "No hay suficiente información para calcular el semáforo de salud operativa."
-    )
+    st.info("No hay suficiente información para calcular el semáforo de salud operativa.")
 
 
 # =================================================================
