@@ -11,57 +11,6 @@ import streamlit.components.v1 as components
 # 1. Configuración de la página
 st.set_page_config(page_title="Medcell Operaciones", layout="wide")
 
-# ================================================================
-# 🔐 ACCESO PROTEGIDO DE LA APP
-# Contraseña solicitada: Medcell.2026
-# ================================================================
-MEDCELL_APP_PASSWORD = "Medcell.2026"
-
-if "medcell_authenticated" not in st.session_state:
-    st.session_state.medcell_authenticated = False
-
-if not st.session_state.medcell_authenticated:
-    st.markdown(
-        """
-        <div style="
-            max-width: 460px;
-            margin: 90px auto 20px auto;
-            padding: 32px;
-            background: #141414;
-            border: 1px solid #2b2b2b;
-            border-radius: 16px;
-            text-align: center;
-        ">
-            <div style="font-size: 42px; margin-bottom: 10px;">🔐</div>
-            <div style="font-size: 28px; font-weight: 800; color: #ffffff;">
-                MEDCELL <span style="color:#0070f3;">OPERACIONES</span>
-            </div>
-            <div style="color:#aaaaaa; margin-top:8px;">
-                Acceso restringido
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    clave = st.text_input(
-        "🔑 Contraseña",
-        type="password",
-        placeholder="Ingresa la contraseña",
-        key="medcell_password_input",
-    )
-
-    if st.button("🚀 Ingresar", use_container_width=True, type="primary"):
-        if clave == MEDCELL_APP_PASSWORD:
-            st.session_state.medcell_authenticated = True
-            st.rerun()
-        else:
-            st.error("❌ Contraseña incorrecta.")
-
-    st.stop()
-
-
-
 # 2. Estilos personalizados
 st.markdown(
     """
