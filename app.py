@@ -302,21 +302,71 @@ def config_automatico(df):
       "monto", "precio", "facturado", "venta", "meta", "proyecc",
       "compra $", "total compra", "total venta", "$",
   ]
-  for col in df.columns:
-    serie = df[col]
-    if not pd.api.types.is_numeric_dtype(serie):
+  for pos, col in enumerate(df.columns):
+    try:
+      # Acceso posicional (no por nombre) para no fallar si hay columnas
+      # duplicadas: df[col] con nombres repetidos devuelve un DataFrame
+      # en vez de una Serie y rompe las comparaciones de más abajo.
+      serie = df.iloc[:, pos]
+      if not pd.api.types.is_numeric_dtype(serie):
+        continue
+      col_lower = str(col).lower()
+      es_moneda = any(p in col_lower for p in palabras_moneda)
+      valores = serie.dropna()
+      son_enteros = valores.empty or ((valores % 1) == 0).all()
+      if es_moneda:
+        cfg[col] = st.column_config.NumberColumn(str(col), format="$%,.0f")
+      elif son_enteros:
+        cfg[col] = st.column_config.NumberColumn(str(col), format="%,d")
+      else:
+        cfg[col] = st.column_config.NumberColumn(str(col), format="%,.2f")
+    except Exception:
+      # Si una columna puntual no se puede analizar, se deja sin
+      # formato especial en vez de romper toda la tabla.
       continue
-    col_lower = str(col).lower()
-    es_moneda = any(p in col_lower for p in palabras_moneda)
-    valores = serie.dropna()
-    son_enteros = valores.empty or ((valores % 1) == 0).all()
-    if es_moneda:
-      cfg[col] = st.column_config.NumberColumn(str(col), format="$%,.0f")
-    elif son_enteros:
-      cfg[col] = st.column_config.NumberColumn(str(col), format="%,d")
-    else:
-      cfg[col] = st.column_config.NumberColumn(str(col), format="%,.2f")
   return cfg
+
+
+def _dedup_columnas(df):
+  """Streamlit falla al renderizar un DataFrame con nombres de columna
+  repetidos (p. ej. dos columnas de origen distintas que el diccionario
+  de renombrado hace terminar ambas como "Unidades Compra"). Esto es lo
+  que provocaba el crash intermitente: pasaba inadvertido con el
+  renderer HTML anterior, pero el componente nativo st.dataframe() sí
+  lo revienta. Aquí se renombran las repetidas agregando un sufijo."""
+  cols = list(df.columns)
+  vistos = {}
+  nuevas = []
+  for c in cols:
+    if c in vistos:
+      vistos[c] += 1
+      nuevas.append(f"{c} ({vistos[c]})")
+    else:
+      vistos[c] = 1
+      nuevas.append(c)
+  if nuevas != cols:
+    df = df.copy()
+    df.columns = nuevas
+  return df
+
+
+def renderizar_tabla(df, **kwargs):
+  """Envoltorio seguro sobre st.dataframe(): deduplica columnas, aplica
+  formato automático de números/moneda, y si algo igual falla (dato
+  inesperado en alguna hoja) muestra un aviso en vez de tumbar toda la
+  página. Además limita la altura visible (como antes, ~10 filas) para
+  que tablas largas no estiren toda la pestaña: quedan con scroll
+  interno en vez de "comerse" toda la página."""
+  try:
+    df_seguro = _dedup_columnas(df)
+    kwargs.setdefault("column_config", config_automatico(df_seguro))
+    kwargs.setdefault("hide_index", True)
+    kwargs.setdefault("use_container_width", True)
+    kwargs.setdefault("height", min(38 * (len(df_seguro) + 1), 420))
+    st.dataframe(df_seguro, **kwargs)
+  except Exception as e:
+    st.warning(f"No se pudo mostrar esta tabla ({e}).")
+    st.write(df)
 
 
 def formato_unidades(valor):
@@ -1111,12 +1161,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         df_si_det = df_si_det[mask_si]
 
       st.caption(f"Mostrando {len(df_si_det)} registros.")
-      st.dataframe(
-          df_si_det,
-          column_config=config_automatico(df_si_det),
-          hide_index=True,
-          use_container_width=True,
-      )
+      renderizar_tabla(df_si_det)
 
     # =================================================================
     # DASHBOARD DE SI PROYECCION
@@ -2285,12 +2330,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             df_vista_stock["Fecha Expiración"], errors="coerce"
         ).dt.strftime("%d-%m-%Y")
 
-      st.dataframe(
-          df_vista_stock,
-          column_config=config_automatico(df_vista_stock),
-          hide_index=True,
-          use_container_width=True,
-      )
+      renderizar_tabla(df_vista_stock)
 
       st.divider()
 
@@ -3480,9 +3520,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
               nuevas_columnas_s[col] = str(col).replace("_", " ").strip().title()
           df_solares_final = df_solares_final.rename(columns=nuevas_columnas_s)
 
-          st.dataframe(
-              df_solares_final, hide_index=True, use_container_width=True
-          )
+          renderizar_tabla(df_solares_final)
         else:
           st.info("No hay productos Solares registrados para la semana seleccionada.")
 
@@ -3549,12 +3587,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
               "Fill Rate Unidades",
               "Fill Rate Monto",
           ]
-          st.dataframe(
-              df_disp,
-              column_config=config_automatico(df_disp),
-              hide_index=True,
-              use_container_width=True,
-          )
+          renderizar_tabla(df_disp)
           st.divider()
 
           col_g1, col_g2 = st.columns(2)
@@ -3656,12 +3689,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
               "Fill Rate Unidades",
               "Fill Rate Monto",
           ]
-          st.dataframe(
-              df_disp,
-              column_config=config_automatico(df_disp),
-              hide_index=True,
-              use_container_width=True,
-          )
+          renderizar_tabla(df_disp)
           st.divider()
 
           col_g1, col_g2 = st.columns(2)
@@ -3840,8 +3868,13 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
             styled_df = grp_m_final.style.apply(
                 aplicar_criticidad, subset=["QUIEBRE %"]
+            ).hide(axis="index")
+            st.dataframe(
+                styled_df,
+                hide_index=True,
+                use_container_width=True,
+                height=min(38 * (len(grp_m_final) + 1), 420),
             )
-            st.dataframe(styled_df, hide_index=True, use_container_width=True)
           else:
             st.info(
                 f"No hay quiebres registrados para la semana {fmt_sem(sem_top)} en"
@@ -3903,9 +3936,12 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
                 styled_df = grp_m_final.style.apply(
                     aplicar_criticidad, subset=["QUIEBRE %"]
-                )
+                ).hide(axis="index")
                 st.dataframe(
-                    styled_df, hide_index=True, use_container_width=True
+                    styled_df,
+                    hide_index=True,
+                    use_container_width=True,
+                    height=min(38 * (len(grp_m_final) + 1), 420),
                 )
               else:
                 st.info(
@@ -3985,12 +4021,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
       df_corte_final = df_corte_final.rename(columns=nuevas_columnas)
 
-      st.dataframe(
-          df_corte_final,
-          column_config=config_automatico(df_corte_final),
-          hide_index=True,
-          use_container_width=True,
-      )
+      renderizar_tabla(df_corte_final)
 
     # =================================================================
     # PESTAÑA FILL RATE (múltiples tablas pegadas: Salcobrand Consumo,
@@ -4532,15 +4563,16 @@ for i, nombre_hoja in enumerate(nombres_hojas):
           tabla_disp, columnas_originales = _fr_tabla_display(bloque["tabla"])
           if not tabla_disp.empty:
             st.dataframe(
-                tabla_disp, hide_index=True, use_container_width=True
+                tabla_disp,
+                hide_index=True,
+                use_container_width=True,
+                height=min(38 * (len(tabla_disp) + 1), 420),
             )
             with st.expander(
                 "Ver todas las columnas (detalle completo de la hoja)",
                 expanded=False,
             ):
-              st.dataframe(
-                  bloque["tabla"], hide_index=True, use_container_width=True
-              )
+              renderizar_tabla(bloque["tabla"])
           else:
             st.info("No hay productos en este bloque para la semana actual.")
 
@@ -4603,12 +4635,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         )
         df = df[mask]
       st.caption(f"Mostrando {len(df)} registros en {nombre_hoja}.")
-      st.dataframe(
-          df,
-          column_config=config_automatico(df),
-          hide_index=True,
-          use_container_width=True,
-      )
+      renderizar_tabla(df)
 
 
 # =================================================================
