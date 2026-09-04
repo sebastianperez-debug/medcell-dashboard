@@ -141,6 +141,122 @@ st.markdown(
         border-color: var(--mc-border);
     }
 
+
+    /* Tablas HTML controladas */
+    .mc-table-wrap {
+        width: 100%;
+        max-height: 560px;
+        overflow: auto;
+        margin: .65rem 0 1.2rem;
+        border: 1px solid #29415f;
+        border-radius: 14px;
+        background: #0d1b2e;
+        box-shadow: 0 12px 28px rgba(0,0,0,.16);
+    }
+
+    .mc-html-table {
+        width: 100%;
+        min-width: 760px;
+        border-collapse: separate;
+        border-spacing: 0;
+        color: #e8f1fb;
+        font-size: 13px;
+        background: #0d1b2e;
+    }
+
+    .mc-html-table thead th {
+        position: sticky;
+        top: 0;
+        z-index: 2;
+        padding: 12px 10px;
+        text-align: left;
+        white-space: nowrap;
+        background: #173b5e !important;
+        color: #ffffff !important;
+        font-weight: 800;
+        border-bottom: 2px solid #38bdf8;
+    }
+
+    .mc-html-table tbody td {
+        padding: 10px;
+        white-space: nowrap;
+        border-bottom: 1px solid #20344d;
+        border-right: 1px solid #1b2d43;
+        color: #e5edf7 !important;
+        background: #102238 !important;
+    }
+
+    .mc-html-table tbody tr:nth-child(even) td {
+        background: #142b45 !important;
+    }
+
+    .mc-html-table tbody tr:hover td {
+        background: #1d466b !important;
+        color: #ffffff !important;
+    }
+
+    .mc-html-table tbody tr:last-child td {
+        border-bottom: 0;
+    }
+
+    /* Navegación de pestañas en formato lateral */
+    .stTabs {
+        display: grid !important;
+        grid-template-columns: 220px minmax(0, 1fr);
+        gap: 1.2rem;
+        align-items: start;
+    }
+
+    .stTabs [data-baseweb="tab-list"] {
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: .4rem !important;
+        position: sticky;
+        top: 1rem;
+        padding: .65rem;
+        border: 1px solid #29415f;
+        border-radius: 16px;
+        background: #0d1b2e;
+    }
+
+    .stTabs [data-baseweb="tab"] {
+        width: 100% !important;
+        justify-content: flex-start !important;
+        border-radius: 10px !important;
+        padding: .75rem .85rem !important;
+        color: #a9bdd3 !important;
+        white-space: normal !important;
+        text-align: left !important;
+    }
+
+    .stTabs [data-baseweb="tab"][aria-selected="true"] {
+        background: linear-gradient(90deg, #14527b, #173b5e) !important;
+        color: #ffffff !important;
+        box-shadow: inset 3px 0 0 #38bdf8;
+    }
+
+    .stTabs [data-baseweb="tab-highlight"] {
+        display: none !important;
+    }
+
+    .stTabs [data-baseweb="tab-panel"] {
+        min-width: 0;
+    }
+
+    @media (max-width: 900px) {
+        .stTabs {
+            display: block !important;
+        }
+        .stTabs [data-baseweb="tab-list"] {
+            position: static;
+            margin-bottom: 1rem;
+        }
+        .stTabs [data-baseweb="tab"] {
+            width: auto !important;
+        }
+    }
+
     @media (max-width: 900px) {
         .block-container { padding: 1rem 1rem 2rem; }
         .medcell-header { padding: 1rem; border-radius: 14px; }
@@ -580,6 +696,35 @@ def crear_reloj_gauge(titulo, porcentaje, color_barra):
   )
   return fig
 
+
+
+# ================================================================
+# TABLAS HTML CONTROLADAS
+# ================================================================
+# Se utiliza temporalmente un renderer HTML para probar el diseño
+# visual sin depender del componente interno de st.dataframe().
+def _mc_render_table_html(data, *args, **kwargs):
+    """Renderiza DataFrame/Styler con colores corporativos controlados."""
+    try:
+        if hasattr(data, "to_html"):
+            if hasattr(data, "hide_index") and hasattr(data, "to_html"):
+                html = data.to_html()
+            else:
+                html = data.to_html(index=False, border=0, classes="mc-html-table")
+        else:
+            html = pd.DataFrame(data).to_html(index=False, border=0, classes="mc-html-table")
+
+        st.markdown(
+            f'<div class="mc-table-wrap">{html}</div>',
+            unsafe_allow_html=True,
+        )
+    except Exception:
+        # Respaldo para objetos no compatibles.
+        st.write(data)
+
+# Activación global: todas las llamadas existentes a st.dataframe()
+# pasan por el renderer HTML durante esta prueba.
+st.dataframe = _mc_render_table_html
 
 # --- 5. PESTAÑAS ---
 HOJAS_A_EXCLUIR = [
