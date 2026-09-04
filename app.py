@@ -5204,7 +5204,17 @@ with tabs[0]:
       return "amarillo"
     return "rojo"
 
-  _colores_semaforo = {"verde": "#2ecc71", "amarillo": "#f1c40f", "rojo": "#e74c3c"}
+  # Tonos más luminosos para que se vean bien sobre el fondo azul oscuro.
+  _colores_semaforo = {
+      "verde": "#22c55e",
+      "amarillo": "#fbbf24",
+      "rojo": "#fb7185",
+  }
+  _fondos_semaforo = {
+      "verde": "rgba(34,197,94,.12)",
+      "amarillo": "rgba(251,191,36,.12)",
+      "rojo": "rgba(251,113,133,.12)",
+  }
   _orden_severidad = {"verde": 0, "amarillo": 1, "rojo": 2}
 
   fr_reciente_pct = None
@@ -5227,6 +5237,14 @@ with tabs[0]:
 
   n_recurrentes = len(rec_todos)
 
+  # Productos identificados para recuperar durante la semana actual.
+  calendario_fr = resumen_data.get("fill_rate_calendar") or []
+  n_recuperar_semana = len(calendario_fr)
+  monto_recuperar_semana = sum(
+      abs(float(item.get("quiebre") or 0))
+      for item in calendario_fr
+  )
+
   sub_estados = []
   if fr_reciente_pct is not None:
     sub_estados.append(
@@ -5238,64 +5256,217 @@ with tabs[0]:
     )
   if pct_critico_semaforo is not None:
     sub_estados.append(
-        ("Stock crítico (vencido + <6m)", f"{pct_critico_semaforo:.1f}%", _estado_stock(pct_critico_semaforo))
+        (
+            "Stock crítico (vencido + <6m)",
+            f"{pct_critico_semaforo:.1f}%",
+            _estado_stock(pct_critico_semaforo),
+        )
     )
   sub_estados.append(
-      ("SKU con quiebre recurrente", str(n_recurrentes), _estado_recurrentes(n_recurrentes))
+      (
+          "SKU con quiebre recurrente",
+          str(n_recurrentes),
+          _estado_recurrentes(n_recurrentes),
+      )
   )
 
   if sub_estados:
-    estado_general = max(sub_estados, key=lambda x: _orden_severidad[x[2]])[2]
+    estado_general = max(
+        sub_estados, key=lambda x: _orden_severidad[x[2]]
+    )[2]
     color_general = _colores_semaforo[estado_general]
     etiqueta_general = {
-        "verde": "OK",
-        "amarillo": "ATENCIÓN",
-        "rojo": "CRÍTICO",
+        "verde": "OPERACIÓN SALUDABLE",
+        "amarillo": "ATENCIÓN REQUERIDA",
+        "rojo": "RIESGO OPERATIVO",
     }[estado_general]
 
     st.markdown(
         f"""
-        <div style="display:flex; align-items:center; gap:14px;
-            background-color:#141414; border:1px solid #2b2b2b;
-            border-radius:8px; padding:16px 20px; margin-bottom:14px;">
-          <div style="width:22px; height:22px; border-radius:50%;
-              background-color:{color_general}; flex-shrink:0;"></div>
-          <div style="font-size:20px; font-weight:700; color:{color_general};">
-              ESTADO GENERAL: {etiqueta_general}</div>
+        <div style="
+            display:flex; align-items:center; justify-content:space-between;
+            gap:18px; background:linear-gradient(135deg,#102238,#142d49);
+            border:1px solid #29415f; border-radius:16px; padding:18px 20px;
+            margin-bottom:16px; box-shadow:0 10px 24px rgba(0,0,0,.14);">
+          <div style="display:flex; align-items:center; gap:14px;">
+            <div style="
+                width:18px; height:18px; border-radius:50%;
+                background:{color_general};
+                box-shadow:0 0 0 6px {_fondos_semaforo[estado_general]},
+                           0 0 16px {color_general}; flex-shrink:0;"></div>
+            <div>
+              <div style="font-size:11px; color:#91a4bb; text-transform:uppercase;
+                          letter-spacing:.08em; font-weight:700;">
+                Salud operativa
+              </div>
+              <div style="font-size:21px; font-weight:850; color:#f8fafc;">
+                {etiqueta_general}
+              </div>
+            </div>
+          </div>
+          <div style="
+              padding:7px 12px; border-radius:999px;
+              background:{_fondos_semaforo[estado_general]};
+              color:{color_general}; font-size:12px; font-weight:800;">
+            SEMÁFORO
+          </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
     cols_semaforo = st.columns(len(sub_estados))
-    for col_sf, (nombre_sf, valor_sf, estado_sf) in zip(cols_semaforo, sub_estados):
+    for col_sf, (nombre_sf, valor_sf, estado_sf) in zip(
+        cols_semaforo, sub_estados
+    ):
       with col_sf:
         color_sf = _colores_semaforo[estado_sf]
         st.markdown(
             f"""
-            <div style="background-color:#141414; border:1px solid #2b2b2b;
-                border-left:4px solid {color_sf}; border-radius:0 8px 8px 0;
-                padding:12px 14px;">
-              <p style="font-size:12px; color:#aaaaaa; margin:0 0 4px 0;
-                  text-transform:uppercase;">{nombre_sf}</p>
-              <p style="font-size:22px; font-weight:700; color:{color_sf};
-                  margin:0;">{valor_sf}</p>
+            <div style="
+                background:linear-gradient(145deg,#102238,#142b45);
+                border:1px solid #29415f;
+                border-top:3px solid {color_sf};
+                border-radius:14px; padding:14px 15px; min-height:108px;
+                box-shadow:0 8px 18px rgba(0,0,0,.11);">
+              <div style="font-size:11px; color:#9eb1c7;
+                          text-transform:uppercase; letter-spacing:.06em;
+                          font-weight:750; margin-bottom:7px;">
+                {nombre_sf}
+              </div>
+              <div style="display:flex; align-items:center; gap:9px;">
+                <span style="
+                    display:inline-block; width:9px; height:9px; border-radius:50%;
+                    background:{color_sf};
+                    box-shadow:0 0 10px {color_sf};"></span>
+                <span style="
+                    font-size:26px; font-weight:850; color:{color_sf};">
+                  {valor_sf}
+                </span>
+              </div>
+              <div style="margin-top:5px; font-size:10px; color:#647b93;">
+                Estado: <span style="color:{color_sf}; font-weight:800;">
+                {estado_sf.upper()}</span>
+              </div>
             </div>
             """,
             unsafe_allow_html=True,
         )
 
     # ---------------------------------------------------------------
-    # Comparativo Fill Rate por semana (tarjetas apiladas, sin filtrar
-    # ninguna semana): permite ver de un vistazo si la caída es de la
-    # última semana en curso o una tendencia sostenida.
+    # Bloque destacado: Fill Rate que debería recuperarse esta semana.
+    # ---------------------------------------------------------------
+    st.markdown("##### 🎯 Fill Rate — Recuperación de Esta Semana")
+
+    if n_recuperar_semana > 0:
+      st.markdown(
+          f"""
+          <div style="
+              display:flex; align-items:center; justify-content:space-between;
+              gap:20px; background:linear-gradient(135deg,#162f47,#183d59);
+              border:1px solid #285979; border-radius:16px; padding:18px 20px;
+              margin:8px 0 14px 0;
+              box-shadow:0 12px 26px rgba(0,0,0,.14);">
+            <div>
+              <div style="font-size:12px; color:#8fc2df; font-weight:800;
+                          text-transform:uppercase; letter-spacing:.07em;">
+                Oportunidad de recuperación
+              </div>
+              <div style="font-size:28px; color:#f8fafc; font-weight:900;
+                          margin-top:2px;">
+                {n_recuperar_semana} SKU
+              </div>
+              <div style="font-size:12px; color:#9eb1c7; margin-top:3px;">
+                Identificados para recuperar durante esta semana
+              </div>
+            </div>
+            <div style="text-align:right;">
+              <div style="font-size:12px; color:#8fc2df; font-weight:800;
+                          text-transform:uppercase;">
+                Quiebre a recuperar
+              </div>
+              <div style="font-size:25px; color:#fbbf24; font-weight:900;
+                          margin-top:3px;">
+                {formato_moneda(monto_recuperar_semana)}
+              </div>
+              <div style="font-size:11px; color:#9eb1c7;">
+                según comentarios / ETA
+              </div>
+            </div>
+          </div>
+          """,
+          unsafe_allow_html=True,
+      )
+
+      calendario_fr_ordenado = sorted(
+          calendario_fr, key=lambda x: abs(float(x.get("quiebre") or 0)),
+          reverse=True
+      )
+
+      n_cols_cal = 3
+      cols_cal = st.columns(n_cols_cal)
+      for idx_cal, item_cal in enumerate(calendario_fr_ordenado[:12]):
+        with cols_cal[idx_cal % n_cols_cal]:
+          monto_item = abs(float(item_cal.get("quiebre") or 0))
+          monto_txt = formato_moneda(monto_item) if monto_item else "$0"
+          comentario_txt = item_cal.get("comentario") or "Sin comentario"
+          fecha_txt = item_cal.get("fecha_txt") or "Sin fecha estimada"
+          st.markdown(
+              f"""
+              <div style="
+                  background:#102238; border:1px solid #29415f;
+                  border-left:4px solid #fbbf24; border-radius:0 12px 12px 0;
+                  padding:11px 13px; margin-bottom:9px; min-height:92px;">
+                <div style="font-size:12px; color:#f8fafc; font-weight:800;">
+                  {item_cal.get("etiqueta","SKU sin identificar")}
+                </div>
+                <div style="font-size:11px; color:#95aac1; margin-top:4px;">
+                  {item_cal.get("bloque","")} · {monto_txt}
+                </div>
+                <div style="font-size:11px; color:#fbbf24; font-weight:750;
+                            margin-top:4px;">
+                  → {fecha_txt}
+                </div>
+                <div style="font-size:10px; color:#6f859c; margin-top:4px;">
+                  {comentario_txt}
+                </div>
+              </div>
+              """,
+              unsafe_allow_html=True,
+          )
+
+      if len(calendario_fr_ordenado) > 12:
+        st.caption(
+            f"Se muestran los 12 casos de mayor quiebre. "
+            f"Hay {len(calendario_fr_ordenado) - 12} casos adicionales."
+        )
+    else:
+      st.markdown(
+          """
+          <div style="
+              background:rgba(34,197,94,.10); border:1px solid rgba(34,197,94,.30);
+              border-radius:14px; padding:16px 18px;">
+            <div style="font-size:14px; color:#22c55e; font-weight:850;">
+              ✓ Sin casos pendientes identificados para recuperar esta semana
+            </div>
+            <div style="font-size:11px; color:#8fa6bd; margin-top:4px;">
+              No se encontraron productos con fecha de recuperación inmediata.
+            </div>
+          </div>
+          """,
+          unsafe_allow_html=True,
+      )
+
+    # ---------------------------------------------------------------
+    # Comparativo Fill Rate por semana.
     # ---------------------------------------------------------------
     if fr4_sb_raw or fr4_pu_raw:
       st.markdown("###### 📊 Fill Rate por semana (comparativo)")
       st.caption(
-          "La última semana puede estar en curso: si su % es bajo,"
-          " compáralo con las anteriores antes de sacar conclusiones."
+          "La última semana puede estar en curso. El color indica el nivel "
+          "del Fill Rate y la tendencia permite ver la recuperación."
       )
+
       for _idx_sem, _sem in enumerate(semanas_comb):
         _c_sem = combinado_fr[_sem]
         _pct_sem = (
@@ -5305,29 +5476,42 @@ with tabs[0]:
         )
         _estado_sem = _estado_fr(_pct_sem)
         _color_sem = _colores_semaforo[_estado_sem]
+        _bg_sem = _fondos_semaforo[_estado_sem]
         _es_ultima = _idx_sem == len(semanas_comb) - 1
         _nota_ultima = (
-            ' <span style="color:#888888; font-weight:400;">'
-            "(última semana, posiblemente en curso)</span>"
-            if _es_ultima
-            else ""
+            " · semana en curso" if _es_ultima else ""
         )
+
         st.markdown(
             f"""
-            <div style="display:flex; align-items:center; justify-content:space-between;
-                background-color:#141414; border:1px solid #2b2b2b;
-                border-left:4px solid {_color_sem}; border-radius:0 8px 8px 0;
-                padding:10px 16px; margin-bottom:8px;">
-              <p style="font-size:14px; color:#dddddd; margin:0;">
-                  Sem {_sem}{_nota_ultima}</p>
-              <p style="font-size:18px; font-weight:700; color:{_color_sem};
-                  margin:0;">{_pct_sem:.1f}%</p>
+            <div style="
+                display:flex; align-items:center; justify-content:space-between;
+                background:#102238; border:1px solid #29415f;
+                border-left:4px solid {_color_sem}; border-radius:0 11px 11px 0;
+                padding:11px 15px; margin-bottom:8px;">
+              <div>
+                <div style="font-size:13px; color:#e7eef7; font-weight:750;">
+                  Sem {_sem}
+                </div>
+                <div style="font-size:10px; color:#71889f;">
+                  {"Última semana" if _es_ultima else "Semana cerrada"}
+                  {_nota_ultima if _es_ultima else ""}
+                </div>
+              </div>
+              <div style="
+                  padding:5px 10px; border-radius:999px;
+                  background:{_bg_sem}; color:{_color_sem};
+                  font-size:16px; font-weight:900;">
+                {_pct_sem:.1f}%
+              </div>
             </div>
             """,
             unsafe_allow_html=True,
         )
   else:
-    st.info("No hay suficiente información para calcular el semáforo de salud operativa.")
+    st.info(
+        "No hay suficiente información para calcular el semáforo de salud operativa."
+    )
 
 
 # =================================================================
