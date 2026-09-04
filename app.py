@@ -2788,6 +2788,34 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
         st.divider()
 
+        # Captura para RESUMEN: se usa el TOTAL GENERAL (todas las semanas),
+        # no la semana que haya quedado filtrada en pantalla, para que el
+        # KPI consolidado del Resumen no cambie según qué semana se haya
+        # visto por última vez en esta pestaña.
+        mask_farma_tot = (
+            df[col_div].astype(str).str.upper().str.contains("FARMA", na=False)
+        )
+        mask_consumo_tot = (
+            df[col_div].astype(str).str.upper().str.contains("CONSUMO", na=False)
+        )
+        if col_glosa and col_glosa in df.columns:
+          mask_solares_tot = (
+              df[col_glosa].astype(str).str.upper().str.contains("SOLARES", na=False)
+          )
+        else:
+          mask_solares_tot = pd.Series(False, index=df.index)
+        mask_consumo_tot = mask_consumo_tot & ~mask_solares_tot
+
+        resumen_data["compras_sb"] = {
+            "oc_farma": int(df[mask_farma_tot][col_oc].nunique()),
+            "monto_farma": float(df[mask_farma_tot][col_m_compra].sum()),
+            "oc_consumo": int(df[mask_consumo_tot][col_oc].nunique()),
+            "monto_consumo": float(df[mask_consumo_tot][col_m_compra].sum()),
+            "oc_solares": int(df[mask_solares_tot][col_oc].nunique()),
+            "monto_solares": float(df[mask_solares_tot][col_m_compra].sum()),
+            "monto_total": float(df[col_m_compra].sum()),
+        }
+
       # =================================================================
       # NUEVO BLOQUE: MÉTRICAS DE OC Y MONTO TOTAL PARA PU (SIN DIVISIÓN)
       # =================================================================
@@ -2825,6 +2853,22 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         kpu_s2.metric("💵 Monto Solares", formato_moneda(monto_solares_pu))
 
         st.divider()
+
+        # Captura para RESUMEN: TOTAL GENERAL (todas las semanas), mismo
+        # criterio que en SB.
+        if col_glosa and col_glosa in df.columns:
+          mask_solares_pu_tot = (
+              df[col_glosa].astype(str).str.upper().str.contains("SOLARES", na=False)
+          )
+        else:
+          mask_solares_pu_tot = pd.Series(False, index=df.index)
+
+        resumen_data["compras_pu"] = {
+            "cantidad_oc": int(df[col_oc].nunique()),
+            "monto_total": float(df[col_m_compra].sum()),
+            "oc_solares": int(df[mask_solares_pu_tot][col_oc].nunique()),
+            "monto_solares": float(df[mask_solares_pu_tot][col_m_compra].sum()),
+        }
       # =================================================================
 
       if col_semana:
@@ -4465,6 +4509,77 @@ with tabs[0]:
       " reciente, urgencias de recuperación, venta, cumplimiento de meta y"
       " estado de caducidad."
   )
+  st.divider()
+
+  # -----------------------------------------------------------------
+  # Compras SB + PU: KPIs consolidados y comparativo por categoría
+  # -----------------------------------------------------------------
+  st.markdown("#### 💰 Compras — SB + PU (Total General)")
+  compras_sb = resumen_data.get("compras_sb", {})
+  compras_pu = resumen_data.get("compras_pu", {})
+
+  if compras_sb or compras_pu:
+    oc_sb_total = (
+        compras_sb.get("oc_farma", 0)
+        + compras_sb.get("oc_consumo", 0)
+        + compras_sb.get("oc_solares", 0)
+    )
+    oc_pu_total = compras_pu.get("cantidad_oc", 0)
+    monto_total_general = compras_sb.get("monto_total", 0) + compras_pu.get(
+        "monto_total", 0
+    )
+    monto_solares_total = compras_sb.get("monto_solares", 0) + compras_pu.get(
+        "monto_solares", 0
+    )
+
+    # Tarjetas de KPIs
+    kc1, kc2, kc3, kc4 = st.columns(4)
+    kc1.metric("📦 OC Totales", str(oc_sb_total + oc_pu_total))
+    kc2.metric("💰 Monto Total", formato_moneda(monto_total_general))
+    kc3.metric("💊 Monto Farma (SB)", formato_moneda(compras_sb.get("monto_farma", 0)))
+    kc4.metric(
+        "🛍️ Monto Consumo (SB)", formato_moneda(compras_sb.get("monto_consumo", 0))
+    )
+
+    kc5, kc6, kc7, kc8 = st.columns(4)
+    kc5.metric("🏪 Monto PU", formato_moneda(compras_pu.get("monto_total", 0)))
+    kc6.metric("☀️ Monto Solares", formato_moneda(monto_solares_total))
+    kc7.metric("📦 OC SB", str(oc_sb_total))
+    kc8.metric("📦 OC PU", str(oc_pu_total))
+
+    # Gráfico de barras comparativo por categoría
+    categorias_compras = ["Farma (SB)", "Consumo (SB)", "PU", "Solares"]
+    montos_compras = [
+        compras_sb.get("monto_farma", 0),
+        compras_sb.get("monto_consumo", 0),
+        compras_pu.get("monto_total", 0),
+        monto_solares_total,
+    ]
+    colores_compras = ["#0070f3", "#f97316", "#00adb5", "#f5c518"]
+
+    fig_compras = go.Figure(
+        go.Bar(
+            x=categorias_compras,
+            y=montos_compras,
+            marker_color=colores_compras,
+            text=[formato_moneda(v) for v in montos_compras],
+            textposition="outside",
+        )
+    )
+    fig_compras.update_layout(
+        height=320,
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#ffffff"),
+        yaxis=dict(gridcolor="#222222"),
+        xaxis=dict(gridcolor="#222222"),
+        margin=dict(t=30),
+        showlegend=False,
+    )
+    st.plotly_chart(fig_compras, use_container_width=True, key="resumen_compras_bar")
+  else:
+    st.info("No hay datos de compras SB/PU disponibles todavía.")
+
   st.divider()
 
   # -----------------------------------------------------------------
