@@ -4578,18 +4578,18 @@ with tabs[0]:
 
     # Tarjetas de KPIs
     kc1, kc2, kc3, kc4 = st.columns(4)
-    kc1.metric("📦 OC Totales", str(oc_sb_total + oc_pu_total))
-    kc2.metric(
+    kc1.metric(
         "🛍️ Monto Consumo (SB)", formato_moneda(compras_sb.get("monto_consumo", 0))
     )
-    kc3.metric("💊 Monto Farma (SB)", formato_moneda(compras_sb.get("monto_farma", 0)))
-    kc4.metric("🏪 Monto PU", formato_moneda(compras_pu.get("monto_total", 0)))
+    kc2.metric("💊 Monto Farma (SB)", formato_moneda(compras_sb.get("monto_farma", 0)))
+    kc3.metric("🏪 Monto PU", formato_moneda(compras_pu.get("monto_total", 0)))
+    kc4.metric("💰 Monto Total", formato_moneda(monto_total_general))
 
     kc5, kc6, kc7, kc8 = st.columns(4)
     kc5.metric("☀️ Monto Solares", formato_moneda(monto_solares_total))
-    kc6.metric("💰 Monto Total", formato_moneda(monto_total_general))
-    kc7.metric("📦 OC SB", str(oc_sb_total))
-    kc8.metric("📦 OC PU", str(oc_pu_total))
+    kc6.metric("📦 OC SB", str(oc_sb_total))
+    kc7.metric("📦 OC PU", str(oc_pu_total))
+    kc8.metric("📦 OC Totales", str(oc_sb_total + oc_pu_total))
 
     # Gráfico de barras comparativo por categoría
     categorias_compras = ["Farma (SB)", "Consumo (SB)", "PU", "Solares"]
