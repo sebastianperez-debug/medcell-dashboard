@@ -199,62 +199,7 @@ st.markdown(
         border-bottom: 0;
     }
 
-    /* Navegación de pestañas en formato lateral */
-    .stTabs {
-        display: grid !important;
-        grid-template-columns: 220px minmax(0, 1fr);
-        gap: 1.2rem;
-        align-items: start;
-    }
-
-    .stTabs [data-baseweb="tab-list"] {
-        display: flex !important;
-        flex-direction: column !important;
-        align-items: stretch !important;
-        gap: .4rem !important;
-        position: sticky;
-        top: 1rem;
-        padding: .65rem;
-        border: 1px solid #29415f;
-        border-radius: 16px;
-        background: #0d1b2e;
-    }
-
-    .stTabs [data-baseweb="tab"] {
-        width: 100% !important;
-        justify-content: flex-start !important;
-        border-radius: 10px !important;
-        padding: .75rem .85rem !important;
-        color: #a9bdd3 !important;
-        white-space: normal !important;
-        text-align: left !important;
-    }
-
-    .stTabs [data-baseweb="tab"][aria-selected="true"] {
-        background: linear-gradient(90deg, #14527b, #173b5e) !important;
-        color: #ffffff !important;
-        box-shadow: inset 3px 0 0 #38bdf8;
-    }
-
-    .stTabs [data-baseweb="tab-highlight"] {
-        display: none !important;
-    }
-
-    .stTabs [data-baseweb="tab-panel"] {
-        min-width: 0;
-    }
-
     @media (max-width: 900px) {
-        .stTabs {
-            display: block !important;
-        }
-        .stTabs [data-baseweb="tab-list"] {
-            position: static;
-            margin-bottom: 1rem;
-        }
-        .stTabs [data-baseweb="tab"] {
-            width: auto !important;
-        }
     }
 
     @media (max-width: 900px) {
