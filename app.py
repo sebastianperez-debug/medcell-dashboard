@@ -303,6 +303,29 @@ def formato_unidades(valor):
     return "0"
 
 
+def parse_semana_int(val):
+  """Convierte un valor de columna 'semana' (ya formateado por fmt_sem, ej.
+  '36' o '36.0') a entero. Devuelve None si no se puede interpretar."""
+  try:
+    return int(float(str(val).replace(",", ".")))
+  except (ValueError, TypeError):
+    return None
+
+
+def semanas_del_mes_actual():
+  """Devuelve el set de números de semana ISO (del año en curso) que caen
+  dentro del mes calendario actual. Se usa para filtrar SB/PU (que solo
+  traen 'semana', sin columna de fecha) por 'lo que va en el mes actual'."""
+  hoy = datetime.now()
+  primer_dia = hoy.replace(day=1)
+  if hoy.month == 12:
+    primer_dia_sig = hoy.replace(year=hoy.year + 1, month=1, day=1)
+  else:
+    primer_dia_sig = hoy.replace(month=hoy.month + 1, day=1)
+  dias_mes = pd.date_range(primer_dia, primer_dia_sig - timedelta(days=1))
+  return set(int(d.isocalendar()[1]) for d in dias_mes)
+
+
 def aplicar_criticidad(column):
   is_total = column.index == (len(column) - 1)
   styles = []
@@ -2788,32 +2811,39 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
         st.divider()
 
-        # Captura para RESUMEN: se usa el TOTAL GENERAL (todas las semanas),
-        # no la semana que haya quedado filtrada en pantalla, para que el
-        # KPI consolidado del Resumen no cambie según qué semana se haya
-        # visto por última vez en esta pestaña.
+        # Captura para RESUMEN: solo lo que va en el MES ACTUAL (no la
+        # semana filtrada en pantalla ni el histórico completo), usando la
+        # semana ISO del calendario para saber qué filas del mes en curso
+        # corresponden (SB/PU no traen columna de fecha, solo 'semana').
+        semanas_mes = semanas_del_mes_actual()
+        if col_semana and col_semana in df.columns:
+          mask_mes_actual = df[col_semana].apply(parse_semana_int).isin(semanas_mes)
+        else:
+          mask_mes_actual = pd.Series(False, index=df.index)
+        df_mes = df[mask_mes_actual]
+
         mask_farma_tot = (
-            df[col_div].astype(str).str.upper().str.contains("FARMA", na=False)
+            df_mes[col_div].astype(str).str.upper().str.contains("FARMA", na=False)
         )
         mask_consumo_tot = (
-            df[col_div].astype(str).str.upper().str.contains("CONSUMO", na=False)
+            df_mes[col_div].astype(str).str.upper().str.contains("CONSUMO", na=False)
         )
-        if col_glosa and col_glosa in df.columns:
+        if col_glosa and col_glosa in df_mes.columns:
           mask_solares_tot = (
-              df[col_glosa].astype(str).str.upper().str.contains("SOLARES", na=False)
+              df_mes[col_glosa].astype(str).str.upper().str.contains("SOLARES", na=False)
           )
         else:
-          mask_solares_tot = pd.Series(False, index=df.index)
+          mask_solares_tot = pd.Series(False, index=df_mes.index)
         mask_consumo_tot = mask_consumo_tot & ~mask_solares_tot
 
         resumen_data["compras_sb"] = {
-            "oc_farma": int(df[mask_farma_tot][col_oc].nunique()),
-            "monto_farma": float(df[mask_farma_tot][col_m_compra].sum()),
-            "oc_consumo": int(df[mask_consumo_tot][col_oc].nunique()),
-            "monto_consumo": float(df[mask_consumo_tot][col_m_compra].sum()),
-            "oc_solares": int(df[mask_solares_tot][col_oc].nunique()),
-            "monto_solares": float(df[mask_solares_tot][col_m_compra].sum()),
-            "monto_total": float(df[col_m_compra].sum()),
+            "oc_farma": int(df_mes[mask_farma_tot][col_oc].nunique()),
+            "monto_farma": float(df_mes[mask_farma_tot][col_m_compra].sum()),
+            "oc_consumo": int(df_mes[mask_consumo_tot][col_oc].nunique()),
+            "monto_consumo": float(df_mes[mask_consumo_tot][col_m_compra].sum()),
+            "oc_solares": int(df_mes[mask_solares_tot][col_oc].nunique()),
+            "monto_solares": float(df_mes[mask_solares_tot][col_m_compra].sum()),
+            "monto_total": float(df_mes[col_m_compra].sum()),
         }
 
       # =================================================================
@@ -2854,20 +2884,34 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
         st.divider()
 
-        # Captura para RESUMEN: TOTAL GENERAL (todas las semanas), mismo
+        # Captura para RESUMEN: solo lo que va en el MES ACTUAL, mismo
         # criterio que en SB.
-        if col_glosa and col_glosa in df.columns:
-          mask_solares_pu_tot = (
-              df[col_glosa].astype(str).str.upper().str.contains("SOLARES", na=False)
+        semanas_mes_pu = semanas_del_mes_actual()
+        if col_semana and col_semana in df.columns:
+          mask_mes_actual_pu = (
+              df[col_semana].apply(parse_semana_int).isin(semanas_mes_pu)
           )
         else:
-          mask_solares_pu_tot = pd.Series(False, index=df.index)
+          mask_mes_actual_pu = pd.Series(False, index=df.index)
+        df_mes_pu = df[mask_mes_actual_pu]
+
+        if col_glosa and col_glosa in df_mes_pu.columns:
+          mask_solares_pu_tot = (
+              df_mes_pu[col_glosa]
+              .astype(str)
+              .str.upper()
+              .str.contains("SOLARES", na=False)
+          )
+        else:
+          mask_solares_pu_tot = pd.Series(False, index=df_mes_pu.index)
 
         resumen_data["compras_pu"] = {
-            "cantidad_oc": int(df[col_oc].nunique()),
-            "monto_total": float(df[col_m_compra].sum()),
-            "oc_solares": int(df[mask_solares_pu_tot][col_oc].nunique()),
-            "monto_solares": float(df[mask_solares_pu_tot][col_m_compra].sum()),
+            "cantidad_oc": int(df_mes_pu[col_oc].nunique()),
+            "monto_total": float(df_mes_pu[col_m_compra].sum()),
+            "oc_solares": int(df_mes_pu[mask_solares_pu_tot][col_oc].nunique()),
+            "monto_solares": float(
+                df_mes_pu[mask_solares_pu_tot][col_m_compra].sum()
+            ),
         }
       # =================================================================
 
@@ -4514,7 +4558,7 @@ with tabs[0]:
   # -----------------------------------------------------------------
   # Compras SB + PU: KPIs consolidados y comparativo por categoría
   # -----------------------------------------------------------------
-  st.markdown("#### 💰 Compras — SB + PU (Total General)")
+  st.markdown("#### 💰 Compras — SB + PU (Mes Actual)")
   compras_sb = resumen_data.get("compras_sb", {})
   compras_pu = resumen_data.get("compras_pu", {})
 
@@ -4534,18 +4578,18 @@ with tabs[0]:
 
     # Tarjetas de KPIs
     kc1, kc2, kc3, kc4 = st.columns(4)
-    kc1.metric("📦 OC Totales", str(oc_sb_total + oc_pu_total))
-    kc2.metric("💰 Monto Total", formato_moneda(monto_total_general))
-    kc3.metric("💊 Monto Farma (SB)", formato_moneda(compras_sb.get("monto_farma", 0)))
-    kc4.metric(
+    kc1.metric(
         "🛍️ Monto Consumo (SB)", formato_moneda(compras_sb.get("monto_consumo", 0))
     )
+    kc2.metric("💊 Monto Farma (SB)", formato_moneda(compras_sb.get("monto_farma", 0)))
+    kc3.metric("🏪 Monto PU", formato_moneda(compras_pu.get("monto_total", 0)))
+    kc4.metric("💰 Monto Total", formato_moneda(monto_total_general))
 
     kc5, kc6, kc7, kc8 = st.columns(4)
-    kc5.metric("🏪 Monto PU", formato_moneda(compras_pu.get("monto_total", 0)))
-    kc6.metric("☀️ Monto Solares", formato_moneda(monto_solares_total))
-    kc7.metric("📦 OC SB", str(oc_sb_total))
-    kc8.metric("📦 OC PU", str(oc_pu_total))
+    kc5.metric("☀️ Monto Solares", formato_moneda(monto_solares_total))
+    kc6.metric("📦 OC SB", str(oc_sb_total))
+    kc7.metric("📦 OC PU", str(oc_pu_total))
+    kc8.metric("📦 OC Totales", str(oc_sb_total + oc_pu_total))
 
     # Gráfico de barras comparativo por categoría
     categorias_compras = ["Farma (SB)", "Consumo (SB)", "PU", "Solares"]
@@ -4578,7 +4622,7 @@ with tabs[0]:
     )
     st.plotly_chart(fig_compras, use_container_width=True, key="resumen_compras_bar")
   else:
-    st.info("No hay datos de compras SB/PU disponibles todavía.")
+    st.info("No hay datos de compras SB/PU para el mes actual todavía.")
 
   st.divider()
 
