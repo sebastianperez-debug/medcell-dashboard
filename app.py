@@ -351,6 +351,7 @@ def parse_semana_int(val):
     return None
 
 
+@st.cache_data(ttl=3600)
 def semanas_del_mes_actual():
   """Devuelve el set de números de semana ISO (del año en curso) que caen
   dentro del mes calendario actual. Se usa para filtrar SB/PU (que solo
@@ -562,16 +563,36 @@ def buscar_excel():
 ruta_final = buscar_excel()
 
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=60, show_spinner=False)
 def cargar_libro_excel(ruta):
+  """Carga una sola vez las hojas que realmente usa el dashboard.
+
+  Las hojas auxiliares excluidas del menú no se leen, reduciendo el trabajo
+  inicial y el consumo de memoria. La caché expira a los 60 s para recoger
+  cambios del Excel sin obligar a reiniciar Streamlit.
+  """
+  hojas_excluir = {
+      "sku",
+      "maestra",
+      "precio",
+      "nivel de servicio sb",
+      "venta perdida sb",
+      "nivel de servicio pu",
+      "hoja1",
+  }
   xls = pd.ExcelFile(ruta)
   hojas_dict = {}
-  for hoja in xls.sheet_names:
-    df_temp = pd.read_excel(xls, hoja, dtype=str)
-    df_temp.columns = [str(c).strip() for c in df_temp.columns]
-    df_temp = df_temp.loc[:, ~df_temp.columns.str.startswith("Unnamed")]
-    df_temp = df_temp.loc[:, ~df_temp.columns.duplicated()]
-    hojas_dict[hoja] = df_temp
+  try:
+    for hoja in xls.sheet_names:
+      if hoja.strip().lower() in hojas_excluir:
+        continue
+      df_temp = pd.read_excel(xls, sheet_name=hoja, dtype=str)
+      df_temp.columns = [str(c).strip() for c in df_temp.columns]
+      df_temp = df_temp.loc[:, ~df_temp.columns.str.startswith("Unnamed")]
+      df_temp = df_temp.loc[:, ~df_temp.columns.duplicated()]
+      hojas_dict[hoja] = df_temp
+  finally:
+    xls.close()
   return hojas_dict
 
 
@@ -644,32 +665,20 @@ def crear_reloj_gauge(titulo, porcentaje, color_barra):
 
 
 # ================================================================
-# TABLAS HTML CONTROLADAS
+# TABLAS: RENDERIZADOR SEGURO
 # ================================================================
-# Se utiliza temporalmente un renderer HTML para probar el diseño
-# visual sin depender del componente interno de st.dataframe().
-def _mc_render_table_html(data, *args, **kwargs):
-    """Renderiza DataFrame/Styler con colores corporativos controlados."""
-    try:
-        if hasattr(data, "to_html"):
-            if hasattr(data, "hide_index") and hasattr(data, "to_html"):
-                html = data.to_html()
-            else:
-                html = data.to_html(index=False, border=0, classes="mc-html-table")
-        else:
-            html = pd.DataFrame(data).to_html(index=False, border=0, classes="mc-html-table")
+# IMPORTANTE: no reemplazar globalmente st.dataframe().
+# El componente nativo de Streamlit es mucho más eficiente para tablas
+# grandes y además conserva column_config, filtros, scroll y Styler.
+# El intento anterior de convertir TODAS las tablas a HTML hacía que cada
+# rerun generara enormes cadenas HTML y podía dejar la app congelada en móvil.
+def _mc_dataframe(data, *args, **kwargs):
+    """Renderiza tablas con el componente nativo de Streamlit.
 
-        st.markdown(
-            f'<div class="mc-table-wrap">{html}</div>',
-            unsafe_allow_html=True,
-        )
-    except Exception:
-        # Respaldo para objetos no compatibles.
-        st.write(data)
-
-# Activación global: todas las llamadas existentes a st.dataframe()
-# pasan por el renderer HTML durante esta prueba.
-st.dataframe = _mc_render_table_html
+    Mantiene compatibilidad con DataFrame y pandas Styler, y deja intactos
+    argumentos como column_config, hide_index y use_container_width.
+    """
+    return st.dataframe(data, *args, **kwargs)
 
 # --- 5. PESTAÑAS ---
 HOJAS_A_EXCLUIR = [
@@ -924,7 +933,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
               "Participación": grp_div["Participación"],
           })
 
-          st.dataframe(
+          _mc_dataframe(
               grp_div_disp,
               column_config={
                   "Monto ($)": st.column_config.NumberColumn(
@@ -1035,7 +1044,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
               "% Acumulado": grp_cli["Pct_Acumulado"],
           })
 
-          st.dataframe(
+          _mc_dataframe(
               grp_cli_disp,
               column_config={
                   "Monto Total ($)": st.column_config.NumberColumn(
@@ -1096,7 +1105,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             "Unidades": grp_prod[col_unid],
         })
 
-        st.dataframe(
+        _mc_dataframe(
             grp_prod_disp,
             column_config={
                 "Monto Total ($)": st.column_config.NumberColumn(
@@ -1139,7 +1148,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         df_si_det = df_si_det[mask_si]
 
       st.caption(f"Mostrando {len(df_si_det)} registros.")
-      st.dataframe(df_si_det, hide_index=True, use_container_width=True)
+      _mc_dataframe(df_si_det, hide_index=True, use_container_width=True)
 
     # =================================================================
     # DASHBOARD DE SI PROYECCION
@@ -1279,7 +1288,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
           if "Facturado actual_pct" in df_mostrar.columns:
             cols_disp.append("Facturado actual_pct")
 
-          st.dataframe(
+          _mc_dataframe(
               df_mostrar[cols_disp],
               column_config=config_columnas,
               hide_index=True,
@@ -1370,9 +1379,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         datos_oc_proyeccion = []
 
         try:
-          df_grid_oc = pd.read_excel(
-              ruta_final, sheet_name=nombre_hoja, header=None, dtype=str
-          )
+          df_grid_oc = cargar_hoja_raw(ruta_final, nombre_hoja).astype(object)
 
           header_r, header_c = None, None
           for r in range(len(df_grid_oc)):
@@ -1459,7 +1466,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
         with col_oc_tabla:
           st.markdown("##### 📋 Tabla Detalle")
-          st.dataframe(
+          _mc_dataframe(
               df_oc_tab,
               column_config={
                   "Concepto": st.column_config.TextColumn("Categoría / Estado"),
@@ -1610,9 +1617,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         st.markdown("#### 🗓️ Proyecciones Metas por Mes (2026)")
 
         try:
-          df_grid = pd.read_excel(
-              ruta_final, sheet_name=nombre_hoja, header=None, dtype=str
-          )
+          df_grid = cargar_hoja_raw(ruta_final, nombre_hoja).astype(object)
 
           target_r, target_c = None, None
 
@@ -1752,7 +1757,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                   )
                 return df_styles
 
-              st.dataframe(
+              _mc_dataframe(
                   df_res_meses.style.apply(resaltar_mes_actual, axis=None),
                   column_config=cfg_meses,
                   hide_index=True,
@@ -2308,7 +2313,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             df_vista_stock["Fecha Expiración"], errors="coerce"
         ).dt.strftime("%d-%m-%Y")
 
-      st.dataframe(df_vista_stock, hide_index=True, use_container_width=True)
+      _mc_dataframe(df_vista_stock, hide_index=True, use_container_width=True)
 
       st.divider()
 
@@ -2392,7 +2397,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
           if col_desc_stock and col_desc_stock in grp_loc.columns:
             rename_cols[col_desc_stock] = "Descripción Producto"
           grp_loc_disp = grp_loc.rename(columns=rename_cols)
-          st.dataframe(
+          _mc_dataframe(
               grp_loc_disp,
               column_config={
                   "Cantidad": st.column_config.NumberColumn(
@@ -3215,7 +3220,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                   formato_unidades
               )
 
-              st.dataframe(
+              _mc_dataframe(
                   grp_top_disp, hide_index=True, use_container_width=True
               )
 
@@ -3372,7 +3377,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                     formato_unidades
                 )
 
-                st.dataframe(
+                _mc_dataframe(
                     grp_top_disp, hide_index=True, use_container_width=True
                 )
 
@@ -3498,7 +3503,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
               nuevas_columnas_s[col] = str(col).replace("_", " ").strip().title()
           df_solares_final = df_solares_final.rename(columns=nuevas_columnas_s)
 
-          st.dataframe(
+          _mc_dataframe(
               df_solares_final, hide_index=True, use_container_width=True
           )
         else:
@@ -3567,7 +3572,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
               "Fill Rate Unidades",
               "Fill Rate Monto",
           ]
-          st.dataframe(df_disp, hide_index=True, use_container_width=True)
+          _mc_dataframe(df_disp, hide_index=True, use_container_width=True)
           st.divider()
 
           col_g1, col_g2 = st.columns(2)
@@ -3669,7 +3674,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
               "Fill Rate Unidades",
               "Fill Rate Monto",
           ]
-          st.dataframe(df_disp, hide_index=True, use_container_width=True)
+          _mc_dataframe(df_disp, hide_index=True, use_container_width=True)
           st.divider()
 
           col_g1, col_g2 = st.columns(2)
@@ -3849,7 +3854,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             styled_df = grp_m_final.style.apply(
                 aplicar_criticidad, subset=["QUIEBRE %"]
             )
-            st.dataframe(styled_df, hide_index=True, use_container_width=True)
+            _mc_dataframe(styled_df, hide_index=True, use_container_width=True)
           else:
             st.info(
                 f"No hay quiebres registrados para la semana {fmt_sem(sem_top)} en"
@@ -3912,7 +3917,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 styled_df = grp_m_final.style.apply(
                     aplicar_criticidad, subset=["QUIEBRE %"]
                 )
-                st.dataframe(
+                _mc_dataframe(
                     styled_df, hide_index=True, use_container_width=True
                 )
               else:
@@ -3993,7 +3998,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
       df_corte_final = df_corte_final.rename(columns=nuevas_columnas)
 
-      st.dataframe(df_corte_final, hide_index=True, use_container_width=True)
+      _mc_dataframe(df_corte_final, hide_index=True, use_container_width=True)
 
     # =================================================================
     # PESTAÑA FILL RATE (múltiples tablas pegadas: Salcobrand Consumo,
@@ -4534,14 +4539,14 @@ for i, nombre_hoja in enumerate(nombres_hojas):
           # de SB/PU: columnas clave, ya formateadas, siempre visibles.
           tabla_disp, columnas_originales = _fr_tabla_display(bloque["tabla"])
           if not tabla_disp.empty:
-            st.dataframe(
+            _mc_dataframe(
                 tabla_disp, hide_index=True, use_container_width=True
             )
             with st.expander(
                 "Ver todas las columnas (detalle completo de la hoja)",
                 expanded=False,
             ):
-              st.dataframe(
+              _mc_dataframe(
                   bloque["tabla"], hide_index=True, use_container_width=True
               )
           else:
@@ -4606,7 +4611,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         )
         df = df[mask]
       st.caption(f"Mostrando {len(df)} registros en {nombre_hoja}.")
-      st.dataframe(df, hide_index=True, use_container_width=True)
+      _mc_dataframe(df, hide_index=True, use_container_width=True)
 
 
 # =================================================================
@@ -5150,7 +5155,7 @@ with tabs[0]:
       st.markdown("###### 🏬 SALCOBRAND (SB)")
       df_rec_sb_top = _fr_top10_recurrentes(rec_sb)
       if df_rec_sb_top is not None:
-        st.dataframe(
+        _mc_dataframe(
             df_rec_sb_top,
             hide_index=False,
             use_container_width=True,
@@ -5164,7 +5169,7 @@ with tabs[0]:
       st.markdown("###### 🏪 PREUNIC (PU)")
       df_rec_pu_top = _fr_top10_recurrentes(rec_pu)
       if df_rec_pu_top is not None:
-        st.dataframe(
+        _mc_dataframe(
             df_rec_pu_top,
             hide_index=False,
             use_container_width=True,
@@ -5522,7 +5527,7 @@ with tabs[-1]:
   st.caption("Apunta la cámara al texto MCD de la posición. Si el texto no se reconoce, el lector intenta también el código de barras.")
 
   components.html(
-      """
+      r"""
       <div style="position:relative; width:100%; max-height:320px; overflow:hidden;
                   border-radius:8px; background:#000;">
         <video id="video" style="width:100%; max-height:320px; object-fit:cover;
