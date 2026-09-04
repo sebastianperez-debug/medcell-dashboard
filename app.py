@@ -15,162 +15,140 @@ st.set_page_config(page_title="Medcell Operaciones", layout="wide")
 st.markdown(
     """
     <style>
-    .stApp { background-color: #0b0b0b; color: #ffffff; }
-    
-    .medcell-header { 
-        border-bottom: 3px solid #0070f3; 
-        padding-bottom: 12px; 
-        margin-bottom: 25px; 
-    }
-    .medcell-brand { 
-        font-size: 34px; 
-        font-weight: 900; 
-        letter-spacing: 2px; 
-        color: #ffffff; 
-        text-transform: uppercase; 
-        font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-    }
-    .medcell-brand span { color: #0070f3; }
-    .medcell-subtitle { color: #aaaaaa; font-size: 13px; font-weight: 600; letter-spacing: 1px; margin-top: 2px; }
-    .medcell-author { color: #777777; font-size: 11px; margin-top: 4px; font-style: italic; }
-
-    /* Estilo de Tarjetas de Filtro por Semana */
-    div[data-testid="stRadio"] > label { display: none !important; }
-    div[data-testid="stRadio"] [role="radiogroup"] {
-        display: flex !important;
-        flex-wrap: wrap !important;
-        gap: 12px !important;
-        margin-top: 8px !important;
-    }
-    div[data-testid="stRadio"] [role="radiogroup"] > label {
-        background-color: #141414 !important;
-        border: 1px solid #2b2b2b !important;
-        padding: 10px 22px !important;
-        border-radius: 10px !important;
-        cursor: pointer !important;
-        transition: all 0.25s ease-in-out !important;
-        color: #cccccc !important;
-        font-weight: 600 !important;
-        font-size: 14px !important;
-        box-sizing: border-box !important;
-        margin: 0 !important;
-    }
-    div[data-testid="stRadio"] [role="radiogroup"] > label:hover {
-        border-color: #0070f3 !important;
-        background-color: #1e1e1e !important;
-        color: #ffffff !important;
-        transform: translateY(-2px);
-    }
-    div[data-testid="stRadio"] [role="radiogroup"] > label[data-checked="true"] {
-        background-color: #0070f3 !important;
-        border-color: #0070f3 !important;
-        color: #ffffff !important;
-        box-shadow: 0px 4px 14px rgba(0, 112, 243, 0.4);
+    :root {
+        --mc-bg: #0b1220;
+        --mc-panel: #111c2e;
+        --mc-panel-2: #16243a;
+        --mc-border: rgba(148, 163, 184, .18);
+        --mc-text: #f8fafc;
+        --mc-muted: #94a3b8;
+        --mc-primary: #38bdf8;
+        --mc-primary-2: #0ea5e9;
+        --mc-success: #22c55e;
+        --mc-warning: #f59e0b;
+        --mc-danger: #ef4444;
     }
 
-    /* En celular: exactamente 2 semanas por fila, ocupando mejor el ancho. */
-    @media (max-width: 768px) {
-        div[data-testid="stRadio"] {
-            width: 100% !important;
-            max-width: none !important;
-            margin-top: 0 !important;
-            margin-bottom: 8px !important;
-        }
-        div[data-testid="stRadio"] > div {
-            width: 100% !important;
-            max-width: none !important;
-        }
-        div[data-testid="stRadio"] [role="radiogroup"] {
-            display: grid !important;
-            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-            column-gap: 10px !important;
-            row-gap: 10px !important;
-            width: 100% !important;
-            max-width: none !important;
-            margin-top: 0 !important;
-        }
-        div[data-testid="stRadio"] [role="radiogroup"] > label {
-            width: 100% !important;
-            min-width: 0 !important;
-            height: 58px !important;
-            padding: 10px 12px !important;
-            display: flex !important;
-            align-items: center !important;
-            justify-content: flex-start !important;
-            margin: 0 !important;
-        }
+    .stApp {
+        background:
+            radial-gradient(circle at 8% 0%, rgba(14,165,233,.14), transparent 28%),
+            radial-gradient(circle at 100% 10%, rgba(59,130,246,.10), transparent 24%),
+            var(--mc-bg);
+        color: var(--mc-text);
     }
 
-    /* Pestañas generales */
+    [data-testid="stHeader"] {
+        background: transparent;
+    }
+
+    [data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #0d1728 0%, #0a1322 100%);
+        border-right: 1px solid var(--mc-border);
+    }
+
+    [data-testid="stSidebar"] > div:first-child {
+        padding-top: 1.25rem;
+    }
+
+    .block-container {
+        max-width: 1600px;
+        padding: 2rem 2.5rem 3rem;
+    }
+
+    .medcell-header {
+        padding: 1.4rem 1.6rem;
+        margin-bottom: 1.5rem;
+        border: 1px solid var(--mc-border);
+        border-radius: 20px;
+        background: linear-gradient(135deg, rgba(17,28,46,.96), rgba(22,36,58,.82));
+        box-shadow: 0 18px 45px rgba(0,0,0,.18);
+    }
+
+    .medcell-brand {
+        font-size: clamp(1.8rem, 3vw, 2.7rem);
+        font-weight: 850;
+        letter-spacing: -.04em;
+        color: var(--mc-text);
+        text-transform: none;
+    }
+
+    .medcell-brand span { color: var(--mc-primary); }
+    .medcell-subtitle { color: var(--mc-muted); font-size: .9rem; font-weight: 600; letter-spacing: .04em; }
+    .medcell-author { color: #64748b; font-size: .75rem; margin-top: .35rem; }
+
+    div[data-testid="stMetric"] {
+        background: linear-gradient(145deg, var(--mc-panel), var(--mc-panel-2));
+        border: 1px solid var(--mc-border);
+        border-radius: 16px;
+        padding: 1rem 1.1rem;
+        box-shadow: 0 10px 25px rgba(0,0,0,.12);
+    }
+
+    div[data-testid="stMetricLabel"] {
+        color: var(--mc-muted) !important;
+        font-weight: 650 !important;
+    }
+
+    div[data-testid="stMetricValue"] {
+        color: var(--mc-text) !important;
+        font-weight: 800 !important;
+    }
+
+    .stButton > button, .stDownloadButton > button {
+        border-radius: 10px;
+        border: 1px solid rgba(56,189,248,.35);
+        background: rgba(14,165,233,.12);
+        color: var(--mc-text);
+        font-weight: 700;
+        transition: all .2s ease;
+    }
+
+    .stButton > button:hover, .stDownloadButton > button:hover {
+        border-color: var(--mc-primary);
+        background: rgba(14,165,233,.24);
+        transform: translateY(-1px);
+    }
+
+    div[data-testid="stDataFrame"], .stTable {
+        border: 1px solid var(--mc-border);
+        border-radius: 14px;
+        overflow: hidden;
+    }
+
     .stTabs [data-baseweb="tab-list"] {
-        gap: 8px; background-color: #121212; padding: 8px 12px; border-radius: 10px; border: 1px solid #262626; margin-bottom: 20px;
+        gap: .45rem;
+        background: transparent;
     }
-    .stTabs [data-baseweb="tab"] {
-        height: 42px; white-space: pre-wrap; background-color: #1a1a1a; border-radius: 8px; color: #888888; font-weight: 600; font-size: 14px; border: 1px solid #2b2b2b; padding: 0px 20px; transition: all 0.3s ease;
-    }
-    .stTabs [data-baseweb="tab"]:hover { color: #ffffff; background-color: #242424; border-color: #0070f3; }
-    .stTabs [aria-selected="true"] { background-color: #0070f3 !important; color: #ffffff !important; border-color: #0070f3 !important; box-shadow: 0px 4px 12px rgba(0, 112, 243, 0.3); }
-    
-    div[data-testid="stMetricValue"] { color: #ffffff !important; font-size: 26px !important; font-weight: bold; }
-    div[data-testid="stMetricLabel"] { color: #888888 !important; }
-    div[data-testid="stDataFrame"] { background-color: #121212; border-radius: 8px; }
 
-    /* En celular: las grillas de indicadores (st.columns con st.metric,
-       como "Resumen de Órdenes y Montos") se acomodan de a 2 por fila en
-       vez de aplastarse todas en una sola línea horizontal ilegible.
-       Se EXCLUYEN explícitamente las filas que contienen una tabla
-       (st.dataframe) o un gráfico, para que esas sigan ocupando el ancho
-       completo, apiladas una debajo de la otra (de lo contrario las
-       columnas de la tabla quedan cortadas / ilegibles). */
-    @media (max-width: 768px) {
-        div[data-testid="stHorizontalBlock"]:not(:has(div[data-testid="stDataFrame"])):not(:has(div[data-testid="stDataFrameResizable"])):not(:has(div[data-testid="stPlotlyChart"])):not(:has(div[data-testid="stTable"])) {
-            flex-wrap: wrap !important;
-            row-gap: 16px !important;
-            column-gap: 12px !important;
-        }
-        div[data-testid="stHorizontalBlock"]:not(:has(div[data-testid="stDataFrame"])):not(:has(div[data-testid="stDataFrameResizable"])):not(:has(div[data-testid="stPlotlyChart"])):not(:has(div[data-testid="stTable"])) > div[data-testid="column"],
-        div[data-testid="stHorizontalBlock"]:not(:has(div[data-testid="stDataFrame"])):not(:has(div[data-testid="stDataFrameResizable"])):not(:has(div[data-testid="stPlotlyChart"])):not(:has(div[data-testid="stTable"])) > div[data-testid="stColumn"] {
-            min-width: 46% !important;
-            width: 46% !important;
-            flex: 1 1 46% !important;
-        }
-        /* Filas con tabla/gráfico: apiladas a ancho completo (comportamiento
-           estándar de Streamlit en pantallas angostas). */
-        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stDataFrame"]),
-        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stDataFrameResizable"]),
-        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stPlotlyChart"]),
-        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stTable"]) {
-            flex-wrap: wrap !important;
-        }
-        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stDataFrame"]) > div[data-testid="column"],
-        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stDataFrameResizable"]) > div[data-testid="column"],
-        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stPlotlyChart"]) > div[data-testid="column"],
-        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stTable"]) > div[data-testid="column"],
-        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stDataFrame"]) > div[data-testid="stColumn"],
-        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stDataFrameResizable"]) > div[data-testid="stColumn"],
-        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stPlotlyChart"]) > div[data-testid="stColumn"],
-        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stTable"]) > div[data-testid="stColumn"] {
-            min-width: 100% !important;
-            width: 100% !important;
-            flex: 1 1 100% !important;
-        }
-        div[data-testid="stMetric"] {
-            min-width: 0 !important;
-        }
-        div[data-testid="stMetricValue"] {
-            font-size: 19px !important;
-            overflow-wrap: break-word !important;
-        }
-        div[data-testid="stMetricLabel"] {
-            font-size: 12px !important;
-            white-space: normal !important;
-        }
+    .stTabs [data-baseweb="tab"] {
+        border-radius: 10px;
+        padding: .65rem 1rem;
+        color: var(--mc-muted);
+    }
+
+    .stTabs [aria-selected="true"] {
+        background: rgba(56,189,248,.14);
+        color: var(--mc-primary);
+    }
+
+    .stExpander {
+        border: 1px solid var(--mc-border);
+        border-radius: 14px;
+        background: rgba(17,28,46,.55);
+    }
+
+    hr {
+        border-color: var(--mc-border);
+    }
+
+    @media (max-width: 900px) {
+        .block-container { padding: 1rem 1rem 2rem; }
+        .medcell-header { padding: 1rem; border-radius: 14px; }
     }
     </style>
-""",
+    """,
     unsafe_allow_html=True,
 )
-
 
 # --- Funciones auxiliares de formato y conversión ---
 def limpiar_numero(val):
