@@ -350,23 +350,124 @@ def _dedup_columnas(df):
   return df
 
 
-def renderizar_tabla(df, **kwargs):
-  """Envoltorio seguro sobre st.dataframe(): deduplica columnas, aplica
-  formato automático de números/moneda, y si algo igual falla (dato
-  inesperado en alguna hoja) muestra un aviso en vez de tumbar toda la
-  página. Además limita la altura visible (como antes, ~10 filas) para
-  que tablas largas no estiren toda la pestaña: quedan con scroll
-  interno en vez de "comerse" toda la página."""
+def _castear_enteros(df):
+  """Convierte a entero (Int64, admite valores nulos) las columnas
+  numéricas cuyos valores son en realidad enteros (p.ej. 0.0, 640.0),
+  para que se muestren como '0' o '640' en la tabla en vez de '0.0' /
+  '640.0'. Esto es independiente del formato que se le pida a
+  st.dataframe: al cambiar el dato mismo a un dtype entero, la celda
+  no puede mostrar decimales aunque el column_config falle o no se
+  aplique."""
+  df = df.copy()
+  for col in df.columns:
+    try:
+      serie = df[col]
+      if isinstance(serie, pd.DataFrame):
+        continue
+      if not pd.api.types.is_numeric_dtype(serie):
+        continue
+      if pd.api.types.is_integer_dtype(serie):
+        continue
+      valores = serie.dropna()
+      if valores.empty:
+        continue
+      if ((valores % 1) == 0).all():
+        df[col] = serie.round().astype("Int64")
+    except Exception:
+      continue
+  return df
+
+
+_TABLA_PAG_CONTADOR = {"n": 0}
+
+
+def tabla_paginada(df, column_config=None, filas_por_pagina=10, key=None, **kwargs):
+  """Muestra un DataFrame con paginación real: 10 filas por página (o
+  el número que se indique) más controles "◀ Anterior / Siguiente ▶" y
+  un indicador "Página X de Y", en vez de desplegar la tabla completa
+  de una sola vez. Reemplaza al viejo selector tipo "rueda" que existía
+  antes del renderer HTML por controles nativos de Streamlit.
+
+  Además deduplica columnas repetidas y castea a entero las columnas
+  que correspondan (ver _castear_enteros) antes de mostrar la tabla."""
   try:
     df_seguro = _dedup_columnas(df)
-    kwargs.setdefault("column_config", config_automatico(df_seguro))
-    kwargs.setdefault("hide_index", True)
-    kwargs.setdefault("use_container_width", True)
-    kwargs.setdefault("height", min(38 * (len(df_seguro) + 1), 420))
-    st.dataframe(df_seguro, **kwargs)
+    df_seguro = _castear_enteros(df_seguro)
+  except Exception:
+    df_seguro = df
+
+  if key is None:
+    _TABLA_PAG_CONTADOR["n"] += 1
+    key = f"tabla_pag_auto_{_TABLA_PAG_CONTADOR['n']}"
+
+  total_filas = len(df_seguro)
+  total_paginas = max(1, -(-total_filas // filas_por_pagina))
+  state_key = f"pagina_{key}"
+
+  if state_key not in st.session_state:
+    st.session_state[state_key] = 0
+  if st.session_state[state_key] > total_paginas - 1:
+    st.session_state[state_key] = 0
+
+  pagina_actual = st.session_state[state_key]
+  inicio = pagina_actual * filas_por_pagina
+  fin = inicio + filas_por_pagina
+  df_pagina = df_seguro.iloc[inicio:fin]
+
+  try:
+    cfg_final = config_automatico(df_seguro)
+  except Exception:
+    cfg_final = {}
+  if column_config:
+    cfg_final.update(column_config)
+  kwargs.setdefault("column_config", cfg_final)
+  kwargs.setdefault("hide_index", True)
+  kwargs.setdefault("use_container_width", True)
+  kwargs.setdefault("height", min(38 * (len(df_pagina) + 1), 420))
+
+  try:
+    st.dataframe(df_pagina, **kwargs)
   except Exception as e:
     st.warning(f"No se pudo mostrar esta tabla ({e}).")
-    st.write(df)
+    st.write(df_pagina)
+
+  if total_paginas > 1:
+    col_prev, col_info, col_next = st.columns([1, 2, 1])
+    with col_prev:
+      if st.button(
+          "◀ Anterior",
+          key=f"{key}_prev",
+          disabled=(pagina_actual == 0),
+          use_container_width=True,
+      ):
+        st.session_state[state_key] = max(0, pagina_actual - 1)
+        st.rerun()
+    with col_info:
+      st.markdown(
+          "<div style='text-align:center; color:var(--mc-muted); "
+          "padding-top:.5rem; font-size:.85rem;'>"
+          f"Página {pagina_actual + 1} de {total_paginas} "
+          f"({total_filas} filas)</div>",
+          unsafe_allow_html=True,
+      )
+    with col_next:
+      if st.button(
+          "Siguiente ▶",
+          key=f"{key}_next",
+          disabled=(pagina_actual >= total_paginas - 1),
+          use_container_width=True,
+      ):
+        st.session_state[state_key] = min(total_paginas - 1, pagina_actual + 1)
+        st.rerun()
+
+
+def renderizar_tabla(df, key=None, **kwargs):
+  """Envoltorio seguro y paginado sobre st.dataframe(): deduplica
+  columnas, castea a entero las columnas que correspondan (evita
+  '0.0' en vez de '0'), aplica formato automático de números/moneda,
+  y pagina de a 10 filas con controles Anterior/Siguiente en vez de
+  desplegar toda la tabla de una sola vez."""
+  tabla_paginada(df, key=key, **kwargs)
 
 
 def formato_unidades(valor):
@@ -946,8 +1047,9 @@ for i, nombre_hoja in enumerate(nombres_hojas):
               "Participación": grp_div["Participación"],
           })
 
-          st.dataframe(
+          tabla_paginada(
               grp_div_disp,
+              key=f"venta_div_{nombre_hoja}_{i}",
               column_config={
                   "Monto ($)": st.column_config.NumberColumn(
                       "Monto ($)", format="$%,d"
@@ -959,8 +1061,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                       "Participación", format="%.1f%%", min_value=0, max_value=1
                   ),
               },
-              hide_index=True,
-              use_container_width=True,
           )
         else:
           st.info("No hay datos de división disponibles.")
@@ -1057,8 +1157,9 @@ for i, nombre_hoja in enumerate(nombres_hojas):
               "% Acumulado": grp_cli["Pct_Acumulado"],
           })
 
-          st.dataframe(
+          tabla_paginada(
               grp_cli_disp,
+              key=f"top_clientes_{nombre_hoja}_{i}",
               column_config={
                   "Monto Total ($)": st.column_config.NumberColumn(
                       "Monto Total ($)", format="$%,d"
@@ -1070,8 +1171,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                       "% Acumulado", format="%.1f%%", min_value=0, max_value=100
                   ),
               },
-              hide_index=True,
-              use_container_width=True,
           )
         else:
           st.info("No hay datos de clientes disponibles.")
@@ -1118,8 +1217,9 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             "Unidades": grp_prod[col_unid],
         })
 
-        st.dataframe(
+        tabla_paginada(
             grp_prod_disp,
+            key=f"top_productos_{nombre_hoja}_{i}",
             column_config={
                 "Monto Total ($)": st.column_config.NumberColumn(
                     "Monto Total ($)", format="$%,d"
@@ -1128,8 +1228,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                     "Unidades", format="%,d"
                 ),
             },
-            hide_index=True,
-            use_container_width=True,
         )
       else:
         st.info(
@@ -1161,7 +1259,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         df_si_det = df_si_det[mask_si]
 
       st.caption(f"Mostrando {len(df_si_det)} registros.")
-      renderizar_tabla(df_si_det)
+      renderizar_tabla(df_si_det, key=f"si_det_{nombre_hoja}_{i}")
 
     # =================================================================
     # DASHBOARD DE SI PROYECCION
@@ -1301,11 +1399,10 @@ for i, nombre_hoja in enumerate(nombres_hojas):
           if "Facturado actual_pct" in df_mostrar.columns:
             cols_disp.append("Facturado actual_pct")
 
-          st.dataframe(
+          tabla_paginada(
               df_mostrar[cols_disp],
+              key=f"detalle_canal_{nombre_hoja}_{i}",
               column_config=config_columnas,
-              hide_index=True,
-              use_container_width=True,
           )
 
         with col_g:
@@ -1481,8 +1578,9 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
         with col_oc_tabla:
           st.markdown("##### 📋 Tabla Detalle")
-          st.dataframe(
+          tabla_paginada(
               df_oc_tab,
+              key=f"oc_tab_{nombre_hoja}_{i}",
               column_config={
                   "Concepto": st.column_config.TextColumn("Categoría / Estado"),
                   "Canal": st.column_config.TextColumn("Canal"),
@@ -1497,8 +1595,6 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                       "OC extra", format="$%,.0f"
                   ),
               },
-              hide_index=True,
-              use_container_width=True,
           )
 
         with col_oc_grafico:
@@ -2330,7 +2426,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             df_vista_stock["Fecha Expiración"], errors="coerce"
         ).dt.strftime("%d-%m-%Y")
 
-      renderizar_tabla(df_vista_stock)
+      renderizar_tabla(df_vista_stock, key=f"vista_stock_{nombre_hoja}_{i}")
 
       st.divider()
 
@@ -2414,15 +2510,14 @@ for i, nombre_hoja in enumerate(nombres_hojas):
           if col_desc_stock and col_desc_stock in grp_loc.columns:
             rename_cols[col_desc_stock] = "Descripción Producto"
           grp_loc_disp = grp_loc.rename(columns=rename_cols)
-          st.dataframe(
+          tabla_paginada(
               grp_loc_disp,
+              key=f"top_loc_stock_tabla_{nombre_hoja}_{i}",
               column_config={
                   "Cantidad": st.column_config.NumberColumn(
                       "Cantidad", format="%,d"
                   ),
               },
-              hide_index=True,
-              use_container_width=True,
           )
         else:
           st.info(
@@ -3237,8 +3332,8 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                   formato_unidades
               )
 
-              st.dataframe(
-                  grp_top_disp, hide_index=True, use_container_width=True
+              tabla_paginada(
+                  grp_top_disp, key=f"top15_quiebres_{nombre_hoja}_{i}"
               )
 
           elif is_sb and col_div:
@@ -3394,8 +3489,9 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                     formato_unidades
                 )
 
-                st.dataframe(
-                    grp_top_disp, hide_index=True, use_container_width=True
+                tabla_paginada(
+                    grp_top_disp,
+                    key=f"top15_quiebres_div_{nombre_hoja}_{i}_{idx}",
                 )
 
       # =================================================================
@@ -3520,7 +3616,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
               nuevas_columnas_s[col] = str(col).replace("_", " ").strip().title()
           df_solares_final = df_solares_final.rename(columns=nuevas_columnas_s)
 
-          renderizar_tabla(df_solares_final)
+          renderizar_tabla(df_solares_final, key=f"solares_{nombre_hoja}_{i}")
         else:
           st.info("No hay productos Solares registrados para la semana seleccionada.")
 
@@ -3587,7 +3683,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
               "Fill Rate Unidades",
               "Fill Rate Monto",
           ]
-          renderizar_tabla(df_disp)
+          renderizar_tabla(df_disp, key=f"resumen4_pu_{nombre_hoja}_{i}")
           st.divider()
 
           col_g1, col_g2 = st.columns(2)
@@ -3689,7 +3785,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
               "Fill Rate Unidades",
               "Fill Rate Monto",
           ]
-          renderizar_tabla(df_disp)
+          renderizar_tabla(df_disp, key=f"resumen4_sb_{nombre_hoja}_{i}")
           st.divider()
 
           col_g1, col_g2 = st.columns(2)
@@ -4021,7 +4117,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
       df_corte_final = df_corte_final.rename(columns=nuevas_columnas)
 
-      renderizar_tabla(df_corte_final)
+      renderizar_tabla(df_corte_final, key=f"corte_final_{nombre_hoja}_{i}")
 
     # =================================================================
     # PESTAÑA FILL RATE (múltiples tablas pegadas: Salcobrand Consumo,
@@ -4572,7 +4668,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 "Ver todas las columnas (detalle completo de la hoja)",
                 expanded=False,
             ):
-              renderizar_tabla(bloque["tabla"])
+              renderizar_tabla(bloque["tabla"], key=f"bloque_tabla_{idx_b}")
           else:
             st.info("No hay productos en este bloque para la semana actual.")
 
@@ -4635,7 +4731,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         )
         df = df[mask]
       st.caption(f"Mostrando {len(df)} registros en {nombre_hoja}.")
-      renderizar_tabla(df)
+      renderizar_tabla(df, key=f"generic_{nombre_hoja}_{i}")
 
 
 # =================================================================
