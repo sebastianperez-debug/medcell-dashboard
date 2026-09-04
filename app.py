@@ -142,63 +142,6 @@ st.markdown(
     }
 
 
-    /* Tablas HTML controladas */
-    .mc-table-wrap {
-        width: 100%;
-        max-height: 560px;
-        overflow: auto;
-        margin: .65rem 0 1.2rem;
-        border: 1px solid #29415f;
-        border-radius: 14px;
-        background: #0d1b2e;
-        box-shadow: 0 12px 28px rgba(0,0,0,.16);
-    }
-
-    .mc-html-table {
-        width: 100%;
-        min-width: 760px;
-        border-collapse: separate;
-        border-spacing: 0;
-        color: #e8f1fb;
-        font-size: 13px;
-        background: #0d1b2e;
-    }
-
-    .mc-html-table thead th {
-        position: sticky;
-        top: 0;
-        z-index: 2;
-        padding: 12px 10px;
-        text-align: left;
-        white-space: nowrap;
-        background: #173b5e !important;
-        color: #ffffff !important;
-        font-weight: 800;
-        border-bottom: 2px solid #38bdf8;
-    }
-
-    .mc-html-table tbody td {
-        padding: 10px;
-        white-space: nowrap;
-        border-bottom: 1px solid #20344d;
-        border-right: 1px solid #1b2d43;
-        color: #e5edf7 !important;
-        background: #102238 !important;
-    }
-
-    .mc-html-table tbody tr:nth-child(even) td {
-        background: #142b45 !important;
-    }
-
-    .mc-html-table tbody tr:hover td {
-        background: #1d466b !important;
-        color: #ffffff !important;
-    }
-
-    .mc-html-table tbody tr:last-child td {
-        border-bottom: 0;
-    }
-
     @media (max-width: 900px) {
     }
 
@@ -546,7 +489,7 @@ def parse_bloques_fill_rate(df_raw):
   return bloques
 
 
-# --- 3. CARGA DEL EXCEL ---
+# --- 3. CARGA DEL EXCEL (V3: carga bajo demanda) ---
 def buscar_excel():
   posibles_rutas = [
       "SQL Seba.xlsx",
@@ -559,53 +502,46 @@ def buscar_excel():
       return ruta
   return None
 
-
 ruta_final = buscar_excel()
 
-
-@st.cache_data(ttl=60, show_spinner=False)
-def cargar_libro_excel(ruta):
-  """Carga una sola vez las hojas que realmente usa el dashboard.
-
-  Las hojas auxiliares excluidas del menú no se leen, reduciendo el trabajo
-  inicial y el consumo de memoria. La caché expira a los 60 s para recoger
-  cambios del Excel sin obligar a reiniciar Streamlit.
-  """
-  hojas_excluir = {
-      "sku",
-      "maestra",
-      "precio",
-      "nivel de servicio sb",
-      "venta perdida sb",
-      "nivel de servicio pu",
-      "hoja1",
-  }
+@st.cache_data(ttl=300, show_spinner=False)
+def obtener_nombres_hojas(ruta):
+  """Obtiene solo los nombres de las hojas. No carga los datos al iniciar."""
   xls = pd.ExcelFile(ruta)
-  hojas_dict = {}
   try:
-    for hoja in xls.sheet_names:
-      if hoja.strip().lower() in hojas_excluir:
-        continue
-      df_temp = pd.read_excel(xls, sheet_name=hoja, dtype=str)
-      df_temp.columns = [str(c).strip() for c in df_temp.columns]
-      df_temp = df_temp.loc[:, ~df_temp.columns.str.startswith("Unnamed")]
-      df_temp = df_temp.loc[:, ~df_temp.columns.duplicated()]
-      hojas_dict[hoja] = df_temp
+    return list(xls.sheet_names)
   finally:
     xls.close()
-  return hojas_dict
 
+@st.cache_data(ttl=300, show_spinner=False)
+def cargar_hoja_dashboard(ruta, nombre_hoja):
+  """Carga una sola hoja cuando el usuario entra a ella."""
+  df = pd.read_excel(ruta, sheet_name=nombre_hoja, dtype=str)
+  df.columns = [str(c).strip() for c in df.columns]
+  df = df.loc[:, ~df.columns.str.startswith("Unnamed")]
+  df = df.loc[:, ~df.columns.duplicated()]
+  return df
+
+@st.cache_data(ttl=300, show_spinner=False)
+def cargar_hojas_para_scan(ruta):
+  """Carga todas las hojas solo cuando se utiliza el lector/localizador."""
+  nombres = obtener_nombres_hojas(ruta)
+  resultado = {}
+  for nombre in nombres:
+    try:
+      resultado[nombre] = cargar_hoja_dashboard(ruta, nombre)
+    except Exception:
+      resultado[nombre] = pd.DataFrame()
+  return resultado
 
 if not ruta_final:
-  st.error(
-      "⚠️ No se encontró el archivo 'SQL Seba.xlsx' en la ruta especificada."
-  )
+  st.error("⚠️ No se encontró el archivo 'SQL Seba.xlsx' en la ruta especificada.")
   st.stop()
 
 try:
-  hojas = cargar_libro_excel(ruta_final)
+  nombres_excel = obtener_nombres_hojas(ruta_final)
 except Exception as e:
-  st.error(f"Error al leer Excel: {e}")
+  st.error(f"Error al abrir el Excel: {e}")
   st.stop()
 
 # --- 4. HEADER ---
@@ -680,42 +616,9 @@ def _mc_dataframe(data, *args, **kwargs):
     """
     return st.dataframe(data, *args, **kwargs)
 
-# --- 5. PESTAÑAS ---
-HOJAS_A_EXCLUIR = [
-    "sku",
-    "maestra",
-    "precio",
-    "nivel de servicio sb",
-    "venta perdida sb",
-    "nivel de servicio pu",
-    "hoja1",
-]
-nombres_hojas = [
-    h for h in hojas.keys() if h.strip().lower() not in HOJAS_A_EXCLUIR
-]
-
-# Mover la pestaña "STOCK" al final (justo antes de "Escanear").
-nombres_hojas = [
-    h for h in nombres_hojas if h.strip().upper() != "STOCK"
-] + [h for h in nombres_hojas if h.strip().upper() == "STOCK"]
-
-# Colocar "FILL RATE" como la 3ra pestaña.
-nombres_fr = [h for h in nombres_hojas if h.strip().upper() == "FILL RATE"]
-nombres_resto = [h for h in nombres_hojas if h.strip().upper() != "FILL RATE"]
-nombres_hojas = nombres_resto[:2] + nombres_fr + nombres_resto[2:]
-
-tabs = st.tabs(
-    ["📊 RESUMEN"] + [f"📊 {h}" for h in nombres_hojas] + ["📷 Escanear"]
-)
-
-# Diccionario donde cada pestaña original va dejando los indicadores que
-# necesita la pestaña "RESUMEN" (se rellena durante el for de abajo y se
-# consume recién al final, cuando ya se procesaron todas las hojas).
-resumen_data = {}
-
-for i, nombre_hoja in enumerate(nombres_hojas):
-  with tabs[i + 1]:
-    df = hojas[nombre_hoja].copy()
+# --- Renderizado bajo demanda de cada pestaña ---
+def render_hoja(nombre_hoja, i, df, resumen_data):
+    df = df.copy()
     nombre_clean = nombre_hoja.strip().upper()
 
     is_sb = nombre_clean == "SB"
@@ -4614,915 +4517,8 @@ for i, nombre_hoja in enumerate(nombres_hojas):
       _mc_dataframe(df, hide_index=True, use_container_width=True)
 
 
-# =================================================================
-# PESTAÑA RESUMEN: indicadores clave tomados de SB, PU, FILL RATE, SI,
-# SI PROYECCION y STOCK. Se arma al final, una vez que el for de arriba
-# ya recorrió todas las hojas y dejó sus datos en resumen_data.
-# =================================================================
-with tabs[0]:
-  st.markdown("### 📊 Resumen Ejecutivo")
-  st.caption(
-      "Vista consolidada con lo más relevante de cada pestaña: Fill Rate"
-      " reciente, urgencias de recuperación, venta, cumplimiento de meta y"
-      " estado de caducidad."
-  )
-  st.divider()
-
-  # -----------------------------------------------------------------
-  # Compras SB + PU: KPIs consolidados y comparativo por categoría
-  # -----------------------------------------------------------------
-  st.markdown("#### 💰 Compras — SB + PU (Mes Actual)")
-  compras_sb = resumen_data.get("compras_sb", {})
-  compras_pu = resumen_data.get("compras_pu", {})
-
-  if compras_sb or compras_pu:
-    oc_sb_total = (
-        compras_sb.get("oc_farma", 0)
-        + compras_sb.get("oc_consumo", 0)
-        + compras_sb.get("oc_solares", 0)
-    )
-    oc_pu_total = compras_pu.get("cantidad_oc", 0)
-    monto_total_general = compras_sb.get("monto_total", 0) + compras_pu.get(
-        "monto_total", 0
-    )
-    monto_solares_total = compras_sb.get("monto_solares", 0) + compras_pu.get(
-        "monto_solares", 0
-    )
-
-    # Tarjetas de KPIs
-    kc1, kc2, kc3, kc4 = st.columns(4)
-    kc1.metric(
-        "🛍️ Monto Consumo (SB)", formato_moneda(compras_sb.get("monto_consumo", 0))
-    )
-    kc2.metric("💊 Monto Farma (SB)", formato_moneda(compras_sb.get("monto_farma", 0)))
-    kc3.metric("🏪 Monto PU", formato_moneda(compras_pu.get("monto_total", 0)))
-    kc4.metric("💰 Monto Total", formato_moneda(monto_total_general))
-
-    kc5, kc6, kc7, kc8 = st.columns(4)
-    kc5.metric("☀️ Monto Solares", formato_moneda(monto_solares_total))
-    kc6.metric("📦 OC SB", str(oc_sb_total))
-    kc7.metric("📦 OC PU", str(oc_pu_total))
-    kc8.metric("📦 OC Totales", str(oc_sb_total + oc_pu_total))
-
-    # Gráfico de barras comparativo por categoría
-    categorias_compras = ["Farma (SB)", "Consumo (SB)", "PU", "Solares"]
-    montos_compras = [
-        compras_sb.get("monto_farma", 0),
-        compras_sb.get("monto_consumo", 0),
-        compras_pu.get("monto_total", 0),
-        monto_solares_total,
-    ]
-    colores_compras = ["#0070f3", "#f97316", "#00adb5", "#f5c518"]
-
-    fig_compras = go.Figure(
-        go.Bar(
-            x=categorias_compras,
-            y=montos_compras,
-            marker_color=colores_compras,
-            text=[formato_moneda(v) for v in montos_compras],
-            textposition="outside",
-        )
-    )
-    fig_compras.update_layout(
-        height=320,
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        font=dict(color="#ffffff"),
-        yaxis=dict(gridcolor="#222222"),
-        xaxis=dict(gridcolor="#222222"),
-        margin=dict(t=30),
-        showlegend=False,
-    )
-    st.plotly_chart(fig_compras, use_container_width=True, key="resumen_compras_bar")
-  else:
-    st.info("No hay datos de compras SB/PU para el mes actual todavía.")
-
-  st.divider()
-
-  # -----------------------------------------------------------------
-  # Fill Rate últimas 4 semanas: SB (por división) y PU
-  # -----------------------------------------------------------------
-  st.markdown("#### 🔄 Fill Rate — Últimas 4 Semanas")
-  metrica_fr4 = st.radio(
-      "Ver por:",
-      options=["Monto ($)", "Unidades"],
-      horizontal=True,
-      key="resumen_fr4_metric",
-  )
-  campo_fr4 = "fr_monto_pct" if metrica_fr4 == "Monto ($)" else "fr_unds_pct"
-
-  col_res_sb, col_res_pu = st.columns(2)
-
-  with col_res_sb:
-    st.markdown("##### SB (Consumo Masivo y Farma)")
-    fr4_sb = resumen_data.get("fr4_sb")
-    if fr4_sb:
-      df_fr4_sb = pd.DataFrame(fr4_sb)
-      orden_semanas_sb = list(dict.fromkeys(df_fr4_sb["semana"]))
-      pivot_sb = df_fr4_sb.pivot_table(
-          index="semana", columns="division", values=campo_fr4, aggfunc="first"
-      ).reindex(orden_semanas_sb)
-      divisiones_sb = list(pivot_sb.columns)
-
-      fig_fr4_sb = go.Figure()
-      for div_nombre_r in divisiones_sb:
-        color_linea = (
-            "#f97316" if "CONSUMO" in str(div_nombre_r).upper() else "#00adb5"
-        )
-        valores = pivot_sb[div_nombre_r]
-        otras = pivot_sb.drop(columns=[div_nombre_r])
-        # Etiqueta arriba si esta división es la más alta en esa semana;
-        # si no, abajo. Así, cuando las líneas quedan pegadas, los
-        # porcentajes no se superponen.
-        text_positions = [
-            "top center"
-            if (otras.loc[sem].max() if not otras.empty else -1) <= val
-            else "bottom center"
-            for sem, val in valores.items()
-        ]
-        fig_fr4_sb.add_trace(
-            go.Scatter(
-                x=[f"Sem {s}" for s in valores.index],
-                y=valores.values,
-                name=str(div_nombre_r).title(),
-                mode="lines+markers+text",
-                text=[f"{v:.1f}%" for v in valores.values],
-                textposition=text_positions,
-                line=dict(color=color_linea, width=3),
-            )
-        )
-      fig_fr4_sb.update_layout(
-          height=320,
-          paper_bgcolor="rgba(0,0,0,0)",
-          plot_bgcolor="rgba(0,0,0,0)",
-          font=dict(color="#ffffff"),
-          yaxis=dict(range=[0, 118], gridcolor="#222222", ticksuffix="%"),
-          xaxis=dict(gridcolor="#222222"),
-          legend=dict(orientation="h", y=-0.2),
-          margin=dict(t=20),
-      )
-      st.plotly_chart(
-          fig_fr4_sb, use_container_width=True, key=f"resumen_fr4_sb_{campo_fr4}"
-      )
-    else:
-      st.info("No hay datos de Fill Rate SB disponibles.")
-
-  with col_res_pu:
-    st.markdown("##### PU")
-    fr4_pu = resumen_data.get("fr4_pu")
-    if fr4_pu:
-      df_fr4_pu = pd.DataFrame(fr4_pu)
-      fig_fr4_pu = go.Figure(
-          go.Scatter(
-              x=[f"Sem {s}" for s in df_fr4_pu["semana"]],
-              y=df_fr4_pu[campo_fr4],
-              mode="lines+markers+text",
-              text=[f"{v:.1f}%" for v in df_fr4_pu[campo_fr4]],
-              textposition="top center",
-              line=dict(color="#0070f3", width=3),
-          )
-      )
-      fig_fr4_pu.update_layout(
-          height=320,
-          paper_bgcolor="rgba(0,0,0,0)",
-          plot_bgcolor="rgba(0,0,0,0)",
-          font=dict(color="#ffffff"),
-          yaxis=dict(range=[0, 118], gridcolor="#222222", ticksuffix="%"),
-          xaxis=dict(gridcolor="#222222"),
-          margin=dict(t=20),
-      )
-      st.plotly_chart(
-          fig_fr4_pu, use_container_width=True, key=f"resumen_fr4_pu_{campo_fr4}"
-      )
-    else:
-      st.info("No hay datos de Fill Rate PU disponibles.")
-
-  st.divider()
-
-  # -----------------------------------------------------------------
-  # Fill Rate: calendario de productos que deberían recuperar esta semana
-  # -----------------------------------------------------------------
-  st.markdown("#### 🗓️ Fill Rate — Deberían Recuperar Esta Semana")
-  calendario_fr = resumen_data.get("fill_rate_calendar")
-  if calendario_fr:
-    calendario_fr_ordenado = sorted(
-        calendario_fr, key=lambda x: x["quiebre"], reverse=True
-    )
-    st.markdown(
-        """
-        <style>
-        .res-cal-card { background-color:#141414; border:1px solid #2b2b2b;
-          border-left:3px solid #e34948; border-radius:0 8px 8px 0;
-          padding:10px 12px; margin-bottom:8px; }
-        .res-cal-card-title { font-size:13px; font-weight:600;
-          color:#ffffff; margin:0 0 2px 0; }
-        .res-cal-card-sub { font-size:12px; color:#aaaaaa; margin:0; }
-        .res-cal-card-fecha { font-size:11px; font-weight:600;
-          color:#e34948; margin:4px 0 0 0; }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-    n_cols_cal = 3
-    cols_cal = st.columns(n_cols_cal)
-    for idx_cal, item_cal in enumerate(calendario_fr_ordenado):
-      with cols_cal[idx_cal % n_cols_cal]:
-        monto_txt = (
-            formato_moneda(item_cal["quiebre"]) if item_cal["quiebre"] else "$0"
-        )
-        comentario_txt = item_cal.get("comentario") or "Sin comentario"
-        fecha_html = ""
-        if item_cal.get("fecha_txt"):
-          fecha_html = (
-              f'<p class="res-cal-card-fecha">→ {item_cal["fecha_txt"]}</p>'
-          )
-        st.markdown(
-            '<div class="res-cal-card">'
-            f'<p class="res-cal-card-title">{item_cal["etiqueta"]}</p>'
-            f'<p class="res-cal-card-sub">{item_cal["bloque"]} · {monto_txt}'
-            f" · {comentario_txt}</p>"
-            f"{fecha_html}"
-            "</div>",
-            unsafe_allow_html=True,
-        )
-  else:
-    st.info(
-        "No hay productos identificados para recuperar esta semana (o la"
-        " pestaña Fill Rate aún no se procesó)."
-    )
-
-  st.divider()
-
-  # -----------------------------------------------------------------
-  # SI: venta por división  ·  SI PROYECCION: meta y cumplimiento
-  # -----------------------------------------------------------------
-  col_res_si, col_res_proy = st.columns(2)
-
-  with col_res_si:
-    st.markdown("#### 🏢 SI — Venta por División")
-    venta_div = resumen_data.get("venta_div")
-    if venta_div and venta_div["filas"]:
-      df_venta_div = pd.DataFrame(venta_div["filas"])
-      fig_venta_div = px.pie(
-          df_venta_div,
-          values="monto",
-          names="division",
-          hole=0.5,
-          color_discrete_sequence=["#0070f3", "#109618", "#f97316", "#ff9900"],
-      )
-      fig_venta_div.update_traces(
-          textposition="inside",
-          textinfo="percent+label",
-          marker=dict(line=dict(color="#0b0b0b", width=2)),
-      )
-      fig_venta_div.update_layout(
-          template="plotly_dark",
-          paper_bgcolor="rgba(0,0,0,0)",
-          plot_bgcolor="rgba(0,0,0,0)",
-          font=dict(color="#ffffff"),
-          height=320,
-          showlegend=True,
-          margin=dict(t=20, b=20, l=10, r=10),
-      )
-      st.plotly_chart(
-          fig_venta_div, use_container_width=True, key="resumen_venta_div"
-      )
-      st.caption(f"Monto total facturado: {formato_moneda(venta_div['monto_total'])}")
-    else:
-      st.info("No hay datos de venta por división disponibles.")
-
-  with col_res_proy:
-    st.markdown("#### 🎯 SI Proyección — Meta y Cumplimiento")
-    si_proy = resumen_data.get("si_proy")
-    if si_proy:
-      st.metric("🗓️ Mes en Curso", si_proy["mes_actual"].upper())
-      kp1, kp2 = st.columns(2)
-      kp1.metric("🎯 Meta Total", formato_moneda(si_proy["meta_total"]))
-      kp2.metric(
-          "💰 Facturado Actual",
-          formato_moneda(si_proy["facturado_total"]),
-          delta=f"{si_proy['cumplimiento_actual']:.1f}% Meta",
-      )
-      kp3, kp4 = st.columns(2)
-      kp3.metric(
-          "🚀 Cierre Proyectado", formato_moneda(si_proy["proyeccion_total"])
-      )
-      kp4.metric(
-          "📈 Cumplimiento Proyectado",
-          f"{si_proy['cumplimiento_proy']:.0f}%",
-          delta=formato_moneda(si_proy["diferencia_proy"]),
-      )
-      pct_barra_res = min(
-          max(float(si_proy["cumplimiento_proy"]) / 100.0, 0.0), 1.0
-      )
-      st.progress(
-          pct_barra_res,
-          text=f"Avance de Proyección sobre la Meta: {si_proy['cumplimiento_proy']:.1f}%",
-      )
-    else:
-      st.info("No hay datos de proyección/meta disponibles.")
-
-  st.divider()
-
-  # -----------------------------------------------------------------
-  # STOCK: estado de caducidad  ·  Marcas con más quiebre (SB + PU)
-  # -----------------------------------------------------------------
-  col_res_stock, col_res_marca = st.columns(2)
-
-  with col_res_stock:
-    st.markdown("#### 📦 Stock — Estado de Caducidad")
-    stock_cad = resumen_data.get("stock_caducidad")
-    if stock_cad and stock_cad["total_unidades"] > 0:
-      labels_res = ["Vencido", "< 6 meses", "6 a 13 meses", "Vigente (> 13m)"]
-      values_res = [
-          stock_cad["vencido"],
-          stock_cad["menos_6m"],
-          stock_cad["pronto_6_13m"],
-          stock_cad["vigente_13m"],
-      ]
-      colors_res = ["#8b0000", "#e74c3c", "#f1c40f", "#2ecc71"]
-      total_donut_res = sum(values_res)
-      textos_pct_res = [
-          f"{lbl}<br>{(v / total_donut_res * 100):.2f}%"
-          for lbl, v in zip(labels_res, values_res)
-      ]
-      fig_pie_res = go.Figure(
-          data=[
-              go.Pie(
-                  labels=labels_res,
-                  values=values_res,
-                  hole=0.55,
-                  marker=dict(
-                      colors=colors_res, line=dict(color="#0e1117", width=2)
-                  ),
-                  text=textos_pct_res,
-                  texttemplate="%{text}",
-                  textposition="outside",
-                  textfont=dict(size=11, color="#ffffff"),
-              )
-          ]
-      )
-      fig_pie_res.update_layout(
-          height=340,
-          margin=dict(t=20, b=50, l=40, r=40),
-          paper_bgcolor="rgba(0,0,0,0)",
-          font=dict(color="#ffffff"),
-          showlegend=True,
-          legend=dict(orientation="h", y=-0.15, x=0.5, xanchor="center"),
-      )
-      st.plotly_chart(
-          fig_pie_res, use_container_width=True, key="resumen_pie_stock"
-      )
-    else:
-      st.info("No hay datos de estado de caducidad disponibles.")
-
-  with col_res_marca:
-    st.markdown("#### 🏷️ Marcas con Más Quiebre (SB + PU)")
-    marca_sb = resumen_data.get("marca_quiebre_sb", {})
-    marca_pu = resumen_data.get("marca_quiebre_pu", {})
-    if marca_sb or marca_pu:
-      marcas_combinadas = {}
-      for marca_nombre, monto_q in marca_sb.items():
-        marcas_combinadas[marca_nombre] = (
-            marcas_combinadas.get(marca_nombre, 0) + monto_q
-        )
-      for marca_nombre, monto_q in marca_pu.items():
-        marcas_combinadas[marca_nombre] = (
-            marcas_combinadas.get(marca_nombre, 0) + monto_q
-        )
-      top_marcas = sorted(
-          marcas_combinadas.items(), key=lambda x: x[1], reverse=True
-      )[:10]
-      if top_marcas:
-        df_top_marcas = pd.DataFrame(top_marcas, columns=["Marca", "Quiebre"])
-        fig_marcas = go.Figure(
-            go.Bar(
-                x=df_top_marcas["Quiebre"],
-                y=df_top_marcas["Marca"],
-                orientation="h",
-                marker_color="#e34948",
-                text=[formato_moneda(v) for v in df_top_marcas["Quiebre"]],
-                textposition="auto",
-            )
-        )
-        fig_marcas.update_layout(
-            height=340,
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(0,0,0,0)",
-            font=dict(color="#ffffff"),
-            xaxis=dict(gridcolor="#222222"),
-            yaxis=dict(autorange="reversed"),
-            margin=dict(t=20, l=10, r=10),
-        )
-        st.plotly_chart(
-            fig_marcas, use_container_width=True, key="resumen_marcas"
-        )
-      else:
-        st.info("No hay marcas con quiebre registrado.")
-    else:
-      st.info("No hay datos de quiebre por marca disponibles.")
-
-  st.divider()
-
-  # -----------------------------------------------------------------
-  # KPI: Fill Rate combinado SB + PU (últimas 4 semanas)
-  # -----------------------------------------------------------------
-  st.markdown("#### 🔗 Fill Rate Combinado SB + PU — Últimas 4 Semanas")
-  fr4_sb_raw = resumen_data.get("fr4_sb_raw", [])
-  fr4_pu_raw = resumen_data.get("fr4_pu_raw", [])
-
-  def _orden_sem_resumen(s):
-    try:
-      return (0, int(float(s)))
-    except (ValueError, TypeError):
-      return (1, str(s))
-
-  if fr4_sb_raw or fr4_pu_raw:
-    combinado_fr = {}
-    for _fila in list(fr4_sb_raw) + list(fr4_pu_raw):
-      _s = _fila["semana"]
-      _acc = combinado_fr.setdefault(
-          _s, {"m_compra": 0.0, "m_recib": 0.0, "u_compra": 0.0, "u_recib": 0.0}
-      )
-      _acc["m_compra"] += _fila["m_compra"]
-      _acc["m_recib"] += _fila["m_recib"]
-      _acc["u_compra"] += _fila["u_compra"]
-      _acc["u_recib"] += _fila["u_recib"]
-
-    semanas_comb = sorted(combinado_fr.keys(), key=_orden_sem_resumen)
-    valores_comb = []
-    for _s in semanas_comb:
-      _c = combinado_fr[_s]
-      if campo_fr4 == "fr_monto_pct":
-        _val = (_c["m_recib"] / _c["m_compra"] * 100) if _c["m_compra"] else 0.0
-      else:
-        _val = (_c["u_recib"] / _c["u_compra"] * 100) if _c["u_compra"] else 0.0
-      valores_comb.append(_val)
-
-    fig_fr_comb = go.Figure(
-        go.Scatter(
-            x=[f"Sem {s}" for s in semanas_comb],
-            y=valores_comb,
-            mode="lines+markers+text",
-            text=[f"{v:.1f}%" for v in valores_comb],
-            textposition="top center",
-            cliponaxis=False,
-            line=dict(color="#a855f7", width=3),
-            fill="tozeroy",
-            fillcolor="rgba(168, 85, 247, 0.12)",
-        )
-    )
-    fig_fr_comb.update_layout(
-        height=300,
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        font=dict(color="#ffffff"),
-        yaxis=dict(range=[0, 118], gridcolor="#222222", ticksuffix="%"),
-        xaxis=dict(gridcolor="#222222"),
-        margin=dict(t=30, l=40, r=40, b=30),
-    )
-    fig_fr_comb.update_xaxes(
-        range=[-0.4, len(semanas_comb) - 0.6],
-    )
-    st.plotly_chart(
-        fig_fr_comb, use_container_width=True, key=f"resumen_fr_comb_{campo_fr4}"
-    )
-  else:
-    st.info("No hay datos suficientes para el Fill Rate combinado.")
-
-  st.divider()
-
-  # -----------------------------------------------------------------
-  # KPI: Quiebres recurrentes (mismo SKU en 2+ de las últimas 4 semanas)
-  # -----------------------------------------------------------------
-  st.markdown("#### 🔁 Quiebres Recurrentes (mismo SKU, 2+ semanas seguidas)")
-  st.caption(
-      "SKU con quiebre registrado en 2 o más de las últimas 4 semanas en"
-      " SB y/o PU: distingue un quiebre puntual de un problema crónico de"
-      " abastecimiento. Top 10 por canal, ordenado por monto."
-  )
-  rec_sb = resumen_data.get("quiebre_recurrente_sb", [])
-  rec_pu = resumen_data.get("quiebre_recurrente_pu", [])
-  rec_todos = list(rec_sb) + list(rec_pu)
-
-  def _fr_top10_recurrentes(lista_rec):
-    if not lista_rec:
-      return None
-    df_r = (
-        pd.DataFrame(lista_rec)
-        .sort_values(by="monto", ascending=False)
-        .head(10)
-        .reset_index(drop=True)
-    )
-    df_r.index = df_r.index + 1
-    df_r = df_r.rename(
-        columns={
-            "sku": "SKU",
-            "descripcion": "Descripción",
-            "semanas": "N° Semanas",
-            "monto": "Monto Quiebre",
-            "unidades": "Unidades Quiebre",
-        }
-    )
-    df_r["Monto Quiebre"] = df_r["Monto Quiebre"].apply(formato_moneda)
-    df_r["Unidades Quiebre"] = df_r["Unidades Quiebre"].apply(
-        lambda v: formato_unidades(v or 0)
-    )
-    # Acortar la descripción para que las columnas quepan sin scroll
-    # horizontal; el texto completo queda disponible al pasar el mouse.
-    df_r["Descripción"] = df_r["Descripción"].astype(str).apply(
-        lambda t: t if len(t) <= 28 else t[:26].rstrip() + "…"
-    )
-    return df_r[
-        ["SKU", "Descripción", "N° Semanas", "Unidades Quiebre", "Monto Quiebre"]
-    ]
-
-  _config_col_rec = {
-      "SKU": st.column_config.TextColumn("SKU", width="small"),
-      "Descripción": st.column_config.TextColumn("Descripción", width="medium"),
-      "N° Semanas": st.column_config.NumberColumn("Sem.", width="small"),
-      "Unidades Quiebre": st.column_config.TextColumn("Unid.", width="small"),
-      "Monto Quiebre": st.column_config.TextColumn("Monto", width="small"),
-  }
-
-  if rec_todos:
-    col_rec_sb, col_rec_pu = st.columns(2)
-
-    # El ranking 1-10 se muestra como índice de la tabla (columna angosta
-    # y nativa de Streamlit) en vez de una columna de datos aparte, para
-    # dejarle más espacio horizontal a "Descripción".
-    with col_rec_sb:
-      st.markdown("###### 🏬 SALCOBRAND (SB)")
-      df_rec_sb_top = _fr_top10_recurrentes(rec_sb)
-      if df_rec_sb_top is not None:
-        _mc_dataframe(
-            df_rec_sb_top,
-            hide_index=False,
-            use_container_width=True,
-            column_config=_config_col_rec,
-            height=min(38 * len(df_rec_sb_top) + 38, 420),
-        )
-      else:
-        st.info("No hay SKU con quiebre recurrente en SB.")
-
-    with col_rec_pu:
-      st.markdown("###### 🏪 PREUNIC (PU)")
-      df_rec_pu_top = _fr_top10_recurrentes(rec_pu)
-      if df_rec_pu_top is not None:
-        _mc_dataframe(
-            df_rec_pu_top,
-            hide_index=False,
-            use_container_width=True,
-            column_config=_config_col_rec,
-            height=min(38 * len(df_rec_pu_top) + 38, 420),
-        )
-      else:
-        st.info("No hay SKU con quiebre recurrente en PU.")
-  else:
-    st.info("No hay SKU con quiebre recurrente en las últimas 4 semanas.")
-
-  st.divider()
-
-  # -----------------------------------------------------------------
-  # KPI: Semáforo de salud operativa
-  # -----------------------------------------------------------------
-  st.markdown("#### 🚦 Semáforo de Salud Operativa")
-
-  def _estado_fr(pct):
-    if pct >= 85:
-      return "verde"
-    elif pct >= 70:
-      return "amarillo"
-    return "rojo"
-
-  def _estado_stock(pct):
-    if pct < 5:
-      return "verde"
-    elif pct < 15:
-      return "amarillo"
-    return "rojo"
-
-  def _estado_recurrentes(n):
-    if n == 0:
-      return "verde"
-    elif n <= 5:
-      return "amarillo"
-    return "rojo"
-
-  # Tonos más luminosos para que se vean bien sobre el fondo azul oscuro.
-  _colores_semaforo = {
-      "verde": "#22c55e",
-      "amarillo": "#fbbf24",
-      "rojo": "#fb7185",
-  }
-  _fondos_semaforo = {
-      "verde": "rgba(34,197,94,.12)",
-      "amarillo": "rgba(251,191,36,.12)",
-      "rojo": "rgba(251,113,133,.12)",
-  }
-  _orden_severidad = {"verde": 0, "amarillo": 1, "rojo": 2}
-
-  fr_reciente_pct = None
-  _sem_mas_reciente = None
-  if fr4_sb_raw or fr4_pu_raw:
-    _sem_mas_reciente = semanas_comb[-1]
-    _c = combinado_fr[_sem_mas_reciente]
-    fr_reciente_pct = (
-        (_c["m_recib"] / _c["m_compra"] * 100) if _c["m_compra"] else 0.0
-    )
-
-  stock_cad_semaforo = resumen_data.get("stock_caducidad")
-  pct_critico_semaforo = None
-  if stock_cad_semaforo and stock_cad_semaforo["total_unidades"] > 0:
-    pct_critico_semaforo = (
-        (stock_cad_semaforo["vencido"] + stock_cad_semaforo["menos_6m"])
-        / stock_cad_semaforo["total_unidades"]
-        * 100
-    )
-
-  n_recurrentes = len(rec_todos)
-
-  # Productos identificados para recuperar durante la semana actual.
-  calendario_fr = resumen_data.get("fill_rate_calendar") or []
-  n_recuperar_semana = len(calendario_fr)
-  monto_recuperar_semana = sum(
-      abs(float(item.get("quiebre") or 0))
-      for item in calendario_fr
-  )
-
-  sub_estados = []
-  if fr_reciente_pct is not None:
-    sub_estados.append(
-        (
-            f"Fill Rate Sem {_sem_mas_reciente} (SB+PU)",
-            f"{fr_reciente_pct:.1f}%",
-            _estado_fr(fr_reciente_pct),
-        )
-    )
-  if pct_critico_semaforo is not None:
-    sub_estados.append(
-        (
-            "Stock crítico (vencido + <6m)",
-            f"{pct_critico_semaforo:.1f}%",
-            _estado_stock(pct_critico_semaforo),
-        )
-    )
-  sub_estados.append(
-      (
-          "SKU con quiebre recurrente",
-          str(n_recurrentes),
-          _estado_recurrentes(n_recurrentes),
-      )
-  )
-
-  if sub_estados:
-    estado_general = max(
-        sub_estados, key=lambda x: _orden_severidad[x[2]]
-    )[2]
-    color_general = _colores_semaforo[estado_general]
-    etiqueta_general = {
-        "verde": "OPERACIÓN SALUDABLE",
-        "amarillo": "ATENCIÓN REQUERIDA",
-        "rojo": "RIESGO OPERATIVO",
-    }[estado_general]
-
-    st.markdown(
-        f"""
-        <div style="
-            display:flex; align-items:center; justify-content:space-between;
-            gap:18px; background:linear-gradient(135deg,#102238,#142d49);
-            border:1px solid #29415f; border-radius:16px; padding:18px 20px;
-            margin-bottom:16px; box-shadow:0 10px 24px rgba(0,0,0,.14);">
-          <div style="display:flex; align-items:center; gap:14px;">
-            <div style="
-                width:18px; height:18px; border-radius:50%;
-                background:{color_general};
-                box-shadow:0 0 0 6px {_fondos_semaforo[estado_general]},
-                           0 0 16px {color_general}; flex-shrink:0;"></div>
-            <div>
-              <div style="font-size:11px; color:#91a4bb; text-transform:uppercase;
-                          letter-spacing:.08em; font-weight:700;">
-                Salud operativa
-              </div>
-              <div style="font-size:21px; font-weight:850; color:#f8fafc;">
-                {etiqueta_general}
-              </div>
-            </div>
-          </div>
-          <div style="
-              padding:7px 12px; border-radius:999px;
-              background:{_fondos_semaforo[estado_general]};
-              color:{color_general}; font-size:12px; font-weight:800;">
-            SEMÁFORO
-          </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    cols_semaforo = st.columns(len(sub_estados))
-    for col_sf, (nombre_sf, valor_sf, estado_sf) in zip(
-        cols_semaforo, sub_estados
-    ):
-      with col_sf:
-        color_sf = _colores_semaforo[estado_sf]
-        st.markdown(
-            f"""
-            <div style="
-                background:linear-gradient(145deg,#102238,#142b45);
-                border:1px solid #29415f;
-                border-top:3px solid {color_sf};
-                border-radius:14px; padding:14px 15px; min-height:108px;
-                box-shadow:0 8px 18px rgba(0,0,0,.11);">
-              <div style="font-size:11px; color:#9eb1c7;
-                          text-transform:uppercase; letter-spacing:.06em;
-                          font-weight:750; margin-bottom:7px;">
-                {nombre_sf}
-              </div>
-              <div style="display:flex; align-items:center; gap:9px;">
-                <span style="
-                    display:inline-block; width:9px; height:9px; border-radius:50%;
-                    background:{color_sf};
-                    box-shadow:0 0 10px {color_sf};"></span>
-                <span style="
-                    font-size:26px; font-weight:850; color:{color_sf};">
-                  {valor_sf}
-                </span>
-              </div>
-              <div style="margin-top:5px; font-size:10px; color:#647b93;">
-                Estado: <span style="color:{color_sf}; font-weight:800;">
-                {estado_sf.upper()}</span>
-              </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    # ---------------------------------------------------------------
-    # Bloque destacado: Fill Rate que debería recuperarse esta semana.
-    # ---------------------------------------------------------------
-    st.markdown("##### 🎯 Fill Rate — Recuperación de Esta Semana")
-
-    if n_recuperar_semana > 0:
-      st.markdown(
-          f"""
-          <div style="
-              display:flex; align-items:center; justify-content:space-between;
-              gap:20px; background:linear-gradient(135deg,#162f47,#183d59);
-              border:1px solid #285979; border-radius:16px; padding:18px 20px;
-              margin:8px 0 14px 0;
-              box-shadow:0 12px 26px rgba(0,0,0,.14);">
-            <div>
-              <div style="font-size:12px; color:#8fc2df; font-weight:800;
-                          text-transform:uppercase; letter-spacing:.07em;">
-                Oportunidad de recuperación
-              </div>
-              <div style="font-size:28px; color:#f8fafc; font-weight:900;
-                          margin-top:2px;">
-                {n_recuperar_semana} SKU
-              </div>
-              <div style="font-size:12px; color:#9eb1c7; margin-top:3px;">
-                Identificados para recuperar durante esta semana
-              </div>
-            </div>
-            <div style="text-align:right;">
-              <div style="font-size:12px; color:#8fc2df; font-weight:800;
-                          text-transform:uppercase;">
-                Quiebre a recuperar
-              </div>
-              <div style="font-size:25px; color:#fbbf24; font-weight:900;
-                          margin-top:3px;">
-                {formato_moneda(monto_recuperar_semana)}
-              </div>
-              <div style="font-size:11px; color:#9eb1c7;">
-                según comentarios / ETA
-              </div>
-            </div>
-          </div>
-          """,
-          unsafe_allow_html=True,
-      )
-
-      calendario_fr_ordenado = sorted(
-          calendario_fr, key=lambda x: abs(float(x.get("quiebre") or 0)),
-          reverse=True
-      )
-
-      n_cols_cal = 3
-      cols_cal = st.columns(n_cols_cal)
-      for idx_cal, item_cal in enumerate(calendario_fr_ordenado[:12]):
-        with cols_cal[idx_cal % n_cols_cal]:
-          monto_item = abs(float(item_cal.get("quiebre") or 0))
-          monto_txt = formato_moneda(monto_item) if monto_item else "$0"
-          comentario_txt = item_cal.get("comentario") or "Sin comentario"
-          fecha_txt = item_cal.get("fecha_txt") or "Sin fecha estimada"
-          st.markdown(
-              f"""
-              <div style="
-                  background:#102238; border:1px solid #29415f;
-                  border-left:4px solid #fbbf24; border-radius:0 12px 12px 0;
-                  padding:11px 13px; margin-bottom:9px; min-height:92px;">
-                <div style="font-size:12px; color:#f8fafc; font-weight:800;">
-                  {item_cal.get("etiqueta","SKU sin identificar")}
-                </div>
-                <div style="font-size:11px; color:#95aac1; margin-top:4px;">
-                  {item_cal.get("bloque","")} · {monto_txt}
-                </div>
-                <div style="font-size:11px; color:#fbbf24; font-weight:750;
-                            margin-top:4px;">
-                  → {fecha_txt}
-                </div>
-                <div style="font-size:10px; color:#6f859c; margin-top:4px;">
-                  {comentario_txt}
-                </div>
-              </div>
-              """,
-              unsafe_allow_html=True,
-          )
-
-      if len(calendario_fr_ordenado) > 12:
-        st.caption(
-            f"Se muestran los 12 casos de mayor quiebre. "
-            f"Hay {len(calendario_fr_ordenado) - 12} casos adicionales."
-        )
-    else:
-      st.markdown(
-          """
-          <div style="
-              background:rgba(34,197,94,.10); border:1px solid rgba(34,197,94,.30);
-              border-radius:14px; padding:16px 18px;">
-            <div style="font-size:14px; color:#22c55e; font-weight:850;">
-              ✓ Sin casos pendientes identificados para recuperar esta semana
-            </div>
-            <div style="font-size:11px; color:#8fa6bd; margin-top:4px;">
-              No se encontraron productos con fecha de recuperación inmediata.
-            </div>
-          </div>
-          """,
-          unsafe_allow_html=True,
-      )
-
-    # ---------------------------------------------------------------
-    # Comparativo Fill Rate por semana.
-    # ---------------------------------------------------------------
-    if fr4_sb_raw or fr4_pu_raw:
-      st.markdown("###### 📊 Fill Rate por semana (comparativo)")
-      st.caption(
-          "La última semana puede estar en curso. El color indica el nivel "
-          "del Fill Rate y la tendencia permite ver la recuperación."
-      )
-
-      for _idx_sem, _sem in enumerate(semanas_comb):
-        _c_sem = combinado_fr[_sem]
-        _pct_sem = (
-            (_c_sem["m_recib"] / _c_sem["m_compra"] * 100)
-            if _c_sem["m_compra"]
-            else 0.0
-        )
-        _estado_sem = _estado_fr(_pct_sem)
-        _color_sem = _colores_semaforo[_estado_sem]
-        _bg_sem = _fondos_semaforo[_estado_sem]
-        _es_ultima = _idx_sem == len(semanas_comb) - 1
-        _nota_ultima = (
-            " · semana en curso" if _es_ultima else ""
-        )
-
-        st.markdown(
-            f"""
-            <div style="
-                display:flex; align-items:center; justify-content:space-between;
-                background:#102238; border:1px solid #29415f;
-                border-left:4px solid {_color_sem}; border-radius:0 11px 11px 0;
-                padding:11px 15px; margin-bottom:8px;">
-              <div>
-                <div style="font-size:13px; color:#e7eef7; font-weight:750;">
-                  Sem {_sem}
-                </div>
-                <div style="font-size:10px; color:#71889f;">
-                  {"Última semana" if _es_ultima else "Semana cerrada"}
-                  {_nota_ultima if _es_ultima else ""}
-                </div>
-              </div>
-              <div style="
-                  padding:5px 10px; border-radius:999px;
-                  background:{_bg_sem}; color:{_color_sem};
-                  font-size:16px; font-weight:900;">
-                {_pct_sem:.1f}%
-              </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-  else:
-    st.info(
-        "No hay suficiente información para calcular el semáforo de salud operativa."
-    )
-
-
-# =================================================================
-# PESTAÑA: ESCANEAR POSICIÓN (LOCALIZADOR) - híbrido: OCR + código de barras
-# =================================================================
-with tabs[-1]:
+def render_escanear():
+  hojas_scan = cargar_hojas_para_scan(ruta_final)
   st.markdown("### 📷 Escanear Localizador")
   st.caption("Apunta la cámara al texto MCD de la posición. Si el texto no se reconoce, el lector intenta también el código de barras.")
 
@@ -5819,7 +4815,7 @@ with tabs[-1]:
     st.rerun()
 
   if loc_escaneado:
-    df_stock_scan = hojas.get("STOCK")
+    df_stock_scan = hojas_scan.get("STOCK")
     if df_stock_scan is None:
       st.error("No se encontró la hoja 'STOCK' en el Excel.")
     else:
@@ -5905,7 +4901,7 @@ with tabs[-1]:
         # Busca códigos en todas las hojas para encontrar una relación
         # código -> Localizador si existe en el Excel.
         if resultado.empty and scan_norm:
-            for nombre_hoja, df_mapeo in hojas.items():
+            for nombre_hoja, df_mapeo in hojas_scan.items():
                 if df_mapeo is None or not hasattr(df_mapeo, "columns"):
                     continue
                 try:
@@ -6008,3 +5004,114 @@ with tabs[-1]:
             )
   else:
     st.info("Aún no se ha escaneado ningún código.")
+# =================================================================
+# PESTAÑA RESUMEN — V3: resumen liviano y seguro
+# =================================================================
+def _detectar_columna(df, palabras):
+  for c in df.columns:
+    cl = str(c).strip().lower()
+    if any(p in cl for p in palabras):
+      return c
+  return None
+
+def _numero_serie(df, col):
+  if not col or col not in df.columns:
+    return pd.Series(0.0, index=df.index)
+  return pd.to_numeric(
+      df[col].astype(str).str.replace("$", "", regex=False).str.replace(".", "", regex=False).str.replace(",", ".", regex=False),
+      errors="coerce",
+  ).fillna(0.0)
+
+def render_resumen():
+  st.markdown("### 📊 Resumen Ejecutivo")
+  st.caption("Vista rápida. Cada módulo se carga y procesa solamente cuando lo seleccionas.")
+  st.info("💡 Versión 3: la aplicación ya no procesa todas las pestañas al entrar. Esto evita que el navegador móvil quede congelado.")
+
+  excluidas = {"sku", "maestra", "precio", "nivel de servicio sb", "venta perdida sb", "nivel de servicio pu", "hoja1"}
+  disponibles = [h for h in nombres_excel if h.strip().lower() not in excluidas]
+
+  # KPIs rápidos por hojas típicas, sin gráficos pesados.
+  tarjetas = []
+  for nombre in ["SB", "PU", "SI", "SI PROYECCION", "STOCK"]:
+    real = next((h for h in disponibles if h.strip().upper() == nombre), None)
+    if not real:
+      continue
+    try:
+      d = cargar_hoja_dashboard(ruta_final, real)
+      tarjetas.append((nombre, len(d), len(d.columns)))
+    except Exception as exc:
+      st.warning(f"No se pudo cargar {nombre}: {exc}")
+
+  if tarjetas:
+    cols = st.columns(min(5, len(tarjetas)))
+    for col, (nombre, filas, columnas) in zip(cols, tarjetas):
+      col.metric(nombre, f"{filas:,}".replace(",", "."), f"{columnas} columnas")
+
+  st.divider()
+  st.markdown("#### 📁 Hojas disponibles")
+  df_info = pd.DataFrame({"Módulo": disponibles})
+  df_info["Estado"] = "Carga bajo demanda"
+  _mc_dataframe(df_info, hide_index=True, use_container_width=True)
+
+  st.divider()
+  st.markdown("#### 🚀 Cómo funciona la V3")
+  st.markdown("""
+  - **Al entrar:** solo se obtiene el nombre de las hojas del Excel.
+  - **Al seleccionar un módulo:** se lee únicamente esa hoja.
+  - **Al usar Escanear:** se carga el Excel completo solamente en ese momento.
+  - **Tablas:** utilizan el componente nativo de Streamlit, sin reemplazar `st.dataframe()`.
+  - **Caché:** las hojas cargadas quedan en caché durante 5 minutos para evitar lecturas repetidas.
+  """)
+
+# --- Navegación V3 ---
+HOJAS_A_EXCLUIR = {
+    "sku", "maestra", "precio", "nivel de servicio sb",
+    "venta perdida sb", "nivel de servicio pu", "hoja1"
+}
+nombres_hojas = [h for h in nombres_excel if h.strip().lower() not in HOJAS_A_EXCLUIR]
+
+# Mantener orden original, pero STOCK antes de Escanear y FILL RATE como tercera pestaña.
+stock = [h for h in nombres_hojas if h.strip().upper() == "STOCK"]
+nombres_hojas = [h for h in nombres_hojas if h.strip().upper() != "STOCK"] + stock
+fr = [h for h in nombres_hojas if h.strip().upper() == "FILL RATE"]
+resto = [h for h in nombres_hojas if h.strip().upper() != "FILL RATE"]
+nombres_hojas = resto[:2] + fr + resto[2:]
+
+opciones_nav = ["📊 RESUMEN"] + [f"📊 {h}" for h in nombres_hojas] + ["📷 Escanear"]
+
+# En V3 usamos navegación horizontal en vez de st.tabs: st.tabs ejecuta el contenido
+# de TODAS las pestañas en cada rerun y era una de las causas del bloqueo inicial.
+if hasattr(st, "segmented_control"):
+  seleccion = st.segmented_control(
+      "Navegación",
+      options=opciones_nav,
+      default=opciones_nav[0],
+      selection_mode="single",
+      label_visibility="collapsed",
+      key="mc_nav_v3",
+  )
+else:
+  seleccion = st.radio(
+      "Navegación",
+      opciones_nav,
+      horizontal=True,
+      label_visibility="collapsed",
+      key="mc_nav_v3",
+  )
+if seleccion is None:
+  seleccion = opciones_nav[0]
+
+if seleccion == "📊 RESUMEN":
+  render_resumen()
+elif seleccion == "📷 Escanear":
+  render_escanear()
+else:
+  nombre_sel = seleccion.replace("📊 ", "", 1)
+  try:
+    df_sel = cargar_hoja_dashboard(ruta_final, nombre_sel)
+    resumen_data = {}
+    render_hoja(nombre_sel, nombres_hojas.index(nombre_sel), df_sel, resumen_data)
+  except Exception as e:
+    st.error(f"❌ Error al cargar la pestaña **{nombre_sel}**.")
+    with st.expander("Ver detalle técnico"):
+      st.exception(e)
