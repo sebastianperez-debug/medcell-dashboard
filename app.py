@@ -92,6 +92,12 @@ st.markdown(
     div[data-testid="stMetricValue"] {
         color: var(--mc-text) !important;
         font-weight: 800 !important;
+        font-size: clamp(1.05rem, 1.55vw, 1.65rem) !important;
+        white-space: normal !important;
+        overflow: visible !important;
+        text-overflow: clip !important;
+        line-height: 1.2 !important;
+        word-break: break-word;
     }
 
     .stButton > button, .stDownloadButton > button {
@@ -644,32 +650,19 @@ def crear_reloj_gauge(titulo, porcentaje, color_barra):
 
 
 # ================================================================
-# TABLAS HTML CONTROLADAS
+# TABLAS: se usa el componente nativo st.dataframe()
 # ================================================================
-# Se utiliza temporalmente un renderer HTML para probar el diseño
-# visual sin depender del componente interno de st.dataframe().
-def _mc_render_table_html(data, *args, **kwargs):
-    """Renderiza DataFrame/Styler con colores corporativos controlados."""
-    try:
-        if hasattr(data, "to_html"):
-            if hasattr(data, "hide_index") and hasattr(data, "to_html"):
-                html = data.to_html()
-            else:
-                html = data.to_html(index=False, border=0, classes="mc-html-table")
-        else:
-            html = pd.DataFrame(data).to_html(index=False, border=0, classes="mc-html-table")
-
-        st.markdown(
-            f'<div class="mc-table-wrap">{html}</div>',
-            unsafe_allow_html=True,
-        )
-    except Exception:
-        # Respaldo para objetos no compatibles.
-        st.write(data)
-
-# Activación global: todas las llamadas existentes a st.dataframe()
-# pasan por el renderer HTML durante esta prueba.
-st.dataframe = _mc_render_table_html
+# NOTA: aqui antes se sobrescribia st.dataframe con un renderer HTML
+# "de prueba" (data.to_html(...) + st.markdown). Eso rompia el
+# formato de columnas (column_config: monedas, %, barras de
+# progreso) porque to_html() ignora esos parametros, y ademas pandas
+# imprime numeros grandes en notacion cientifica (1.327791e+09).
+# Tambien era mas lento: en vez del grid nativo virtualizado de
+# Streamlit, inyectaba una tabla HTML completa (todas las filas) en
+# el DOM en cada render. Se elimina el override para restaurar el
+# formato y la velocidad; el look corporativo de las tablas se
+# mantiene via CSS sobre [data-testid="stDataFrame"] (ver <style>
+# arriba).
 
 # --- 5. PESTAÑAS ---
 HOJAS_A_EXCLUIR = [
