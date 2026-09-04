@@ -15,144 +15,162 @@ st.set_page_config(page_title="Medcell Operaciones", layout="wide")
 st.markdown(
     """
     <style>
-    :root {
-        --mc-bg: #0b1220;
-        --mc-panel: #111c2e;
-        --mc-panel-2: #16243a;
-        --mc-border: rgba(148, 163, 184, .18);
-        --mc-text: #f8fafc;
-        --mc-muted: #94a3b8;
-        --mc-primary: #38bdf8;
-        --mc-primary-2: #0ea5e9;
-        --mc-success: #22c55e;
-        --mc-warning: #f59e0b;
-        --mc-danger: #ef4444;
+    .stApp { background-color: #0b0b0b; color: #ffffff; }
+    
+    .medcell-header { 
+        border-bottom: 3px solid #0070f3; 
+        padding-bottom: 12px; 
+        margin-bottom: 25px; 
+    }
+    .medcell-brand { 
+        font-size: 34px; 
+        font-weight: 900; 
+        letter-spacing: 2px; 
+        color: #ffffff; 
+        text-transform: uppercase; 
+        font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    }
+    .medcell-brand span { color: #0070f3; }
+    .medcell-subtitle { color: #aaaaaa; font-size: 13px; font-weight: 600; letter-spacing: 1px; margin-top: 2px; }
+    .medcell-author { color: #777777; font-size: 11px; margin-top: 4px; font-style: italic; }
+
+    /* Estilo de Tarjetas de Filtro por Semana */
+    div[data-testid="stRadio"] > label { display: none !important; }
+    div[data-testid="stRadio"] [role="radiogroup"] {
+        display: flex !important;
+        flex-wrap: wrap !important;
+        gap: 12px !important;
+        margin-top: 8px !important;
+    }
+    div[data-testid="stRadio"] [role="radiogroup"] > label {
+        background-color: #141414 !important;
+        border: 1px solid #2b2b2b !important;
+        padding: 10px 22px !important;
+        border-radius: 10px !important;
+        cursor: pointer !important;
+        transition: all 0.25s ease-in-out !important;
+        color: #cccccc !important;
+        font-weight: 600 !important;
+        font-size: 14px !important;
+        box-sizing: border-box !important;
+        margin: 0 !important;
+    }
+    div[data-testid="stRadio"] [role="radiogroup"] > label:hover {
+        border-color: #0070f3 !important;
+        background-color: #1e1e1e !important;
+        color: #ffffff !important;
+        transform: translateY(-2px);
+    }
+    div[data-testid="stRadio"] [role="radiogroup"] > label[data-checked="true"] {
+        background-color: #0070f3 !important;
+        border-color: #0070f3 !important;
+        color: #ffffff !important;
+        box-shadow: 0px 4px 14px rgba(0, 112, 243, 0.4);
     }
 
-    .stApp {
-        background:
-            radial-gradient(circle at 8% 0%, rgba(14,165,233,.14), transparent 28%),
-            radial-gradient(circle at 100% 10%, rgba(59,130,246,.10), transparent 24%),
-            var(--mc-bg);
-        color: var(--mc-text);
+    /* En celular: exactamente 2 semanas por fila, ocupando mejor el ancho. */
+    @media (max-width: 768px) {
+        div[data-testid="stRadio"] {
+            width: 100% !important;
+            max-width: none !important;
+            margin-top: 0 !important;
+            margin-bottom: 8px !important;
+        }
+        div[data-testid="stRadio"] > div {
+            width: 100% !important;
+            max-width: none !important;
+        }
+        div[data-testid="stRadio"] [role="radiogroup"] {
+            display: grid !important;
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            column-gap: 10px !important;
+            row-gap: 10px !important;
+            width: 100% !important;
+            max-width: none !important;
+            margin-top: 0 !important;
+        }
+        div[data-testid="stRadio"] [role="radiogroup"] > label {
+            width: 100% !important;
+            min-width: 0 !important;
+            height: 58px !important;
+            padding: 10px 12px !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: flex-start !important;
+            margin: 0 !important;
+        }
     }
 
-    [data-testid="stHeader"] {
-        background: transparent;
-    }
-
-    [data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #0d1728 0%, #0a1322 100%);
-        border-right: 1px solid var(--mc-border);
-    }
-
-    [data-testid="stSidebar"] > div:first-child {
-        padding-top: 1.25rem;
-    }
-
-    .block-container {
-        max-width: 1600px;
-        padding: 2rem 2.5rem 3rem;
-    }
-
-    .medcell-header {
-        padding: 1.4rem 1.6rem;
-        margin-bottom: 1.5rem;
-        border: 1px solid var(--mc-border);
-        border-radius: 20px;
-        background: linear-gradient(135deg, rgba(17,28,46,.96), rgba(22,36,58,.82));
-        box-shadow: 0 18px 45px rgba(0,0,0,.18);
-    }
-
-    .medcell-brand {
-        font-size: clamp(1.8rem, 3vw, 2.7rem);
-        font-weight: 850;
-        letter-spacing: -.04em;
-        color: var(--mc-text);
-        text-transform: none;
-    }
-
-    .medcell-brand span { color: var(--mc-primary); }
-    .medcell-subtitle { color: var(--mc-muted); font-size: .9rem; font-weight: 600; letter-spacing: .04em; }
-    .medcell-author { color: #64748b; font-size: .75rem; margin-top: .35rem; }
-
-    div[data-testid="stMetric"] {
-        background: linear-gradient(145deg, var(--mc-panel), var(--mc-panel-2));
-        border: 1px solid var(--mc-border);
-        border-radius: 16px;
-        padding: 1rem 1.1rem;
-        box-shadow: 0 10px 25px rgba(0,0,0,.12);
-    }
-
-    div[data-testid="stMetricLabel"] {
-        color: var(--mc-muted) !important;
-        font-weight: 650 !important;
-    }
-
-    div[data-testid="stMetricValue"] {
-        color: var(--mc-text) !important;
-        font-weight: 800 !important;
-    }
-
-    .stButton > button, .stDownloadButton > button {
-        border-radius: 10px;
-        border: 1px solid rgba(56,189,248,.35);
-        background: rgba(14,165,233,.12);
-        color: var(--mc-text);
-        font-weight: 700;
-        transition: all .2s ease;
-    }
-
-    .stButton > button:hover, .stDownloadButton > button:hover {
-        border-color: var(--mc-primary);
-        background: rgba(14,165,233,.24);
-        transform: translateY(-1px);
-    }
-
-    div[data-testid="stDataFrame"], .stTable {
-        border: 1px solid var(--mc-border);
-        border-radius: 14px;
-        overflow: hidden;
-    }
-
+    /* Pestañas generales */
     .stTabs [data-baseweb="tab-list"] {
-        gap: .45rem;
-        background: transparent;
+        gap: 8px; background-color: #121212; padding: 8px 12px; border-radius: 10px; border: 1px solid #262626; margin-bottom: 20px;
     }
-
     .stTabs [data-baseweb="tab"] {
-        border-radius: 10px;
-        padding: .65rem 1rem;
-        color: var(--mc-muted);
+        height: 42px; white-space: pre-wrap; background-color: #1a1a1a; border-radius: 8px; color: #888888; font-weight: 600; font-size: 14px; border: 1px solid #2b2b2b; padding: 0px 20px; transition: all 0.3s ease;
     }
+    .stTabs [data-baseweb="tab"]:hover { color: #ffffff; background-color: #242424; border-color: #0070f3; }
+    .stTabs [aria-selected="true"] { background-color: #0070f3 !important; color: #ffffff !important; border-color: #0070f3 !important; box-shadow: 0px 4px 12px rgba(0, 112, 243, 0.3); }
+    
+    div[data-testid="stMetricValue"] { color: #ffffff !important; font-size: 26px !important; font-weight: bold; }
+    div[data-testid="stMetricLabel"] { color: #888888 !important; }
+    div[data-testid="stDataFrame"] { background-color: #121212; border-radius: 8px; }
 
-    .stTabs [aria-selected="true"] {
-        background: rgba(56,189,248,.14);
-        color: var(--mc-primary);
-    }
-
-    .stExpander {
-        border: 1px solid var(--mc-border);
-        border-radius: 14px;
-        background: rgba(17,28,46,.55);
-    }
-
-    hr {
-        border-color: var(--mc-border);
-    }
-
-
-    @media (max-width: 900px) {
-    }
-
-    @media (max-width: 900px) {
-        .block-container { padding: 1rem 1rem 2rem; }
-        .medcell-header { padding: 1rem; border-radius: 14px; }
+    /* En celular: las grillas de indicadores (st.columns con st.metric,
+       como "Resumen de Órdenes y Montos") se acomodan de a 2 por fila en
+       vez de aplastarse todas en una sola línea horizontal ilegible.
+       Se EXCLUYEN explícitamente las filas que contienen una tabla
+       (st.dataframe) o un gráfico, para que esas sigan ocupando el ancho
+       completo, apiladas una debajo de la otra (de lo contrario las
+       columnas de la tabla quedan cortadas / ilegibles). */
+    @media (max-width: 768px) {
+        div[data-testid="stHorizontalBlock"]:not(:has(div[data-testid="stDataFrame"])):not(:has(div[data-testid="stDataFrameResizable"])):not(:has(div[data-testid="stPlotlyChart"])):not(:has(div[data-testid="stTable"])) {
+            flex-wrap: wrap !important;
+            row-gap: 16px !important;
+            column-gap: 12px !important;
+        }
+        div[data-testid="stHorizontalBlock"]:not(:has(div[data-testid="stDataFrame"])):not(:has(div[data-testid="stDataFrameResizable"])):not(:has(div[data-testid="stPlotlyChart"])):not(:has(div[data-testid="stTable"])) > div[data-testid="column"],
+        div[data-testid="stHorizontalBlock"]:not(:has(div[data-testid="stDataFrame"])):not(:has(div[data-testid="stDataFrameResizable"])):not(:has(div[data-testid="stPlotlyChart"])):not(:has(div[data-testid="stTable"])) > div[data-testid="stColumn"] {
+            min-width: 46% !important;
+            width: 46% !important;
+            flex: 1 1 46% !important;
+        }
+        /* Filas con tabla/gráfico: apiladas a ancho completo (comportamiento
+           estándar de Streamlit en pantallas angostas). */
+        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stDataFrame"]),
+        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stDataFrameResizable"]),
+        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stPlotlyChart"]),
+        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stTable"]) {
+            flex-wrap: wrap !important;
+        }
+        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stDataFrame"]) > div[data-testid="column"],
+        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stDataFrameResizable"]) > div[data-testid="column"],
+        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stPlotlyChart"]) > div[data-testid="column"],
+        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stTable"]) > div[data-testid="column"],
+        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stDataFrame"]) > div[data-testid="stColumn"],
+        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stDataFrameResizable"]) > div[data-testid="stColumn"],
+        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stPlotlyChart"]) > div[data-testid="stColumn"],
+        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stTable"]) > div[data-testid="stColumn"] {
+            min-width: 100% !important;
+            width: 100% !important;
+            flex: 1 1 100% !important;
+        }
+        div[data-testid="stMetric"] {
+            min-width: 0 !important;
+        }
+        div[data-testid="stMetricValue"] {
+            font-size: 19px !important;
+            overflow-wrap: break-word !important;
+        }
+        div[data-testid="stMetricLabel"] {
+            font-size: 12px !important;
+            white-space: normal !important;
+        }
     }
     </style>
-    """,
+""",
     unsafe_allow_html=True,
 )
+
 
 # --- Funciones auxiliares de formato y conversión ---
 def limpiar_numero(val):
@@ -283,30 +301,6 @@ def formato_unidades(valor):
     return f"{val_int:,}".replace(",", ".")
   except (ValueError, TypeError):
     return "0"
-
-
-def parse_semana_int(val):
-  """Convierte un valor de columna 'semana' (ya formateado por fmt_sem, ej.
-  '36' o '36.0') a entero. Devuelve None si no se puede interpretar."""
-  try:
-    return int(float(str(val).replace(",", ".")))
-  except (ValueError, TypeError):
-    return None
-
-
-@st.cache_data(ttl=3600)
-def semanas_del_mes_actual():
-  """Devuelve el set de números de semana ISO (del año en curso) que caen
-  dentro del mes calendario actual. Se usa para filtrar SB/PU (que solo
-  traen 'semana', sin columna de fecha) por 'lo que va en el mes actual'."""
-  hoy = datetime.now()
-  primer_dia = hoy.replace(day=1)
-  if hoy.month == 12:
-    primer_dia_sig = hoy.replace(year=hoy.year + 1, month=1, day=1)
-  else:
-    primer_dia_sig = hoy.replace(month=hoy.month + 1, day=1)
-  dias_mes = pd.date_range(primer_dia, primer_dia_sig - timedelta(days=1))
-  return set(int(d.isocalendar()[1]) for d in dias_mes)
 
 
 def aplicar_criticidad(column):
@@ -489,7 +483,7 @@ def parse_bloques_fill_rate(df_raw):
   return bloques
 
 
-# --- 3. CARGA DEL EXCEL (V3: carga bajo demanda) ---
+# --- 3. CARGA DEL EXCEL ---
 def buscar_excel():
   posibles_rutas = [
       "SQL Seba.xlsx",
@@ -502,46 +496,33 @@ def buscar_excel():
       return ruta
   return None
 
+
 ruta_final = buscar_excel()
 
-@st.cache_data(ttl=300, show_spinner=False)
-def obtener_nombres_hojas(ruta):
-  """Obtiene solo los nombres de las hojas. No carga los datos al iniciar."""
+
+@st.cache_data(ttl=60)
+def cargar_libro_excel(ruta):
   xls = pd.ExcelFile(ruta)
-  try:
-    return list(xls.sheet_names)
-  finally:
-    xls.close()
+  hojas_dict = {}
+  for hoja in xls.sheet_names:
+    df_temp = pd.read_excel(xls, hoja, dtype=str)
+    df_temp.columns = [str(c).strip() for c in df_temp.columns]
+    df_temp = df_temp.loc[:, ~df_temp.columns.str.startswith("Unnamed")]
+    df_temp = df_temp.loc[:, ~df_temp.columns.duplicated()]
+    hojas_dict[hoja] = df_temp
+  return hojas_dict
 
-@st.cache_data(ttl=300, show_spinner=False)
-def cargar_hoja_dashboard(ruta, nombre_hoja):
-  """Carga una sola hoja cuando el usuario entra a ella."""
-  df = pd.read_excel(ruta, sheet_name=nombre_hoja, dtype=str)
-  df.columns = [str(c).strip() for c in df.columns]
-  df = df.loc[:, ~df.columns.str.startswith("Unnamed")]
-  df = df.loc[:, ~df.columns.duplicated()]
-  return df
-
-@st.cache_data(ttl=300, show_spinner=False)
-def cargar_hojas_para_scan(ruta):
-  """Carga todas las hojas solo cuando se utiliza el lector/localizador."""
-  nombres = obtener_nombres_hojas(ruta)
-  resultado = {}
-  for nombre in nombres:
-    try:
-      resultado[nombre] = cargar_hoja_dashboard(ruta, nombre)
-    except Exception:
-      resultado[nombre] = pd.DataFrame()
-  return resultado
 
 if not ruta_final:
-  st.error("⚠️ No se encontró el archivo 'SQL Seba.xlsx' en la ruta especificada.")
+  st.error(
+      "⚠️ No se encontró el archivo 'SQL Seba.xlsx' en la ruta especificada."
+  )
   st.stop()
 
 try:
-  nombres_excel = obtener_nombres_hojas(ruta_final)
+  hojas = cargar_libro_excel(ruta_final)
 except Exception as e:
-  st.error(f"Error al abrir el Excel: {e}")
+  st.error(f"Error al leer Excel: {e}")
   st.stop()
 
 # --- 4. HEADER ---
@@ -599,26 +580,42 @@ def crear_reloj_gauge(titulo, porcentaje, color_barra):
   return fig
 
 
+# --- 5. PESTAÑAS ---
+HOJAS_A_EXCLUIR = [
+    "sku",
+    "maestra",
+    "precio",
+    "nivel de servicio sb",
+    "venta perdida sb",
+    "nivel de servicio pu",
+    "hoja1",
+]
+nombres_hojas = [
+    h for h in hojas.keys() if h.strip().lower() not in HOJAS_A_EXCLUIR
+]
 
-# ================================================================
-# TABLAS: RENDERIZADOR SEGURO
-# ================================================================
-# IMPORTANTE: no reemplazar globalmente st.dataframe().
-# El componente nativo de Streamlit es mucho más eficiente para tablas
-# grandes y además conserva column_config, filtros, scroll y Styler.
-# El intento anterior de convertir TODAS las tablas a HTML hacía que cada
-# rerun generara enormes cadenas HTML y podía dejar la app congelada en móvil.
-def _mc_dataframe(data, *args, **kwargs):
-    """Renderiza tablas con el componente nativo de Streamlit.
+# Mover la pestaña "STOCK" al final (justo antes de "Escanear").
+nombres_hojas = [
+    h for h in nombres_hojas if h.strip().upper() != "STOCK"
+] + [h for h in nombres_hojas if h.strip().upper() == "STOCK"]
 
-    Mantiene compatibilidad con DataFrame y pandas Styler, y deja intactos
-    argumentos como column_config, hide_index y use_container_width.
-    """
-    return st.dataframe(data, *args, **kwargs)
+# Colocar "FILL RATE" como la 3ra pestaña.
+nombres_fr = [h for h in nombres_hojas if h.strip().upper() == "FILL RATE"]
+nombres_resto = [h for h in nombres_hojas if h.strip().upper() != "FILL RATE"]
+nombres_hojas = nombres_resto[:2] + nombres_fr + nombres_resto[2:]
 
-# --- Renderizado bajo demanda de cada pestaña ---
-def render_hoja(nombre_hoja, i, df, resumen_data):
-    df = df.copy()
+tabs = st.tabs(
+    ["📊 RESUMEN"] + [f"📊 {h}" for h in nombres_hojas] + ["📷 Escanear"]
+)
+
+# Diccionario donde cada pestaña original va dejando los indicadores que
+# necesita la pestaña "RESUMEN" (se rellena durante el for de abajo y se
+# consume recién al final, cuando ya se procesaron todas las hojas).
+resumen_data = {}
+
+for i, nombre_hoja in enumerate(nombres_hojas):
+  with tabs[i + 1]:
+    df = hojas[nombre_hoja].copy()
     nombre_clean = nombre_hoja.strip().upper()
 
     is_sb = nombre_clean == "SB"
@@ -836,7 +833,7 @@ def render_hoja(nombre_hoja, i, df, resumen_data):
               "Participación": grp_div["Participación"],
           })
 
-          _mc_dataframe(
+          st.dataframe(
               grp_div_disp,
               column_config={
                   "Monto ($)": st.column_config.NumberColumn(
@@ -947,7 +944,7 @@ def render_hoja(nombre_hoja, i, df, resumen_data):
               "% Acumulado": grp_cli["Pct_Acumulado"],
           })
 
-          _mc_dataframe(
+          st.dataframe(
               grp_cli_disp,
               column_config={
                   "Monto Total ($)": st.column_config.NumberColumn(
@@ -1008,7 +1005,7 @@ def render_hoja(nombre_hoja, i, df, resumen_data):
             "Unidades": grp_prod[col_unid],
         })
 
-        _mc_dataframe(
+        st.dataframe(
             grp_prod_disp,
             column_config={
                 "Monto Total ($)": st.column_config.NumberColumn(
@@ -1051,7 +1048,7 @@ def render_hoja(nombre_hoja, i, df, resumen_data):
         df_si_det = df_si_det[mask_si]
 
       st.caption(f"Mostrando {len(df_si_det)} registros.")
-      _mc_dataframe(df_si_det, hide_index=True, use_container_width=True)
+      st.dataframe(df_si_det, hide_index=True, use_container_width=True)
 
     # =================================================================
     # DASHBOARD DE SI PROYECCION
@@ -1191,7 +1188,7 @@ def render_hoja(nombre_hoja, i, df, resumen_data):
           if "Facturado actual_pct" in df_mostrar.columns:
             cols_disp.append("Facturado actual_pct")
 
-          _mc_dataframe(
+          st.dataframe(
               df_mostrar[cols_disp],
               column_config=config_columnas,
               hide_index=True,
@@ -1282,7 +1279,9 @@ def render_hoja(nombre_hoja, i, df, resumen_data):
         datos_oc_proyeccion = []
 
         try:
-          df_grid_oc = cargar_hoja_raw(ruta_final, nombre_hoja).astype(object)
+          df_grid_oc = pd.read_excel(
+              ruta_final, sheet_name=nombre_hoja, header=None, dtype=str
+          )
 
           header_r, header_c = None, None
           for r in range(len(df_grid_oc)):
@@ -1369,7 +1368,7 @@ def render_hoja(nombre_hoja, i, df, resumen_data):
 
         with col_oc_tabla:
           st.markdown("##### 📋 Tabla Detalle")
-          _mc_dataframe(
+          st.dataframe(
               df_oc_tab,
               column_config={
                   "Concepto": st.column_config.TextColumn("Categoría / Estado"),
@@ -1520,7 +1519,9 @@ def render_hoja(nombre_hoja, i, df, resumen_data):
         st.markdown("#### 🗓️ Proyecciones Metas por Mes (2026)")
 
         try:
-          df_grid = cargar_hoja_raw(ruta_final, nombre_hoja).astype(object)
+          df_grid = pd.read_excel(
+              ruta_final, sheet_name=nombre_hoja, header=None, dtype=str
+          )
 
           target_r, target_c = None, None
 
@@ -1660,7 +1661,7 @@ def render_hoja(nombre_hoja, i, df, resumen_data):
                   )
                 return df_styles
 
-              _mc_dataframe(
+              st.dataframe(
                   df_res_meses.style.apply(resaltar_mes_actual, axis=None),
                   column_config=cfg_meses,
                   hide_index=True,
@@ -2216,7 +2217,7 @@ def render_hoja(nombre_hoja, i, df, resumen_data):
             df_vista_stock["Fecha Expiración"], errors="coerce"
         ).dt.strftime("%d-%m-%Y")
 
-      _mc_dataframe(df_vista_stock, hide_index=True, use_container_width=True)
+      st.dataframe(df_vista_stock, hide_index=True, use_container_width=True)
 
       st.divider()
 
@@ -2300,7 +2301,7 @@ def render_hoja(nombre_hoja, i, df, resumen_data):
           if col_desc_stock and col_desc_stock in grp_loc.columns:
             rename_cols[col_desc_stock] = "Descripción Producto"
           grp_loc_disp = grp_loc.rename(columns=rename_cols)
-          _mc_dataframe(
+          st.dataframe(
               grp_loc_disp,
               column_config={
                   "Cantidad": st.column_config.NumberColumn(
@@ -2787,39 +2788,32 @@ def render_hoja(nombre_hoja, i, df, resumen_data):
 
         st.divider()
 
-        # Captura para RESUMEN: solo lo que va en el MES ACTUAL (no la
-        # semana filtrada en pantalla ni el histórico completo), usando la
-        # semana ISO del calendario para saber qué filas del mes en curso
-        # corresponden (SB/PU no traen columna de fecha, solo 'semana').
-        semanas_mes = semanas_del_mes_actual()
-        if col_semana and col_semana in df.columns:
-          mask_mes_actual = df[col_semana].apply(parse_semana_int).isin(semanas_mes)
-        else:
-          mask_mes_actual = pd.Series(False, index=df.index)
-        df_mes = df[mask_mes_actual]
-
+        # Captura para RESUMEN: se usa el TOTAL GENERAL (todas las semanas),
+        # no la semana que haya quedado filtrada en pantalla, para que el
+        # KPI consolidado del Resumen no cambie según qué semana se haya
+        # visto por última vez en esta pestaña.
         mask_farma_tot = (
-            df_mes[col_div].astype(str).str.upper().str.contains("FARMA", na=False)
+            df[col_div].astype(str).str.upper().str.contains("FARMA", na=False)
         )
         mask_consumo_tot = (
-            df_mes[col_div].astype(str).str.upper().str.contains("CONSUMO", na=False)
+            df[col_div].astype(str).str.upper().str.contains("CONSUMO", na=False)
         )
-        if col_glosa and col_glosa in df_mes.columns:
+        if col_glosa and col_glosa in df.columns:
           mask_solares_tot = (
-              df_mes[col_glosa].astype(str).str.upper().str.contains("SOLARES", na=False)
+              df[col_glosa].astype(str).str.upper().str.contains("SOLARES", na=False)
           )
         else:
-          mask_solares_tot = pd.Series(False, index=df_mes.index)
+          mask_solares_tot = pd.Series(False, index=df.index)
         mask_consumo_tot = mask_consumo_tot & ~mask_solares_tot
 
         resumen_data["compras_sb"] = {
-            "oc_farma": int(df_mes[mask_farma_tot][col_oc].nunique()),
-            "monto_farma": float(df_mes[mask_farma_tot][col_m_compra].sum()),
-            "oc_consumo": int(df_mes[mask_consumo_tot][col_oc].nunique()),
-            "monto_consumo": float(df_mes[mask_consumo_tot][col_m_compra].sum()),
-            "oc_solares": int(df_mes[mask_solares_tot][col_oc].nunique()),
-            "monto_solares": float(df_mes[mask_solares_tot][col_m_compra].sum()),
-            "monto_total": float(df_mes[col_m_compra].sum()),
+            "oc_farma": int(df[mask_farma_tot][col_oc].nunique()),
+            "monto_farma": float(df[mask_farma_tot][col_m_compra].sum()),
+            "oc_consumo": int(df[mask_consumo_tot][col_oc].nunique()),
+            "monto_consumo": float(df[mask_consumo_tot][col_m_compra].sum()),
+            "oc_solares": int(df[mask_solares_tot][col_oc].nunique()),
+            "monto_solares": float(df[mask_solares_tot][col_m_compra].sum()),
+            "monto_total": float(df[col_m_compra].sum()),
         }
 
       # =================================================================
@@ -2860,34 +2854,20 @@ def render_hoja(nombre_hoja, i, df, resumen_data):
 
         st.divider()
 
-        # Captura para RESUMEN: solo lo que va en el MES ACTUAL, mismo
+        # Captura para RESUMEN: TOTAL GENERAL (todas las semanas), mismo
         # criterio que en SB.
-        semanas_mes_pu = semanas_del_mes_actual()
-        if col_semana and col_semana in df.columns:
-          mask_mes_actual_pu = (
-              df[col_semana].apply(parse_semana_int).isin(semanas_mes_pu)
-          )
-        else:
-          mask_mes_actual_pu = pd.Series(False, index=df.index)
-        df_mes_pu = df[mask_mes_actual_pu]
-
-        if col_glosa and col_glosa in df_mes_pu.columns:
+        if col_glosa and col_glosa in df.columns:
           mask_solares_pu_tot = (
-              df_mes_pu[col_glosa]
-              .astype(str)
-              .str.upper()
-              .str.contains("SOLARES", na=False)
+              df[col_glosa].astype(str).str.upper().str.contains("SOLARES", na=False)
           )
         else:
-          mask_solares_pu_tot = pd.Series(False, index=df_mes_pu.index)
+          mask_solares_pu_tot = pd.Series(False, index=df.index)
 
         resumen_data["compras_pu"] = {
-            "cantidad_oc": int(df_mes_pu[col_oc].nunique()),
-            "monto_total": float(df_mes_pu[col_m_compra].sum()),
-            "oc_solares": int(df_mes_pu[mask_solares_pu_tot][col_oc].nunique()),
-            "monto_solares": float(
-                df_mes_pu[mask_solares_pu_tot][col_m_compra].sum()
-            ),
+            "cantidad_oc": int(df[col_oc].nunique()),
+            "monto_total": float(df[col_m_compra].sum()),
+            "oc_solares": int(df[mask_solares_pu_tot][col_oc].nunique()),
+            "monto_solares": float(df[mask_solares_pu_tot][col_m_compra].sum()),
         }
       # =================================================================
 
@@ -3123,7 +3103,7 @@ def render_hoja(nombre_hoja, i, df, resumen_data):
                   formato_unidades
               )
 
-              _mc_dataframe(
+              st.dataframe(
                   grp_top_disp, hide_index=True, use_container_width=True
               )
 
@@ -3280,7 +3260,7 @@ def render_hoja(nombre_hoja, i, df, resumen_data):
                     formato_unidades
                 )
 
-                _mc_dataframe(
+                st.dataframe(
                     grp_top_disp, hide_index=True, use_container_width=True
                 )
 
@@ -3406,7 +3386,7 @@ def render_hoja(nombre_hoja, i, df, resumen_data):
               nuevas_columnas_s[col] = str(col).replace("_", " ").strip().title()
           df_solares_final = df_solares_final.rename(columns=nuevas_columnas_s)
 
-          _mc_dataframe(
+          st.dataframe(
               df_solares_final, hide_index=True, use_container_width=True
           )
         else:
@@ -3475,7 +3455,7 @@ def render_hoja(nombre_hoja, i, df, resumen_data):
               "Fill Rate Unidades",
               "Fill Rate Monto",
           ]
-          _mc_dataframe(df_disp, hide_index=True, use_container_width=True)
+          st.dataframe(df_disp, hide_index=True, use_container_width=True)
           st.divider()
 
           col_g1, col_g2 = st.columns(2)
@@ -3577,7 +3557,7 @@ def render_hoja(nombre_hoja, i, df, resumen_data):
               "Fill Rate Unidades",
               "Fill Rate Monto",
           ]
-          _mc_dataframe(df_disp, hide_index=True, use_container_width=True)
+          st.dataframe(df_disp, hide_index=True, use_container_width=True)
           st.divider()
 
           col_g1, col_g2 = st.columns(2)
@@ -3757,7 +3737,7 @@ def render_hoja(nombre_hoja, i, df, resumen_data):
             styled_df = grp_m_final.style.apply(
                 aplicar_criticidad, subset=["QUIEBRE %"]
             )
-            _mc_dataframe(styled_df, hide_index=True, use_container_width=True)
+            st.dataframe(styled_df, hide_index=True, use_container_width=True)
           else:
             st.info(
                 f"No hay quiebres registrados para la semana {fmt_sem(sem_top)} en"
@@ -3820,7 +3800,7 @@ def render_hoja(nombre_hoja, i, df, resumen_data):
                 styled_df = grp_m_final.style.apply(
                     aplicar_criticidad, subset=["QUIEBRE %"]
                 )
-                _mc_dataframe(
+                st.dataframe(
                     styled_df, hide_index=True, use_container_width=True
                 )
               else:
@@ -3901,7 +3881,7 @@ def render_hoja(nombre_hoja, i, df, resumen_data):
 
       df_corte_final = df_corte_final.rename(columns=nuevas_columnas)
 
-      _mc_dataframe(df_corte_final, hide_index=True, use_container_width=True)
+      st.dataframe(df_corte_final, hide_index=True, use_container_width=True)
 
     # =================================================================
     # PESTAÑA FILL RATE (múltiples tablas pegadas: Salcobrand Consumo,
@@ -4442,14 +4422,14 @@ def render_hoja(nombre_hoja, i, df, resumen_data):
           # de SB/PU: columnas clave, ya formateadas, siempre visibles.
           tabla_disp, columnas_originales = _fr_tabla_display(bloque["tabla"])
           if not tabla_disp.empty:
-            _mc_dataframe(
+            st.dataframe(
                 tabla_disp, hide_index=True, use_container_width=True
             )
             with st.expander(
                 "Ver todas las columnas (detalle completo de la hoja)",
                 expanded=False,
             ):
-              _mc_dataframe(
+              st.dataframe(
                   bloque["tabla"], hide_index=True, use_container_width=True
               )
           else:
@@ -4514,16 +4494,739 @@ def render_hoja(nombre_hoja, i, df, resumen_data):
         )
         df = df[mask]
       st.caption(f"Mostrando {len(df)} registros en {nombre_hoja}.")
-      _mc_dataframe(df, hide_index=True, use_container_width=True)
+      st.dataframe(df, hide_index=True, use_container_width=True)
 
 
-def render_escanear():
-  hojas_scan = cargar_hojas_para_scan(ruta_final)
+# =================================================================
+# PESTAÑA RESUMEN: indicadores clave tomados de SB, PU, FILL RATE, SI,
+# SI PROYECCION y STOCK. Se arma al final, una vez que el for de arriba
+# ya recorrió todas las hojas y dejó sus datos en resumen_data.
+# =================================================================
+with tabs[0]:
+  st.markdown("### 📊 Resumen Ejecutivo")
+  st.caption(
+      "Vista consolidada con lo más relevante de cada pestaña: Fill Rate"
+      " reciente, urgencias de recuperación, venta, cumplimiento de meta y"
+      " estado de caducidad."
+  )
+  st.divider()
+
+  # -----------------------------------------------------------------
+  # Compras SB + PU: KPIs consolidados y comparativo por categoría
+  # -----------------------------------------------------------------
+  st.markdown("#### 💰 Compras — SB + PU (Total General)")
+  compras_sb = resumen_data.get("compras_sb", {})
+  compras_pu = resumen_data.get("compras_pu", {})
+
+  if compras_sb or compras_pu:
+    oc_sb_total = (
+        compras_sb.get("oc_farma", 0)
+        + compras_sb.get("oc_consumo", 0)
+        + compras_sb.get("oc_solares", 0)
+    )
+    oc_pu_total = compras_pu.get("cantidad_oc", 0)
+    monto_total_general = compras_sb.get("monto_total", 0) + compras_pu.get(
+        "monto_total", 0
+    )
+    monto_solares_total = compras_sb.get("monto_solares", 0) + compras_pu.get(
+        "monto_solares", 0
+    )
+
+    # Tarjetas de KPIs
+    kc1, kc2, kc3, kc4 = st.columns(4)
+    kc1.metric("📦 OC Totales", str(oc_sb_total + oc_pu_total))
+    kc2.metric("💰 Monto Total", formato_moneda(monto_total_general))
+    kc3.metric("💊 Monto Farma (SB)", formato_moneda(compras_sb.get("monto_farma", 0)))
+    kc4.metric(
+        "🛍️ Monto Consumo (SB)", formato_moneda(compras_sb.get("monto_consumo", 0))
+    )
+
+    kc5, kc6, kc7, kc8 = st.columns(4)
+    kc5.metric("🏪 Monto PU", formato_moneda(compras_pu.get("monto_total", 0)))
+    kc6.metric("☀️ Monto Solares", formato_moneda(monto_solares_total))
+    kc7.metric("📦 OC SB", str(oc_sb_total))
+    kc8.metric("📦 OC PU", str(oc_pu_total))
+
+    # Gráfico de barras comparativo por categoría
+    categorias_compras = ["Farma (SB)", "Consumo (SB)", "PU", "Solares"]
+    montos_compras = [
+        compras_sb.get("monto_farma", 0),
+        compras_sb.get("monto_consumo", 0),
+        compras_pu.get("monto_total", 0),
+        monto_solares_total,
+    ]
+    colores_compras = ["#0070f3", "#f97316", "#00adb5", "#f5c518"]
+
+    fig_compras = go.Figure(
+        go.Bar(
+            x=categorias_compras,
+            y=montos_compras,
+            marker_color=colores_compras,
+            text=[formato_moneda(v) for v in montos_compras],
+            textposition="outside",
+        )
+    )
+    fig_compras.update_layout(
+        height=320,
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#ffffff"),
+        yaxis=dict(gridcolor="#222222"),
+        xaxis=dict(gridcolor="#222222"),
+        margin=dict(t=30),
+        showlegend=False,
+    )
+    st.plotly_chart(fig_compras, use_container_width=True, key="resumen_compras_bar")
+  else:
+    st.info("No hay datos de compras SB/PU disponibles todavía.")
+
+  st.divider()
+
+  # -----------------------------------------------------------------
+  # Fill Rate últimas 4 semanas: SB (por división) y PU
+  # -----------------------------------------------------------------
+  st.markdown("#### 🔄 Fill Rate — Últimas 4 Semanas")
+  metrica_fr4 = st.radio(
+      "Ver por:",
+      options=["Monto ($)", "Unidades"],
+      horizontal=True,
+      key="resumen_fr4_metric",
+  )
+  campo_fr4 = "fr_monto_pct" if metrica_fr4 == "Monto ($)" else "fr_unds_pct"
+
+  col_res_sb, col_res_pu = st.columns(2)
+
+  with col_res_sb:
+    st.markdown("##### SB (Consumo Masivo y Farma)")
+    fr4_sb = resumen_data.get("fr4_sb")
+    if fr4_sb:
+      df_fr4_sb = pd.DataFrame(fr4_sb)
+      orden_semanas_sb = list(dict.fromkeys(df_fr4_sb["semana"]))
+      pivot_sb = df_fr4_sb.pivot_table(
+          index="semana", columns="division", values=campo_fr4, aggfunc="first"
+      ).reindex(orden_semanas_sb)
+      divisiones_sb = list(pivot_sb.columns)
+
+      fig_fr4_sb = go.Figure()
+      for div_nombre_r in divisiones_sb:
+        color_linea = (
+            "#f97316" if "CONSUMO" in str(div_nombre_r).upper() else "#00adb5"
+        )
+        valores = pivot_sb[div_nombre_r]
+        otras = pivot_sb.drop(columns=[div_nombre_r])
+        # Etiqueta arriba si esta división es la más alta en esa semana;
+        # si no, abajo. Así, cuando las líneas quedan pegadas, los
+        # porcentajes no se superponen.
+        text_positions = [
+            "top center"
+            if (otras.loc[sem].max() if not otras.empty else -1) <= val
+            else "bottom center"
+            for sem, val in valores.items()
+        ]
+        fig_fr4_sb.add_trace(
+            go.Scatter(
+                x=[f"Sem {s}" for s in valores.index],
+                y=valores.values,
+                name=str(div_nombre_r).title(),
+                mode="lines+markers+text",
+                text=[f"{v:.1f}%" for v in valores.values],
+                textposition=text_positions,
+                line=dict(color=color_linea, width=3),
+            )
+        )
+      fig_fr4_sb.update_layout(
+          height=320,
+          paper_bgcolor="rgba(0,0,0,0)",
+          plot_bgcolor="rgba(0,0,0,0)",
+          font=dict(color="#ffffff"),
+          yaxis=dict(range=[0, 118], gridcolor="#222222", ticksuffix="%"),
+          xaxis=dict(gridcolor="#222222"),
+          legend=dict(orientation="h", y=-0.2),
+          margin=dict(t=20),
+      )
+      st.plotly_chart(
+          fig_fr4_sb, use_container_width=True, key=f"resumen_fr4_sb_{campo_fr4}"
+      )
+    else:
+      st.info("No hay datos de Fill Rate SB disponibles.")
+
+  with col_res_pu:
+    st.markdown("##### PU")
+    fr4_pu = resumen_data.get("fr4_pu")
+    if fr4_pu:
+      df_fr4_pu = pd.DataFrame(fr4_pu)
+      fig_fr4_pu = go.Figure(
+          go.Scatter(
+              x=[f"Sem {s}" for s in df_fr4_pu["semana"]],
+              y=df_fr4_pu[campo_fr4],
+              mode="lines+markers+text",
+              text=[f"{v:.1f}%" for v in df_fr4_pu[campo_fr4]],
+              textposition="top center",
+              line=dict(color="#0070f3", width=3),
+          )
+      )
+      fig_fr4_pu.update_layout(
+          height=320,
+          paper_bgcolor="rgba(0,0,0,0)",
+          plot_bgcolor="rgba(0,0,0,0)",
+          font=dict(color="#ffffff"),
+          yaxis=dict(range=[0, 118], gridcolor="#222222", ticksuffix="%"),
+          xaxis=dict(gridcolor="#222222"),
+          margin=dict(t=20),
+      )
+      st.plotly_chart(
+          fig_fr4_pu, use_container_width=True, key=f"resumen_fr4_pu_{campo_fr4}"
+      )
+    else:
+      st.info("No hay datos de Fill Rate PU disponibles.")
+
+  st.divider()
+
+  # -----------------------------------------------------------------
+  # Fill Rate: calendario de productos que deberían recuperar esta semana
+  # -----------------------------------------------------------------
+  st.markdown("#### 🗓️ Fill Rate — Deberían Recuperar Esta Semana")
+  calendario_fr = resumen_data.get("fill_rate_calendar")
+  if calendario_fr:
+    calendario_fr_ordenado = sorted(
+        calendario_fr, key=lambda x: x["quiebre"], reverse=True
+    )
+    st.markdown(
+        """
+        <style>
+        .res-cal-card { background-color:#141414; border:1px solid #2b2b2b;
+          border-left:3px solid #e34948; border-radius:0 8px 8px 0;
+          padding:10px 12px; margin-bottom:8px; }
+        .res-cal-card-title { font-size:13px; font-weight:600;
+          color:#ffffff; margin:0 0 2px 0; }
+        .res-cal-card-sub { font-size:12px; color:#aaaaaa; margin:0; }
+        .res-cal-card-fecha { font-size:11px; font-weight:600;
+          color:#e34948; margin:4px 0 0 0; }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+    n_cols_cal = 3
+    cols_cal = st.columns(n_cols_cal)
+    for idx_cal, item_cal in enumerate(calendario_fr_ordenado):
+      with cols_cal[idx_cal % n_cols_cal]:
+        monto_txt = (
+            formato_moneda(item_cal["quiebre"]) if item_cal["quiebre"] else "$0"
+        )
+        comentario_txt = item_cal.get("comentario") or "Sin comentario"
+        fecha_html = ""
+        if item_cal.get("fecha_txt"):
+          fecha_html = (
+              f'<p class="res-cal-card-fecha">→ {item_cal["fecha_txt"]}</p>'
+          )
+        st.markdown(
+            '<div class="res-cal-card">'
+            f'<p class="res-cal-card-title">{item_cal["etiqueta"]}</p>'
+            f'<p class="res-cal-card-sub">{item_cal["bloque"]} · {monto_txt}'
+            f" · {comentario_txt}</p>"
+            f"{fecha_html}"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+  else:
+    st.info(
+        "No hay productos identificados para recuperar esta semana (o la"
+        " pestaña Fill Rate aún no se procesó)."
+    )
+
+  st.divider()
+
+  # -----------------------------------------------------------------
+  # SI: venta por división  ·  SI PROYECCION: meta y cumplimiento
+  # -----------------------------------------------------------------
+  col_res_si, col_res_proy = st.columns(2)
+
+  with col_res_si:
+    st.markdown("#### 🏢 SI — Venta por División")
+    venta_div = resumen_data.get("venta_div")
+    if venta_div and venta_div["filas"]:
+      df_venta_div = pd.DataFrame(venta_div["filas"])
+      fig_venta_div = px.pie(
+          df_venta_div,
+          values="monto",
+          names="division",
+          hole=0.5,
+          color_discrete_sequence=["#0070f3", "#109618", "#f97316", "#ff9900"],
+      )
+      fig_venta_div.update_traces(
+          textposition="inside",
+          textinfo="percent+label",
+          marker=dict(line=dict(color="#0b0b0b", width=2)),
+      )
+      fig_venta_div.update_layout(
+          template="plotly_dark",
+          paper_bgcolor="rgba(0,0,0,0)",
+          plot_bgcolor="rgba(0,0,0,0)",
+          font=dict(color="#ffffff"),
+          height=320,
+          showlegend=True,
+          margin=dict(t=20, b=20, l=10, r=10),
+      )
+      st.plotly_chart(
+          fig_venta_div, use_container_width=True, key="resumen_venta_div"
+      )
+      st.caption(f"Monto total facturado: {formato_moneda(venta_div['monto_total'])}")
+    else:
+      st.info("No hay datos de venta por división disponibles.")
+
+  with col_res_proy:
+    st.markdown("#### 🎯 SI Proyección — Meta y Cumplimiento")
+    si_proy = resumen_data.get("si_proy")
+    if si_proy:
+      st.metric("🗓️ Mes en Curso", si_proy["mes_actual"].upper())
+      kp1, kp2 = st.columns(2)
+      kp1.metric("🎯 Meta Total", formato_moneda(si_proy["meta_total"]))
+      kp2.metric(
+          "💰 Facturado Actual",
+          formato_moneda(si_proy["facturado_total"]),
+          delta=f"{si_proy['cumplimiento_actual']:.1f}% Meta",
+      )
+      kp3, kp4 = st.columns(2)
+      kp3.metric(
+          "🚀 Cierre Proyectado", formato_moneda(si_proy["proyeccion_total"])
+      )
+      kp4.metric(
+          "📈 Cumplimiento Proyectado",
+          f"{si_proy['cumplimiento_proy']:.0f}%",
+          delta=formato_moneda(si_proy["diferencia_proy"]),
+      )
+      pct_barra_res = min(
+          max(float(si_proy["cumplimiento_proy"]) / 100.0, 0.0), 1.0
+      )
+      st.progress(
+          pct_barra_res,
+          text=f"Avance de Proyección sobre la Meta: {si_proy['cumplimiento_proy']:.1f}%",
+      )
+    else:
+      st.info("No hay datos de proyección/meta disponibles.")
+
+  st.divider()
+
+  # -----------------------------------------------------------------
+  # STOCK: estado de caducidad  ·  Marcas con más quiebre (SB + PU)
+  # -----------------------------------------------------------------
+  col_res_stock, col_res_marca = st.columns(2)
+
+  with col_res_stock:
+    st.markdown("#### 📦 Stock — Estado de Caducidad")
+    stock_cad = resumen_data.get("stock_caducidad")
+    if stock_cad and stock_cad["total_unidades"] > 0:
+      labels_res = ["Vencido", "< 6 meses", "6 a 13 meses", "Vigente (> 13m)"]
+      values_res = [
+          stock_cad["vencido"],
+          stock_cad["menos_6m"],
+          stock_cad["pronto_6_13m"],
+          stock_cad["vigente_13m"],
+      ]
+      colors_res = ["#8b0000", "#e74c3c", "#f1c40f", "#2ecc71"]
+      total_donut_res = sum(values_res)
+      textos_pct_res = [
+          f"{lbl}<br>{(v / total_donut_res * 100):.2f}%"
+          for lbl, v in zip(labels_res, values_res)
+      ]
+      fig_pie_res = go.Figure(
+          data=[
+              go.Pie(
+                  labels=labels_res,
+                  values=values_res,
+                  hole=0.55,
+                  marker=dict(
+                      colors=colors_res, line=dict(color="#0e1117", width=2)
+                  ),
+                  text=textos_pct_res,
+                  texttemplate="%{text}",
+                  textposition="outside",
+                  textfont=dict(size=11, color="#ffffff"),
+              )
+          ]
+      )
+      fig_pie_res.update_layout(
+          height=340,
+          margin=dict(t=20, b=50, l=40, r=40),
+          paper_bgcolor="rgba(0,0,0,0)",
+          font=dict(color="#ffffff"),
+          showlegend=True,
+          legend=dict(orientation="h", y=-0.15, x=0.5, xanchor="center"),
+      )
+      st.plotly_chart(
+          fig_pie_res, use_container_width=True, key="resumen_pie_stock"
+      )
+    else:
+      st.info("No hay datos de estado de caducidad disponibles.")
+
+  with col_res_marca:
+    st.markdown("#### 🏷️ Marcas con Más Quiebre (SB + PU)")
+    marca_sb = resumen_data.get("marca_quiebre_sb", {})
+    marca_pu = resumen_data.get("marca_quiebre_pu", {})
+    if marca_sb or marca_pu:
+      marcas_combinadas = {}
+      for marca_nombre, monto_q in marca_sb.items():
+        marcas_combinadas[marca_nombre] = (
+            marcas_combinadas.get(marca_nombre, 0) + monto_q
+        )
+      for marca_nombre, monto_q in marca_pu.items():
+        marcas_combinadas[marca_nombre] = (
+            marcas_combinadas.get(marca_nombre, 0) + monto_q
+        )
+      top_marcas = sorted(
+          marcas_combinadas.items(), key=lambda x: x[1], reverse=True
+      )[:10]
+      if top_marcas:
+        df_top_marcas = pd.DataFrame(top_marcas, columns=["Marca", "Quiebre"])
+        fig_marcas = go.Figure(
+            go.Bar(
+                x=df_top_marcas["Quiebre"],
+                y=df_top_marcas["Marca"],
+                orientation="h",
+                marker_color="#e34948",
+                text=[formato_moneda(v) for v in df_top_marcas["Quiebre"]],
+                textposition="auto",
+            )
+        )
+        fig_marcas.update_layout(
+            height=340,
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            font=dict(color="#ffffff"),
+            xaxis=dict(gridcolor="#222222"),
+            yaxis=dict(autorange="reversed"),
+            margin=dict(t=20, l=10, r=10),
+        )
+        st.plotly_chart(
+            fig_marcas, use_container_width=True, key="resumen_marcas"
+        )
+      else:
+        st.info("No hay marcas con quiebre registrado.")
+    else:
+      st.info("No hay datos de quiebre por marca disponibles.")
+
+  st.divider()
+
+  # -----------------------------------------------------------------
+  # KPI: Fill Rate combinado SB + PU (últimas 4 semanas)
+  # -----------------------------------------------------------------
+  st.markdown("#### 🔗 Fill Rate Combinado SB + PU — Últimas 4 Semanas")
+  fr4_sb_raw = resumen_data.get("fr4_sb_raw", [])
+  fr4_pu_raw = resumen_data.get("fr4_pu_raw", [])
+
+  def _orden_sem_resumen(s):
+    try:
+      return (0, int(float(s)))
+    except (ValueError, TypeError):
+      return (1, str(s))
+
+  if fr4_sb_raw or fr4_pu_raw:
+    combinado_fr = {}
+    for _fila in list(fr4_sb_raw) + list(fr4_pu_raw):
+      _s = _fila["semana"]
+      _acc = combinado_fr.setdefault(
+          _s, {"m_compra": 0.0, "m_recib": 0.0, "u_compra": 0.0, "u_recib": 0.0}
+      )
+      _acc["m_compra"] += _fila["m_compra"]
+      _acc["m_recib"] += _fila["m_recib"]
+      _acc["u_compra"] += _fila["u_compra"]
+      _acc["u_recib"] += _fila["u_recib"]
+
+    semanas_comb = sorted(combinado_fr.keys(), key=_orden_sem_resumen)
+    valores_comb = []
+    for _s in semanas_comb:
+      _c = combinado_fr[_s]
+      if campo_fr4 == "fr_monto_pct":
+        _val = (_c["m_recib"] / _c["m_compra"] * 100) if _c["m_compra"] else 0.0
+      else:
+        _val = (_c["u_recib"] / _c["u_compra"] * 100) if _c["u_compra"] else 0.0
+      valores_comb.append(_val)
+
+    fig_fr_comb = go.Figure(
+        go.Scatter(
+            x=[f"Sem {s}" for s in semanas_comb],
+            y=valores_comb,
+            mode="lines+markers+text",
+            text=[f"{v:.1f}%" for v in valores_comb],
+            textposition="top center",
+            cliponaxis=False,
+            line=dict(color="#a855f7", width=3),
+            fill="tozeroy",
+            fillcolor="rgba(168, 85, 247, 0.12)",
+        )
+    )
+    fig_fr_comb.update_layout(
+        height=300,
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#ffffff"),
+        yaxis=dict(range=[0, 118], gridcolor="#222222", ticksuffix="%"),
+        xaxis=dict(gridcolor="#222222"),
+        margin=dict(t=30, l=40, r=40, b=30),
+    )
+    fig_fr_comb.update_xaxes(
+        range=[-0.4, len(semanas_comb) - 0.6],
+    )
+    st.plotly_chart(
+        fig_fr_comb, use_container_width=True, key=f"resumen_fr_comb_{campo_fr4}"
+    )
+  else:
+    st.info("No hay datos suficientes para el Fill Rate combinado.")
+
+  st.divider()
+
+  # -----------------------------------------------------------------
+  # KPI: Quiebres recurrentes (mismo SKU en 2+ de las últimas 4 semanas)
+  # -----------------------------------------------------------------
+  st.markdown("#### 🔁 Quiebres Recurrentes (mismo SKU, 2+ semanas seguidas)")
+  st.caption(
+      "SKU con quiebre registrado en 2 o más de las últimas 4 semanas en"
+      " SB y/o PU: distingue un quiebre puntual de un problema crónico de"
+      " abastecimiento. Top 10 por canal, ordenado por monto."
+  )
+  rec_sb = resumen_data.get("quiebre_recurrente_sb", [])
+  rec_pu = resumen_data.get("quiebre_recurrente_pu", [])
+  rec_todos = list(rec_sb) + list(rec_pu)
+
+  def _fr_top10_recurrentes(lista_rec):
+    if not lista_rec:
+      return None
+    df_r = (
+        pd.DataFrame(lista_rec)
+        .sort_values(by="monto", ascending=False)
+        .head(10)
+        .reset_index(drop=True)
+    )
+    df_r.index = df_r.index + 1
+    df_r = df_r.rename(
+        columns={
+            "sku": "SKU",
+            "descripcion": "Descripción",
+            "semanas": "N° Semanas",
+            "monto": "Monto Quiebre",
+            "unidades": "Unidades Quiebre",
+        }
+    )
+    df_r["Monto Quiebre"] = df_r["Monto Quiebre"].apply(formato_moneda)
+    df_r["Unidades Quiebre"] = df_r["Unidades Quiebre"].apply(
+        lambda v: formato_unidades(v or 0)
+    )
+    # Acortar la descripción para que las columnas quepan sin scroll
+    # horizontal; el texto completo queda disponible al pasar el mouse.
+    df_r["Descripción"] = df_r["Descripción"].astype(str).apply(
+        lambda t: t if len(t) <= 28 else t[:26].rstrip() + "…"
+    )
+    return df_r[
+        ["SKU", "Descripción", "N° Semanas", "Unidades Quiebre", "Monto Quiebre"]
+    ]
+
+  _config_col_rec = {
+      "SKU": st.column_config.TextColumn("SKU", width="small"),
+      "Descripción": st.column_config.TextColumn("Descripción", width="medium"),
+      "N° Semanas": st.column_config.NumberColumn("Sem.", width="small"),
+      "Unidades Quiebre": st.column_config.TextColumn("Unid.", width="small"),
+      "Monto Quiebre": st.column_config.TextColumn("Monto", width="small"),
+  }
+
+  if rec_todos:
+    col_rec_sb, col_rec_pu = st.columns(2)
+
+    # El ranking 1-10 se muestra como índice de la tabla (columna angosta
+    # y nativa de Streamlit) en vez de una columna de datos aparte, para
+    # dejarle más espacio horizontal a "Descripción".
+    with col_rec_sb:
+      st.markdown("###### 🏬 SALCOBRAND (SB)")
+      df_rec_sb_top = _fr_top10_recurrentes(rec_sb)
+      if df_rec_sb_top is not None:
+        st.dataframe(
+            df_rec_sb_top,
+            hide_index=False,
+            use_container_width=True,
+            column_config=_config_col_rec,
+            height=min(38 * len(df_rec_sb_top) + 38, 420),
+        )
+      else:
+        st.info("No hay SKU con quiebre recurrente en SB.")
+
+    with col_rec_pu:
+      st.markdown("###### 🏪 PREUNIC (PU)")
+      df_rec_pu_top = _fr_top10_recurrentes(rec_pu)
+      if df_rec_pu_top is not None:
+        st.dataframe(
+            df_rec_pu_top,
+            hide_index=False,
+            use_container_width=True,
+            column_config=_config_col_rec,
+            height=min(38 * len(df_rec_pu_top) + 38, 420),
+        )
+      else:
+        st.info("No hay SKU con quiebre recurrente en PU.")
+  else:
+    st.info("No hay SKU con quiebre recurrente en las últimas 4 semanas.")
+
+  st.divider()
+
+  # -----------------------------------------------------------------
+  # KPI: Semáforo de salud operativa
+  # -----------------------------------------------------------------
+  st.markdown("#### 🚦 Semáforo de Salud Operativa")
+
+  def _estado_fr(pct):
+    if pct >= 85:
+      return "verde"
+    elif pct >= 70:
+      return "amarillo"
+    return "rojo"
+
+  def _estado_stock(pct):
+    if pct < 5:
+      return "verde"
+    elif pct < 15:
+      return "amarillo"
+    return "rojo"
+
+  def _estado_recurrentes(n):
+    if n == 0:
+      return "verde"
+    elif n <= 5:
+      return "amarillo"
+    return "rojo"
+
+  _colores_semaforo = {"verde": "#2ecc71", "amarillo": "#f1c40f", "rojo": "#e74c3c"}
+  _orden_severidad = {"verde": 0, "amarillo": 1, "rojo": 2}
+
+  fr_reciente_pct = None
+  _sem_mas_reciente = None
+  if fr4_sb_raw or fr4_pu_raw:
+    _sem_mas_reciente = semanas_comb[-1]
+    _c = combinado_fr[_sem_mas_reciente]
+    fr_reciente_pct = (
+        (_c["m_recib"] / _c["m_compra"] * 100) if _c["m_compra"] else 0.0
+    )
+
+  stock_cad_semaforo = resumen_data.get("stock_caducidad")
+  pct_critico_semaforo = None
+  if stock_cad_semaforo and stock_cad_semaforo["total_unidades"] > 0:
+    pct_critico_semaforo = (
+        (stock_cad_semaforo["vencido"] + stock_cad_semaforo["menos_6m"])
+        / stock_cad_semaforo["total_unidades"]
+        * 100
+    )
+
+  n_recurrentes = len(rec_todos)
+
+  sub_estados = []
+  if fr_reciente_pct is not None:
+    sub_estados.append(
+        (
+            f"Fill Rate Sem {_sem_mas_reciente} (SB+PU)",
+            f"{fr_reciente_pct:.1f}%",
+            _estado_fr(fr_reciente_pct),
+        )
+    )
+  if pct_critico_semaforo is not None:
+    sub_estados.append(
+        ("Stock crítico (vencido + <6m)", f"{pct_critico_semaforo:.1f}%", _estado_stock(pct_critico_semaforo))
+    )
+  sub_estados.append(
+      ("SKU con quiebre recurrente", str(n_recurrentes), _estado_recurrentes(n_recurrentes))
+  )
+
+  if sub_estados:
+    estado_general = max(sub_estados, key=lambda x: _orden_severidad[x[2]])[2]
+    color_general = _colores_semaforo[estado_general]
+    etiqueta_general = {
+        "verde": "OK",
+        "amarillo": "ATENCIÓN",
+        "rojo": "CRÍTICO",
+    }[estado_general]
+
+    st.markdown(
+        f"""
+        <div style="display:flex; align-items:center; gap:14px;
+            background-color:#141414; border:1px solid #2b2b2b;
+            border-radius:8px; padding:16px 20px; margin-bottom:14px;">
+          <div style="width:22px; height:22px; border-radius:50%;
+              background-color:{color_general}; flex-shrink:0;"></div>
+          <div style="font-size:20px; font-weight:700; color:{color_general};">
+              ESTADO GENERAL: {etiqueta_general}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    cols_semaforo = st.columns(len(sub_estados))
+    for col_sf, (nombre_sf, valor_sf, estado_sf) in zip(cols_semaforo, sub_estados):
+      with col_sf:
+        color_sf = _colores_semaforo[estado_sf]
+        st.markdown(
+            f"""
+            <div style="background-color:#141414; border:1px solid #2b2b2b;
+                border-left:4px solid {color_sf}; border-radius:0 8px 8px 0;
+                padding:12px 14px;">
+              <p style="font-size:12px; color:#aaaaaa; margin:0 0 4px 0;
+                  text-transform:uppercase;">{nombre_sf}</p>
+              <p style="font-size:22px; font-weight:700; color:{color_sf};
+                  margin:0;">{valor_sf}</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    # ---------------------------------------------------------------
+    # Comparativo Fill Rate por semana (tarjetas apiladas, sin filtrar
+    # ninguna semana): permite ver de un vistazo si la caída es de la
+    # última semana en curso o una tendencia sostenida.
+    # ---------------------------------------------------------------
+    if fr4_sb_raw or fr4_pu_raw:
+      st.markdown("###### 📊 Fill Rate por semana (comparativo)")
+      st.caption(
+          "La última semana puede estar en curso: si su % es bajo,"
+          " compáralo con las anteriores antes de sacar conclusiones."
+      )
+      for _idx_sem, _sem in enumerate(semanas_comb):
+        _c_sem = combinado_fr[_sem]
+        _pct_sem = (
+            (_c_sem["m_recib"] / _c_sem["m_compra"] * 100)
+            if _c_sem["m_compra"]
+            else 0.0
+        )
+        _estado_sem = _estado_fr(_pct_sem)
+        _color_sem = _colores_semaforo[_estado_sem]
+        _es_ultima = _idx_sem == len(semanas_comb) - 1
+        _nota_ultima = (
+            ' <span style="color:#888888; font-weight:400;">'
+            "(última semana, posiblemente en curso)</span>"
+            if _es_ultima
+            else ""
+        )
+        st.markdown(
+            f"""
+            <div style="display:flex; align-items:center; justify-content:space-between;
+                background-color:#141414; border:1px solid #2b2b2b;
+                border-left:4px solid {_color_sem}; border-radius:0 8px 8px 0;
+                padding:10px 16px; margin-bottom:8px;">
+              <p style="font-size:14px; color:#dddddd; margin:0;">
+                  Sem {_sem}{_nota_ultima}</p>
+              <p style="font-size:18px; font-weight:700; color:{_color_sem};
+                  margin:0;">{_pct_sem:.1f}%</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+  else:
+    st.info("No hay suficiente información para calcular el semáforo de salud operativa.")
+
+
+# =================================================================
+# PESTAÑA: ESCANEAR POSICIÓN (LOCALIZADOR) - híbrido: OCR + código de barras
+# =================================================================
+with tabs[-1]:
   st.markdown("### 📷 Escanear Localizador")
   st.caption("Apunta la cámara al texto MCD de la posición. Si el texto no se reconoce, el lector intenta también el código de barras.")
 
   components.html(
-      r"""
+      """
       <div style="position:relative; width:100%; max-height:320px; overflow:hidden;
                   border-radius:8px; background:#000;">
         <video id="video" style="width:100%; max-height:320px; object-fit:cover;
@@ -4815,7 +5518,7 @@ def render_escanear():
     st.rerun()
 
   if loc_escaneado:
-    df_stock_scan = hojas_scan.get("STOCK")
+    df_stock_scan = hojas.get("STOCK")
     if df_stock_scan is None:
       st.error("No se encontró la hoja 'STOCK' en el Excel.")
     else:
@@ -4901,7 +5604,7 @@ def render_escanear():
         # Busca códigos en todas las hojas para encontrar una relación
         # código -> Localizador si existe en el Excel.
         if resultado.empty and scan_norm:
-            for nombre_hoja, df_mapeo in hojas_scan.items():
+            for nombre_hoja, df_mapeo in hojas.items():
                 if df_mapeo is None or not hasattr(df_mapeo, "columns"):
                     continue
                 try:
@@ -5004,114 +5707,3 @@ def render_escanear():
             )
   else:
     st.info("Aún no se ha escaneado ningún código.")
-# =================================================================
-# PESTAÑA RESUMEN — V3: resumen liviano y seguro
-# =================================================================
-def _detectar_columna(df, palabras):
-  for c in df.columns:
-    cl = str(c).strip().lower()
-    if any(p in cl for p in palabras):
-      return c
-  return None
-
-def _numero_serie(df, col):
-  if not col or col not in df.columns:
-    return pd.Series(0.0, index=df.index)
-  return pd.to_numeric(
-      df[col].astype(str).str.replace("$", "", regex=False).str.replace(".", "", regex=False).str.replace(",", ".", regex=False),
-      errors="coerce",
-  ).fillna(0.0)
-
-def render_resumen():
-  st.markdown("### 📊 Resumen Ejecutivo")
-  st.caption("Vista rápida. Cada módulo se carga y procesa solamente cuando lo seleccionas.")
-  st.info("💡 Versión 3: la aplicación ya no procesa todas las pestañas al entrar. Esto evita que el navegador móvil quede congelado.")
-
-  excluidas = {"sku", "maestra", "precio", "nivel de servicio sb", "venta perdida sb", "nivel de servicio pu", "hoja1"}
-  disponibles = [h for h in nombres_excel if h.strip().lower() not in excluidas]
-
-  # KPIs rápidos por hojas típicas, sin gráficos pesados.
-  tarjetas = []
-  for nombre in ["SB", "PU", "SI", "SI PROYECCION", "STOCK"]:
-    real = next((h for h in disponibles if h.strip().upper() == nombre), None)
-    if not real:
-      continue
-    try:
-      d = cargar_hoja_dashboard(ruta_final, real)
-      tarjetas.append((nombre, len(d), len(d.columns)))
-    except Exception as exc:
-      st.warning(f"No se pudo cargar {nombre}: {exc}")
-
-  if tarjetas:
-    cols = st.columns(min(5, len(tarjetas)))
-    for col, (nombre, filas, columnas) in zip(cols, tarjetas):
-      col.metric(nombre, f"{filas:,}".replace(",", "."), f"{columnas} columnas")
-
-  st.divider()
-  st.markdown("#### 📁 Hojas disponibles")
-  df_info = pd.DataFrame({"Módulo": disponibles})
-  df_info["Estado"] = "Carga bajo demanda"
-  _mc_dataframe(df_info, hide_index=True, use_container_width=True)
-
-  st.divider()
-  st.markdown("#### 🚀 Cómo funciona la V3")
-  st.markdown("""
-  - **Al entrar:** solo se obtiene el nombre de las hojas del Excel.
-  - **Al seleccionar un módulo:** se lee únicamente esa hoja.
-  - **Al usar Escanear:** se carga el Excel completo solamente en ese momento.
-  - **Tablas:** utilizan el componente nativo de Streamlit, sin reemplazar `st.dataframe()`.
-  - **Caché:** las hojas cargadas quedan en caché durante 5 minutos para evitar lecturas repetidas.
-  """)
-
-# --- Navegación V3 ---
-HOJAS_A_EXCLUIR = {
-    "sku", "maestra", "precio", "nivel de servicio sb",
-    "venta perdida sb", "nivel de servicio pu", "hoja1"
-}
-nombres_hojas = [h for h in nombres_excel if h.strip().lower() not in HOJAS_A_EXCLUIR]
-
-# Mantener orden original, pero STOCK antes de Escanear y FILL RATE como tercera pestaña.
-stock = [h for h in nombres_hojas if h.strip().upper() == "STOCK"]
-nombres_hojas = [h for h in nombres_hojas if h.strip().upper() != "STOCK"] + stock
-fr = [h for h in nombres_hojas if h.strip().upper() == "FILL RATE"]
-resto = [h for h in nombres_hojas if h.strip().upper() != "FILL RATE"]
-nombres_hojas = resto[:2] + fr + resto[2:]
-
-opciones_nav = ["📊 RESUMEN"] + [f"📊 {h}" for h in nombres_hojas] + ["📷 Escanear"]
-
-# En V3 usamos navegación horizontal en vez de st.tabs: st.tabs ejecuta el contenido
-# de TODAS las pestañas en cada rerun y era una de las causas del bloqueo inicial.
-if hasattr(st, "segmented_control"):
-  seleccion = st.segmented_control(
-      "Navegación",
-      options=opciones_nav,
-      default=opciones_nav[0],
-      selection_mode="single",
-      label_visibility="collapsed",
-      key="mc_nav_v3",
-  )
-else:
-  seleccion = st.radio(
-      "Navegación",
-      opciones_nav,
-      horizontal=True,
-      label_visibility="collapsed",
-      key="mc_nav_v3",
-  )
-if seleccion is None:
-  seleccion = opciones_nav[0]
-
-if seleccion == "📊 RESUMEN":
-  render_resumen()
-elif seleccion == "📷 Escanear":
-  render_escanear()
-else:
-  nombre_sel = seleccion.replace("📊 ", "", 1)
-  try:
-    df_sel = cargar_hoja_dashboard(ruta_final, nombre_sel)
-    resumen_data = {}
-    render_hoja(nombre_sel, nombres_hojas.index(nombre_sel), df_sel, resumen_data)
-  except Exception as e:
-    st.error(f"❌ Error al cargar la pestaña **{nombre_sel}**.")
-    with st.expander("Ver detalle técnico"):
-      st.exception(e)
