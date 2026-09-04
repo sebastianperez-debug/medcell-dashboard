@@ -148,61 +148,12 @@ st.markdown(
     }
 
 
-    /* Tablas HTML controladas */
-    .mc-table-wrap {
-        width: 100%;
-        max-height: 560px;
-        overflow: auto;
-        margin: .65rem 0 1.2rem;
-        border: 1px solid #29415f;
-        border-radius: 14px;
-        background: #0d1b2e;
-        box-shadow: 0 12px 28px rgba(0,0,0,.16);
-    }
-
-    .mc-html-table {
-        width: 100%;
-        min-width: 760px;
-        border-collapse: separate;
-        border-spacing: 0;
-        color: #e8f1fb;
-        font-size: 13px;
-        background: #0d1b2e;
-    }
-
-    .mc-html-table thead th {
-        position: sticky;
-        top: 0;
-        z-index: 2;
-        padding: 12px 10px;
-        text-align: left;
-        white-space: nowrap;
-        background: #173b5e !important;
-        color: #ffffff !important;
-        font-weight: 800;
-        border-bottom: 2px solid #38bdf8;
-    }
-
-    .mc-html-table tbody td {
-        padding: 10px;
-        white-space: nowrap;
-        border-bottom: 1px solid #20344d;
-        border-right: 1px solid #1b2d43;
-        color: #e5edf7 !important;
-        background: #102238 !important;
-    }
-
-    .mc-html-table tbody tr:nth-child(even) td {
-        background: #142b45 !important;
-    }
-
-    .mc-html-table tbody tr:hover td {
-        background: #1d466b !important;
-        color: #ffffff !important;
-    }
-
-    .mc-html-table tbody tr:last-child td {
-        border-bottom: 0;
+    /* Ajustes finos para el grid nativo de st.dataframe() (reemplaza el
+       viejo renderer HTML .mc-html-table / .mc-table-wrap, ya eliminado
+       del código porque forzaba un ancho mínimo de 760px por tabla y
+       descuadraba las tablas puestas lado a lado en st.columns(2)). */
+    [data-testid="stHorizontalBlock"] {
+        gap: 1rem;
     }
 
     @media (max-width: 900px) {
@@ -338,6 +289,34 @@ def formato_moneda(valor):
     return f"${val_int:,}".replace(",", ".")
   except (ValueError, TypeError):
     return "$0"
+
+
+def config_automatico(df):
+  """Genera un column_config para st.dataframe() a partir de los tipos de
+  datos reales de un DataFrame "crudo" (tablas de detalle sin formatear
+  columna por columna). Evita que columnas numéricas se muestren como
+  float con ".0" al final o sin separador de miles, y aplica formato de
+  moneda a columnas cuyo nombre sugiere que son montos."""
+  cfg = {}
+  palabras_moneda = [
+      "monto", "precio", "facturado", "venta", "meta", "proyecc",
+      "compra $", "total compra", "total venta", "$",
+  ]
+  for col in df.columns:
+    serie = df[col]
+    if not pd.api.types.is_numeric_dtype(serie):
+      continue
+    col_lower = str(col).lower()
+    es_moneda = any(p in col_lower for p in palabras_moneda)
+    valores = serie.dropna()
+    son_enteros = valores.empty or ((valores % 1) == 0).all()
+    if es_moneda:
+      cfg[col] = st.column_config.NumberColumn(str(col), format="$%,.0f")
+    elif son_enteros:
+      cfg[col] = st.column_config.NumberColumn(str(col), format="%,d")
+    else:
+      cfg[col] = st.column_config.NumberColumn(str(col), format="%,.2f")
+  return cfg
 
 
 def formato_unidades(valor):
@@ -1132,7 +1111,12 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         df_si_det = df_si_det[mask_si]
 
       st.caption(f"Mostrando {len(df_si_det)} registros.")
-      st.dataframe(df_si_det, hide_index=True, use_container_width=True)
+      st.dataframe(
+          df_si_det,
+          column_config=config_automatico(df_si_det),
+          hide_index=True,
+          use_container_width=True,
+      )
 
     # =================================================================
     # DASHBOARD DE SI PROYECCION
@@ -2301,7 +2285,12 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             df_vista_stock["Fecha Expiración"], errors="coerce"
         ).dt.strftime("%d-%m-%Y")
 
-      st.dataframe(df_vista_stock, hide_index=True, use_container_width=True)
+      st.dataframe(
+          df_vista_stock,
+          column_config=config_automatico(df_vista_stock),
+          hide_index=True,
+          use_container_width=True,
+      )
 
       st.divider()
 
@@ -3560,7 +3549,12 @@ for i, nombre_hoja in enumerate(nombres_hojas):
               "Fill Rate Unidades",
               "Fill Rate Monto",
           ]
-          st.dataframe(df_disp, hide_index=True, use_container_width=True)
+          st.dataframe(
+              df_disp,
+              column_config=config_automatico(df_disp),
+              hide_index=True,
+              use_container_width=True,
+          )
           st.divider()
 
           col_g1, col_g2 = st.columns(2)
@@ -3662,7 +3656,12 @@ for i, nombre_hoja in enumerate(nombres_hojas):
               "Fill Rate Unidades",
               "Fill Rate Monto",
           ]
-          st.dataframe(df_disp, hide_index=True, use_container_width=True)
+          st.dataframe(
+              df_disp,
+              column_config=config_automatico(df_disp),
+              hide_index=True,
+              use_container_width=True,
+          )
           st.divider()
 
           col_g1, col_g2 = st.columns(2)
@@ -3815,7 +3814,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             )
 
             grp_m_disp = pd.DataFrame()
-            grp_m_disp["Etiquetas de fila"] = grp_m[col_marca].astype(str)
+            grp_m_disp["Marca"] = grp_m[col_marca].astype(str)
             grp_m_disp["TOTAL COMPRA"] = grp_m[col_m_compra].apply(
                 formato_moneda
             )
@@ -3828,7 +3827,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
             total_compra_div = grp_m[col_m_compra].sum()
             fila_total = pd.DataFrame([{
-                "Etiquetas de fila": "Total general",
+                "Marca": "Total general",
                 "TOTAL COMPRA": formato_moneda(total_compra_div),
                 "MONTO QUIEBRE": (
                     f"-{formato_moneda(abs(total_quiebre_div))}"
@@ -3878,7 +3877,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 )
 
                 grp_m_disp = pd.DataFrame()
-                grp_m_disp["Etiquetas de fila"] = grp_m[col_marca].astype(str)
+                grp_m_disp["Marca"] = grp_m[col_marca].astype(str)
                 grp_m_disp["TOTAL COMPRA"] = grp_m[col_m_compra].apply(
                     formato_moneda
                 )
@@ -3891,7 +3890,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
                 total_compra_div = grp_m[col_m_compra].sum()
                 fila_total = pd.DataFrame([{
-                    "Etiquetas de fila": "Total general",
+                    "Marca": "Total general",
                     "TOTAL COMPRA": formato_moneda(total_compra_div),
                     "MONTO QUIEBRE": (
                         f"-{formato_moneda(abs(total_quiebre_div))}"
@@ -3986,7 +3985,12 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
       df_corte_final = df_corte_final.rename(columns=nuevas_columnas)
 
-      st.dataframe(df_corte_final, hide_index=True, use_container_width=True)
+      st.dataframe(
+          df_corte_final,
+          column_config=config_automatico(df_corte_final),
+          hide_index=True,
+          use_container_width=True,
+      )
 
     # =================================================================
     # PESTAÑA FILL RATE (múltiples tablas pegadas: Salcobrand Consumo,
@@ -4599,7 +4603,12 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         )
         df = df[mask]
       st.caption(f"Mostrando {len(df)} registros en {nombre_hoja}.")
-      st.dataframe(df, hide_index=True, use_container_width=True)
+      st.dataframe(
+          df,
+          column_config=config_automatico(df),
+          hide_index=True,
+          use_container_width=True,
+      )
 
 
 # =================================================================
