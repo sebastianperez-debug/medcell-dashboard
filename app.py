@@ -1,5 +1,6 @@
 import os
 import re
+import tempfile
 from datetime import datetime, timedelta
 import pandas as pd
 import plotly.express as px
@@ -10,6 +11,65 @@ import streamlit.components.v1 as components
 
 # 1. Configuración de la página
 st.set_page_config(page_title="Medcell Operaciones", layout="wide")
+
+
+# --- 1.1 CONTROL DE ACCESO (login simple por contraseña) ---
+# La contraseña se define en Streamlit secrets (.streamlit/secrets.toml):
+#   app_password = "tu_clave"
+# o en la variable de entorno MEDCELL_APP_PASSWORD.
+# Si no se configura ninguna de las dos, la app queda abierta (modo actual,
+# pensado solo para uso local) y se muestra un aviso.
+def _clave_configurada():
+  try:
+    if "app_password" in st.secrets:
+      return str(st.secrets["app_password"])
+  except Exception:
+    pass
+  return os.environ.get("MEDCELL_APP_PASSWORD")
+
+
+def verificar_acceso():
+  clave_correcta = _clave_configurada()
+  if not clave_correcta:
+    st.sidebar.warning(
+        "⚠️ Acceso sin contraseña: no se configuró `app_password` en "
+        "Secrets ni la variable de entorno MEDCELL_APP_PASSWORD."
+    )
+    return True
+
+  if st.session_state.get("acceso_ok"):
+    return True
+
+  st.markdown(
+      "<div style='text-align:center; margin-top:60px; font-size:34px;"
+      " font-weight:900; letter-spacing:2px; text-transform:uppercase;"
+      " font-family: Helvetica Neue, Helvetica, Arial, sans-serif;"
+      " color:#ffffff;'>"
+      "MEDCELL <span style='color:#0070f3;'>OPERACIONES</span></div>",
+      unsafe_allow_html=True,
+  )
+  _, col_centro, _ = st.columns([1, 1, 1])
+  with col_centro:
+    with st.form("form_login"):
+      clave_ingresada = st.text_input("Contraseña de acceso", type="password")
+      enviado = st.form_submit_button("Ingresar")
+    if enviado:
+      if clave_ingresada == clave_correcta:
+        st.session_state["acceso_ok"] = True
+        st.rerun()
+      else:
+        st.error("Contraseña incorrecta.")
+  return False
+
+
+if not st.session_state.get("acceso_ok") and _clave_configurada():
+  st.markdown(
+      "<style>.stApp { background-color: #0b0b0b; color: #ffffff; }</style>",
+      unsafe_allow_html=True,
+  )
+
+if not verificar_acceso():
+  st.stop()
 
 # 2. Estilos personalizados
 st.markdown(
@@ -239,7 +299,7 @@ def limpiar_nombre_mes(col):
           "dic",
       ]
       return f"{meses_es[dt.month - 1]}-{str(dt.year)[-2:]}"
-    except:
+    except (ValueError, TypeError):
       pass
 
   try:
@@ -259,7 +319,7 @@ def limpiar_nombre_mes(col):
         "dic",
     ]
     return f"{meses_es[dt.month - 1]}-{str(dt.year)[-2:]}"
-  except:
+  except (ValueError, TypeError):
     return s
 
 
@@ -508,6 +568,19 @@ def parse_bloques_fill_rate(df_raw):
 
 # --- 3. CARGA DEL EXCEL ---
 def buscar_excel():
+  """Busca el Excel primero en configuración portable (env var / secrets),
+  luego en rutas locales conocidas (compatibilidad con el equipo actual)."""
+  ruta_env = os.environ.get("MEDCELL_EXCEL_PATH")
+  if ruta_env and os.path.exists(ruta_env):
+    return ruta_env
+
+  try:
+    ruta_secret = st.secrets.get("excel_path")
+    if ruta_secret and os.path.exists(ruta_secret):
+      return ruta_secret
+  except Exception:
+    pass
+
   posibles_rutas = [
       "SQL Seba.xlsx",
       "SQL Seba.xls",
@@ -521,6 +594,35 @@ def buscar_excel():
 
 
 ruta_final = buscar_excel()
+origen_datos = "archivo local" if ruta_final else None
+
+# Si no se encontró el Excel por ninguna vía automática, se ofrece
+# subirlo manualmente. El archivo subido se guarda en un temporal para
+# poder leerlo varias veces (distintas pestañas re-leen el Excel) y se
+# mantiene entre reruns usando session_state.
+if not ruta_final:
+  if st.session_state.get("ruta_excel_subido") and os.path.exists(
+      st.session_state["ruta_excel_subido"]
+  ):
+    ruta_final = st.session_state["ruta_excel_subido"]
+    origen_datos = "archivo subido"
+  else:
+    st.warning(
+        "⚠️ No se encontró el archivo 'SQL Seba.xlsx' en la ruta local "
+        "esperada. Puedes subirlo manualmente para continuar."
+    )
+    archivo_subido = st.file_uploader(
+        "Subir archivo Excel (SQL Seba.xlsx)", type=["xlsx", "xls"]
+    )
+    if archivo_subido is not None:
+      sufijo = os.path.splitext(archivo_subido.name)[1] or ".xlsx"
+      tmp = tempfile.NamedTemporaryFile(delete=False, suffix=sufijo)
+      tmp.write(archivo_subido.getbuffer())
+      tmp.close()
+      st.session_state["ruta_excel_subido"] = tmp.name
+      st.rerun()
+    else:
+      st.stop()
 
 
 @st.cache_data(ttl=60)
@@ -536,27 +638,42 @@ def cargar_libro_excel(ruta):
   return hojas_dict
 
 
-if not ruta_final:
-  st.error(
-      "⚠️ No se encontró el archivo 'SQL Seba.xlsx' en la ruta especificada."
-  )
-  st.stop()
-
 try:
   hojas = cargar_libro_excel(ruta_final)
 except Exception as e:
   st.error(f"Error al leer Excel: {e}")
   st.stop()
 
+# Timestamp de última actualización de los datos: hora de modificación del
+# archivo si es una ruta local, o momento de la carga si fue subido a mano.
+try:
+  if origen_datos == "archivo local":
+    ultima_actualizacion = datetime.fromtimestamp(
+        os.path.getmtime(ruta_final)
+    )
+  else:
+    ultima_actualizacion = datetime.now()
+except Exception:
+  ultima_actualizacion = datetime.now()
+texto_ultima_actualizacion = ultima_actualizacion.strftime("%d-%m-%Y %H:%M")
+
 # --- 4. HEADER ---
 st.markdown(
-    """
+    f"""
     <div class="medcell-header">
         <div style="display: flex; justify-content: space-between; align-items: flex-end;">
             <div>
                 <div class="medcell-brand">MEDCELL <span>OPERACIONES</span></div>
                 <div class="medcell-subtitle">ANÁLISIS DE OPERACIÓN</div>
                 <div class="medcell-author">Desarrollado por Sebastián Alexis Pérez López</div>
+            </div>
+            <div style="text-align:right;">
+                <div style="color:#888888; font-size:11px; text-transform:uppercase; letter-spacing:1px;">
+                    Última actualización de datos
+                </div>
+                <div style="color:#2ecc71; font-size:15px; font-weight:700;">
+                    🟢 {texto_ultima_actualizacion}
+                </div>
             </div>
         </div>
     </div>
@@ -5623,11 +5740,12 @@ with tabs[-1]:
         localizadores_encontrados = []
         hoja_mapeo = None
 
-        # Respaldo para las etiquetas probadas.
-        MAPEO_PRUEBA = {
-            "9631187073887": "MCD.0.3.G.2.120",
-            "11111283": "MCD.0.3.G.4.120",
-        }
+        # Mapeo manual código->localizador de respaldo, para casos donde el
+        # código escaneado no está en la hoja STOCK ni en ninguna otra hoja
+        # del Excel. Queda vacío por defecto (antes tenía 2 códigos de
+        # prueba hardcodeados); si necesitan mapeos fijos reales, se
+        # agregan acá como "codigo_escaneado": "MCD.x.x.x.x.x".
+        MAPEO_PRUEBA = {}
 
         resultado = df_stock_scan[
             df_stock_scan[col_loc_scan].apply(_norm_scan_value) == scan_norm
