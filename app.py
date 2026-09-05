@@ -656,32 +656,24 @@ def crear_reloj_gauge(titulo, porcentaje, color_barra):
 
 
 # ================================================================
-# TABLAS HTML CONTROLADAS
+# TABLAS (renderer nativo de Streamlit)
 # ================================================================
-# Se utiliza temporalmente un renderer HTML para probar el diseño
-# visual sin depender del componente interno de st.dataframe().
-def _mc_render_table_html(data, *args, **kwargs):
-    """Renderiza DataFrame/Styler con colores corporativos controlados."""
-    try:
-        if hasattr(data, "to_html"):
-            if hasattr(data, "hide_index") and hasattr(data, "to_html"):
-                html = data.to_html()
-            else:
-                html = data.to_html(index=False, border=0, classes="mc-html-table")
-        else:
-            html = pd.DataFrame(data).to_html(index=False, border=0, classes="mc-html-table")
-
-        st.markdown(
-            f'<div class="mc-table-wrap">{html}</div>',
-            unsafe_allow_html=True,
-        )
-    except Exception:
-        # Respaldo para objetos no compatibles.
-        st.write(data)
-
-# Activación global: todas las llamadas existentes a st.dataframe()
-# pasan por el renderer HTML durante esta prueba.
-st.dataframe = _mc_render_table_html
+# NOTA: Antes esto se hacia via un renderer HTML manual que
+# sobrescribia st.dataframe globalmente (convertia cada tabla a
+# HTML crudo con .to_html()). Se quito porque:
+#   1) .to_html() no tiene virtualizacion: genera TODAS las filas
+#      como nodos DOM, en vez de solo las visibles, lo que volvia
+#      la carga muy lenta en hojas con muchas filas.
+#   2) Al ser global, se ejecutaba en cada llamada a st.dataframe()
+#      de TODAS las pestanas en cada rerun (Streamlit corre todo el
+#      script de arriba a abajo aunque solo se vea una pestana).
+#   3) Ignoraba silenciosamente column_config (NumberColumn,
+#      ProgressColumn, etc.), asi que ese formato tampoco se
+#      aplicaba realmente.
+# El look oscuro/corporativo ahora se logra con un tema oscuro en
+# .streamlit/config.toml (ver ese archivo), que Streamlit aplica
+# automaticamente al componente nativo de st.dataframe sin perder
+# performance ni el formato de columnas.
 
 # --- 5. PESTAÑAS ---
 HOJAS_A_EXCLUIR = [
