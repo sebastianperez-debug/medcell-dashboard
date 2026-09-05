@@ -8,6 +8,18 @@ from plotly.subplots import make_subplots
 import streamlit as st
 import streamlit.components.v1 as components
 
+
+def _dedent_html(html: str) -> str:
+  """Quita la indentacion de cada linea antes de pasarla a st.markdown.
+
+  Streamlit/Markdown interpreta cualquier linea indentada 4+ espacios
+  como un bloque de codigo (regla de Markdown), lo que hace que tags
+  como '</div>' se muestren como texto literal en vez de renderizarse.
+  Esta funcion evita ese bug quitando la indentacion de cada linea,
+  sin tocar el contenido/():variables ya interpolados.
+  """
+  return "\n".join(line.strip() for line in html.strip("\n").split("\n"))
+
 # 1. Configuración de la página
 st.set_page_config(page_title="Medcell Operaciones", layout="wide")
 
@@ -92,12 +104,6 @@ st.markdown(
     div[data-testid="stMetricValue"] {
         color: var(--mc-text) !important;
         font-weight: 800 !important;
-        font-size: clamp(1.05rem, 1.55vw, 1.65rem) !important;
-        white-space: normal !important;
-        overflow: visible !important;
-        text-overflow: clip !important;
-        line-height: 1.2 !important;
-        word-break: break-word;
     }
 
     .stButton > button, .stDownloadButton > button {
@@ -148,12 +154,61 @@ st.markdown(
     }
 
 
-    /* Ajustes finos para el grid nativo de st.dataframe() (reemplaza el
-       viejo renderer HTML .mc-html-table / .mc-table-wrap, ya eliminado
-       del código porque forzaba un ancho mínimo de 760px por tabla y
-       descuadraba las tablas puestas lado a lado en st.columns(2)). */
-    [data-testid="stHorizontalBlock"] {
-        gap: 1rem;
+    /* Tablas HTML controladas */
+    .mc-table-wrap {
+        width: 100%;
+        max-height: 560px;
+        overflow: auto;
+        margin: .65rem 0 1.2rem;
+        border: 1px solid #29415f;
+        border-radius: 14px;
+        background: #0d1b2e;
+        box-shadow: 0 12px 28px rgba(0,0,0,.16);
+    }
+
+    .mc-html-table {
+        width: 100%;
+        min-width: 760px;
+        border-collapse: separate;
+        border-spacing: 0;
+        color: #e8f1fb;
+        font-size: 13px;
+        background: #0d1b2e;
+    }
+
+    .mc-html-table thead th {
+        position: sticky;
+        top: 0;
+        z-index: 2;
+        padding: 12px 10px;
+        text-align: left;
+        white-space: nowrap;
+        background: #173b5e !important;
+        color: #ffffff !important;
+        font-weight: 800;
+        border-bottom: 2px solid #38bdf8;
+    }
+
+    .mc-html-table tbody td {
+        padding: 10px;
+        white-space: nowrap;
+        border-bottom: 1px solid #20344d;
+        border-right: 1px solid #1b2d43;
+        color: #e5edf7 !important;
+        background: #102238 !important;
+    }
+
+    .mc-html-table tbody tr:nth-child(even) td {
+        background: #142b45 !important;
+    }
+
+    .mc-html-table tbody tr:hover td {
+        background: #1d466b !important;
+        color: #ffffff !important;
+    }
+
+    .mc-html-table tbody tr:last-child td {
+        border-bottom: 0;
     }
 
     @media (max-width: 900px) {
@@ -289,185 +344,6 @@ def formato_moneda(valor):
     return f"${val_int:,}".replace(",", ".")
   except (ValueError, TypeError):
     return "$0"
-
-
-def config_automatico(df):
-  """Genera un column_config para st.dataframe() a partir de los tipos de
-  datos reales de un DataFrame "crudo" (tablas de detalle sin formatear
-  columna por columna). Evita que columnas numéricas se muestren como
-  float con ".0" al final o sin separador de miles, y aplica formato de
-  moneda a columnas cuyo nombre sugiere que son montos."""
-  cfg = {}
-  palabras_moneda = [
-      "monto", "precio", "facturado", "venta", "meta", "proyecc",
-      "compra $", "total compra", "total venta", "$",
-  ]
-  for pos, col in enumerate(df.columns):
-    try:
-      # Acceso posicional (no por nombre) para no fallar si hay columnas
-      # duplicadas: df[col] con nombres repetidos devuelve un DataFrame
-      # en vez de una Serie y rompe las comparaciones de más abajo.
-      serie = df.iloc[:, pos]
-      if not pd.api.types.is_numeric_dtype(serie):
-        continue
-      col_lower = str(col).lower()
-      es_moneda = any(p in col_lower for p in palabras_moneda)
-      valores = serie.dropna()
-      son_enteros = valores.empty or ((valores % 1) == 0).all()
-      if es_moneda:
-        cfg[col] = st.column_config.NumberColumn(str(col), format="$%,.0f")
-      elif son_enteros:
-        cfg[col] = st.column_config.NumberColumn(str(col), format="%,d")
-      else:
-        cfg[col] = st.column_config.NumberColumn(str(col), format="%,.2f")
-    except Exception:
-      # Si una columna puntual no se puede analizar, se deja sin
-      # formato especial en vez de romper toda la tabla.
-      continue
-  return cfg
-
-
-def _dedup_columnas(df):
-  """Streamlit falla al renderizar un DataFrame con nombres de columna
-  repetidos (p. ej. dos columnas de origen distintas que el diccionario
-  de renombrado hace terminar ambas como "Unidades Compra"). Esto es lo
-  que provocaba el crash intermitente: pasaba inadvertido con el
-  renderer HTML anterior, pero el componente nativo st.dataframe() sí
-  lo revienta. Aquí se renombran las repetidas agregando un sufijo."""
-  cols = list(df.columns)
-  vistos = {}
-  nuevas = []
-  for c in cols:
-    if c in vistos:
-      vistos[c] += 1
-      nuevas.append(f"{c} ({vistos[c]})")
-    else:
-      vistos[c] = 1
-      nuevas.append(c)
-  if nuevas != cols:
-    df = df.copy()
-    df.columns = nuevas
-  return df
-
-
-def _castear_enteros(df):
-  """Convierte a entero (Int64, admite valores nulos) las columnas
-  numéricas cuyos valores son en realidad enteros (p.ej. 0.0, 640.0),
-  para que se muestren como '0' o '640' en la tabla en vez de '0.0' /
-  '640.0'. Esto es independiente del formato que se le pida a
-  st.dataframe: al cambiar el dato mismo a un dtype entero, la celda
-  no puede mostrar decimales aunque el column_config falle o no se
-  aplique."""
-  df = df.copy()
-  for col in df.columns:
-    try:
-      serie = df[col]
-      if isinstance(serie, pd.DataFrame):
-        continue
-      if not pd.api.types.is_numeric_dtype(serie):
-        continue
-      if pd.api.types.is_integer_dtype(serie):
-        continue
-      valores = serie.dropna()
-      if valores.empty:
-        continue
-      if ((valores % 1) == 0).all():
-        df[col] = serie.round().astype("Int64")
-    except Exception:
-      continue
-  return df
-
-
-_TABLA_PAG_CONTADOR = {"n": 0}
-
-
-def tabla_paginada(df, column_config=None, filas_por_pagina=10, key=None, **kwargs):
-  """Muestra un DataFrame con paginación real: 10 filas por página (o
-  el número que se indique) más controles "◀ Anterior / Siguiente ▶" y
-  un indicador "Página X de Y", en vez de desplegar la tabla completa
-  de una sola vez. Reemplaza al viejo selector tipo "rueda" que existía
-  antes del renderer HTML por controles nativos de Streamlit.
-
-  Además deduplica columnas repetidas y castea a entero las columnas
-  que correspondan (ver _castear_enteros) antes de mostrar la tabla."""
-  try:
-    df_seguro = _dedup_columnas(df)
-    df_seguro = _castear_enteros(df_seguro)
-  except Exception:
-    df_seguro = df
-
-  if key is None:
-    _TABLA_PAG_CONTADOR["n"] += 1
-    key = f"tabla_pag_auto_{_TABLA_PAG_CONTADOR['n']}"
-
-  total_filas = len(df_seguro)
-  total_paginas = max(1, -(-total_filas // filas_por_pagina))
-  state_key = f"pagina_{key}"
-
-  if state_key not in st.session_state:
-    st.session_state[state_key] = 0
-  if st.session_state[state_key] > total_paginas - 1:
-    st.session_state[state_key] = 0
-
-  pagina_actual = st.session_state[state_key]
-  inicio = pagina_actual * filas_por_pagina
-  fin = inicio + filas_por_pagina
-  df_pagina = df_seguro.iloc[inicio:fin]
-
-  try:
-    cfg_final = config_automatico(df_seguro)
-  except Exception:
-    cfg_final = {}
-  if column_config:
-    cfg_final.update(column_config)
-  kwargs.setdefault("column_config", cfg_final)
-  kwargs.setdefault("hide_index", True)
-  kwargs.setdefault("use_container_width", True)
-  kwargs.setdefault("height", min(38 * (len(df_pagina) + 1), 420))
-
-  try:
-    st.dataframe(df_pagina, **kwargs)
-  except Exception as e:
-    st.warning(f"No se pudo mostrar esta tabla ({e}).")
-    st.write(df_pagina)
-
-  if total_paginas > 1:
-    col_prev, col_info, col_next = st.columns([1, 2, 1])
-    with col_prev:
-      if st.button(
-          "◀ Anterior",
-          key=f"{key}_prev",
-          disabled=(pagina_actual == 0),
-          use_container_width=True,
-      ):
-        st.session_state[state_key] = max(0, pagina_actual - 1)
-        st.rerun()
-    with col_info:
-      st.markdown(
-          "<div style='text-align:center; color:var(--mc-muted); "
-          "padding-top:.5rem; font-size:.85rem;'>"
-          f"Página {pagina_actual + 1} de {total_paginas} "
-          f"({total_filas} filas)</div>",
-          unsafe_allow_html=True,
-      )
-    with col_next:
-      if st.button(
-          "Siguiente ▶",
-          key=f"{key}_next",
-          disabled=(pagina_actual >= total_paginas - 1),
-          use_container_width=True,
-      ):
-        st.session_state[state_key] = min(total_paginas - 1, pagina_actual + 1)
-        st.rerun()
-
-
-def renderizar_tabla(df, key=None, **kwargs):
-  """Envoltorio seguro y paginado sobre st.dataframe(): deduplica
-  columnas, castea a entero las columnas que correspondan (evita
-  '0.0' en vez de '0'), aplica formato automático de números/moneda,
-  y pagina de a 10 filas con controles Anterior/Siguiente en vez de
-  desplegar toda la tabla de una sola vez."""
-  tabla_paginada(df, key=key, **kwargs)
 
 
 def formato_unidades(valor):
@@ -725,7 +601,7 @@ except Exception as e:
 
 # --- 4. HEADER ---
 st.markdown(
-    """
+    _dedent_html("""
     <div class="medcell-header">
         <div style="display: flex; justify-content: space-between; align-items: flex-end;">
             <div>
@@ -735,7 +611,7 @@ st.markdown(
             </div>
         </div>
     </div>
-""",
+"""),
     unsafe_allow_html=True,
 )
 
@@ -780,19 +656,32 @@ def crear_reloj_gauge(titulo, porcentaje, color_barra):
 
 
 # ================================================================
-# TABLAS: se usa el componente nativo st.dataframe()
+# TABLAS HTML CONTROLADAS
 # ================================================================
-# NOTA: aqui antes se sobrescribia st.dataframe con un renderer HTML
-# "de prueba" (data.to_html(...) + st.markdown). Eso rompia el
-# formato de columnas (column_config: monedas, %, barras de
-# progreso) porque to_html() ignora esos parametros, y ademas pandas
-# imprime numeros grandes en notacion cientifica (1.327791e+09).
-# Tambien era mas lento: en vez del grid nativo virtualizado de
-# Streamlit, inyectaba una tabla HTML completa (todas las filas) en
-# el DOM en cada render. Se elimina el override para restaurar el
-# formato y la velocidad; el look corporativo de las tablas se
-# mantiene via CSS sobre [data-testid="stDataFrame"] (ver <style>
-# arriba).
+# Se utiliza temporalmente un renderer HTML para probar el diseño
+# visual sin depender del componente interno de st.dataframe().
+def _mc_render_table_html(data, *args, **kwargs):
+    """Renderiza DataFrame/Styler con colores corporativos controlados."""
+    try:
+        if hasattr(data, "to_html"):
+            if hasattr(data, "hide_index") and hasattr(data, "to_html"):
+                html = data.to_html()
+            else:
+                html = data.to_html(index=False, border=0, classes="mc-html-table")
+        else:
+            html = pd.DataFrame(data).to_html(index=False, border=0, classes="mc-html-table")
+
+        st.markdown(
+            f'<div class="mc-table-wrap">{html}</div>',
+            unsafe_allow_html=True,
+        )
+    except Exception:
+        # Respaldo para objetos no compatibles.
+        st.write(data)
+
+# Activación global: todas las llamadas existentes a st.dataframe()
+# pasan por el renderer HTML durante esta prueba.
+st.dataframe = _mc_render_table_html
 
 # --- 5. PESTAÑAS ---
 HOJAS_A_EXCLUIR = [
@@ -1047,9 +936,8 @@ for i, nombre_hoja in enumerate(nombres_hojas):
               "Participación": grp_div["Participación"],
           })
 
-          tabla_paginada(
+          st.dataframe(
               grp_div_disp,
-              key=f"venta_div_{nombre_hoja}_{i}",
               column_config={
                   "Monto ($)": st.column_config.NumberColumn(
                       "Monto ($)", format="$%,d"
@@ -1061,6 +949,8 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                       "Participación", format="%.1f%%", min_value=0, max_value=1
                   ),
               },
+              hide_index=True,
+              use_container_width=True,
           )
         else:
           st.info("No hay datos de división disponibles.")
@@ -1157,9 +1047,8 @@ for i, nombre_hoja in enumerate(nombres_hojas):
               "% Acumulado": grp_cli["Pct_Acumulado"],
           })
 
-          tabla_paginada(
+          st.dataframe(
               grp_cli_disp,
-              key=f"top_clientes_{nombre_hoja}_{i}",
               column_config={
                   "Monto Total ($)": st.column_config.NumberColumn(
                       "Monto Total ($)", format="$%,d"
@@ -1171,6 +1060,8 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                       "% Acumulado", format="%.1f%%", min_value=0, max_value=100
                   ),
               },
+              hide_index=True,
+              use_container_width=True,
           )
         else:
           st.info("No hay datos de clientes disponibles.")
@@ -1217,9 +1108,8 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             "Unidades": grp_prod[col_unid],
         })
 
-        tabla_paginada(
+        st.dataframe(
             grp_prod_disp,
-            key=f"top_productos_{nombre_hoja}_{i}",
             column_config={
                 "Monto Total ($)": st.column_config.NumberColumn(
                     "Monto Total ($)", format="$%,d"
@@ -1228,6 +1118,8 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                     "Unidades", format="%,d"
                 ),
             },
+            hide_index=True,
+            use_container_width=True,
         )
       else:
         st.info(
@@ -1259,7 +1151,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         df_si_det = df_si_det[mask_si]
 
       st.caption(f"Mostrando {len(df_si_det)} registros.")
-      renderizar_tabla(df_si_det, key=f"si_det_{nombre_hoja}_{i}")
+      st.dataframe(df_si_det, hide_index=True, use_container_width=True)
 
     # =================================================================
     # DASHBOARD DE SI PROYECCION
@@ -1399,10 +1291,11 @@ for i, nombre_hoja in enumerate(nombres_hojas):
           if "Facturado actual_pct" in df_mostrar.columns:
             cols_disp.append("Facturado actual_pct")
 
-          tabla_paginada(
+          st.dataframe(
               df_mostrar[cols_disp],
-              key=f"detalle_canal_{nombre_hoja}_{i}",
               column_config=config_columnas,
+              hide_index=True,
+              use_container_width=True,
           )
 
         with col_g:
@@ -1578,9 +1471,8 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
         with col_oc_tabla:
           st.markdown("##### 📋 Tabla Detalle")
-          tabla_paginada(
+          st.dataframe(
               df_oc_tab,
-              key=f"oc_tab_{nombre_hoja}_{i}",
               column_config={
                   "Concepto": st.column_config.TextColumn("Categoría / Estado"),
                   "Canal": st.column_config.TextColumn("Canal"),
@@ -1595,6 +1487,8 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                       "OC extra", format="$%,.0f"
                   ),
               },
+              hide_index=True,
+              use_container_width=True,
           )
 
         with col_oc_grafico:
@@ -2362,10 +2256,10 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
             with cols_est[idx_e % min(num_items, 6)]:
               st.markdown(
-                  f"""<div style="background-color: #141414; border: 1px solid #0070f3; border-radius: 8px; padding: 10px; text-align: center; margin-bottom: 15px;">
+                  _dedent_html(f"""<div style="background-color: #141414; border: 1px solid #0070f3; border-radius: 8px; padding: 10px; text-align: center; margin-bottom: 15px;">
                                     <div style="font-size: 12px; color: #aaaaaa; font-weight: 600; text-transform: uppercase;">{nombre_est}</div>
                                     <div style="font-size: 20px; font-weight: bold; color: #ffffff; margin-top: 3px;">{formato_unidades(cant_est)}</div>
-                                </div>""",
+                                </div>"""),
                   unsafe_allow_html=True,
               )
 
@@ -2426,7 +2320,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             df_vista_stock["Fecha Expiración"], errors="coerce"
         ).dt.strftime("%d-%m-%Y")
 
-      renderizar_tabla(df_vista_stock, key=f"vista_stock_{nombre_hoja}_{i}")
+      st.dataframe(df_vista_stock, hide_index=True, use_container_width=True)
 
       st.divider()
 
@@ -2510,14 +2404,15 @@ for i, nombre_hoja in enumerate(nombres_hojas):
           if col_desc_stock and col_desc_stock in grp_loc.columns:
             rename_cols[col_desc_stock] = "Descripción Producto"
           grp_loc_disp = grp_loc.rename(columns=rename_cols)
-          tabla_paginada(
+          st.dataframe(
               grp_loc_disp,
-              key=f"top_loc_stock_tabla_{nombre_hoja}_{i}",
               column_config={
                   "Cantidad": st.column_config.NumberColumn(
                       "Cantidad", format="%,d"
                   ),
               },
+              hide_index=True,
+              use_container_width=True,
           )
         else:
           st.info(
@@ -3332,8 +3227,8 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                   formato_unidades
               )
 
-              tabla_paginada(
-                  grp_top_disp, key=f"top15_quiebres_{nombre_hoja}_{i}"
+              st.dataframe(
+                  grp_top_disp, hide_index=True, use_container_width=True
               )
 
           elif is_sb and col_div:
@@ -3489,9 +3384,8 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                     formato_unidades
                 )
 
-                tabla_paginada(
-                    grp_top_disp,
-                    key=f"top15_quiebres_div_{nombre_hoja}_{i}_{idx}",
+                st.dataframe(
+                    grp_top_disp, hide_index=True, use_container_width=True
                 )
 
       # =================================================================
@@ -3616,7 +3510,9 @@ for i, nombre_hoja in enumerate(nombres_hojas):
               nuevas_columnas_s[col] = str(col).replace("_", " ").strip().title()
           df_solares_final = df_solares_final.rename(columns=nuevas_columnas_s)
 
-          renderizar_tabla(df_solares_final, key=f"solares_{nombre_hoja}_{i}")
+          st.dataframe(
+              df_solares_final, hide_index=True, use_container_width=True
+          )
         else:
           st.info("No hay productos Solares registrados para la semana seleccionada.")
 
@@ -3683,7 +3579,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
               "Fill Rate Unidades",
               "Fill Rate Monto",
           ]
-          renderizar_tabla(df_disp, key=f"resumen4_pu_{nombre_hoja}_{i}")
+          st.dataframe(df_disp, hide_index=True, use_container_width=True)
           st.divider()
 
           col_g1, col_g2 = st.columns(2)
@@ -3785,7 +3681,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
               "Fill Rate Unidades",
               "Fill Rate Monto",
           ]
-          renderizar_tabla(df_disp, key=f"resumen4_sb_{nombre_hoja}_{i}")
+          st.dataframe(df_disp, hide_index=True, use_container_width=True)
           st.divider()
 
           col_g1, col_g2 = st.columns(2)
@@ -3938,7 +3834,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             )
 
             grp_m_disp = pd.DataFrame()
-            grp_m_disp["Marca"] = grp_m[col_marca].astype(str)
+            grp_m_disp["Etiquetas de fila"] = grp_m[col_marca].astype(str)
             grp_m_disp["TOTAL COMPRA"] = grp_m[col_m_compra].apply(
                 formato_moneda
             )
@@ -3951,7 +3847,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
             total_compra_div = grp_m[col_m_compra].sum()
             fila_total = pd.DataFrame([{
-                "Marca": "Total general",
+                "Etiquetas de fila": "Total general",
                 "TOTAL COMPRA": formato_moneda(total_compra_div),
                 "MONTO QUIEBRE": (
                     f"-{formato_moneda(abs(total_quiebre_div))}"
@@ -3964,13 +3860,8 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
             styled_df = grp_m_final.style.apply(
                 aplicar_criticidad, subset=["QUIEBRE %"]
-            ).hide(axis="index")
-            st.dataframe(
-                styled_df,
-                hide_index=True,
-                use_container_width=True,
-                height=min(38 * (len(grp_m_final) + 1), 420),
             )
+            st.dataframe(styled_df, hide_index=True, use_container_width=True)
           else:
             st.info(
                 f"No hay quiebres registrados para la semana {fmt_sem(sem_top)} en"
@@ -4006,7 +3897,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 )
 
                 grp_m_disp = pd.DataFrame()
-                grp_m_disp["Marca"] = grp_m[col_marca].astype(str)
+                grp_m_disp["Etiquetas de fila"] = grp_m[col_marca].astype(str)
                 grp_m_disp["TOTAL COMPRA"] = grp_m[col_m_compra].apply(
                     formato_moneda
                 )
@@ -4019,7 +3910,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
                 total_compra_div = grp_m[col_m_compra].sum()
                 fila_total = pd.DataFrame([{
-                    "Marca": "Total general",
+                    "Etiquetas de fila": "Total general",
                     "TOTAL COMPRA": formato_moneda(total_compra_div),
                     "MONTO QUIEBRE": (
                         f"-{formato_moneda(abs(total_quiebre_div))}"
@@ -4032,12 +3923,9 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
                 styled_df = grp_m_final.style.apply(
                     aplicar_criticidad, subset=["QUIEBRE %"]
-                ).hide(axis="index")
+                )
                 st.dataframe(
-                    styled_df,
-                    hide_index=True,
-                    use_container_width=True,
-                    height=min(38 * (len(grp_m_final) + 1), 420),
+                    styled_df, hide_index=True, use_container_width=True
                 )
               else:
                 st.info(
@@ -4117,7 +4005,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
       df_corte_final = df_corte_final.rename(columns=nuevas_columnas)
 
-      renderizar_tabla(df_corte_final, key=f"corte_final_{nombre_hoja}_{i}")
+      st.dataframe(df_corte_final, hide_index=True, use_container_width=True)
 
     # =================================================================
     # PESTAÑA FILL RATE (múltiples tablas pegadas: Salcobrand Consumo,
@@ -4659,16 +4547,15 @@ for i, nombre_hoja in enumerate(nombres_hojas):
           tabla_disp, columnas_originales = _fr_tabla_display(bloque["tabla"])
           if not tabla_disp.empty:
             st.dataframe(
-                tabla_disp,
-                hide_index=True,
-                use_container_width=True,
-                height=min(38 * (len(tabla_disp) + 1), 420),
+                tabla_disp, hide_index=True, use_container_width=True
             )
             with st.expander(
                 "Ver todas las columnas (detalle completo de la hoja)",
                 expanded=False,
             ):
-              renderizar_tabla(bloque["tabla"], key=f"bloque_tabla_{idx_b}")
+              st.dataframe(
+                  bloque["tabla"], hide_index=True, use_container_width=True
+              )
           else:
             st.info("No hay productos en este bloque para la semana actual.")
 
@@ -4731,7 +4618,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         )
         df = df[mask]
       st.caption(f"Mostrando {len(df)} registros en {nombre_hoja}.")
-      renderizar_tabla(df, key=f"generic_{nombre_hoja}_{i}")
+      st.dataframe(df, hide_index=True, use_container_width=True)
 
 
 # =================================================================
@@ -5362,14 +5249,6 @@ with tabs[0]:
 
   n_recurrentes = len(rec_todos)
 
-  # Productos identificados para recuperar durante la semana actual.
-  calendario_fr = resumen_data.get("fill_rate_calendar") or []
-  n_recuperar_semana = len(calendario_fr)
-  monto_recuperar_semana = sum(
-      abs(float(item.get("quiebre") or 0))
-      for item in calendario_fr
-  )
-
   sub_estados = []
   if fr_reciente_pct is not None:
     sub_estados.append(
@@ -5407,7 +5286,7 @@ with tabs[0]:
     }[estado_general]
 
     st.markdown(
-        f"""
+        _dedent_html(f"""
         <div style="
             display:flex; align-items:center; justify-content:space-between;
             gap:18px; background:linear-gradient(135deg,#102238,#142d49);
@@ -5436,7 +5315,7 @@ with tabs[0]:
             SEMÁFORO
           </div>
         </div>
-        """,
+        """),
         unsafe_allow_html=True,
     )
 
@@ -5447,7 +5326,7 @@ with tabs[0]:
       with col_sf:
         color_sf = _colores_semaforo[estado_sf]
         st.markdown(
-            f"""
+            _dedent_html(f"""
             <div style="
                 background:linear-gradient(145deg,#102238,#142b45);
                 border:1px solid #29415f;
@@ -5474,113 +5353,9 @@ with tabs[0]:
                 {estado_sf.upper()}</span>
               </div>
             </div>
-            """,
+            """),
             unsafe_allow_html=True,
         )
-
-    # ---------------------------------------------------------------
-    # Bloque destacado: Fill Rate que debería recuperarse esta semana.
-    # ---------------------------------------------------------------
-    st.markdown("##### 🎯 Fill Rate — Recuperación de Esta Semana")
-
-    if n_recuperar_semana > 0:
-      st.markdown(
-          f"""
-          <div style="
-              display:flex; align-items:center; justify-content:space-between;
-              gap:20px; background:linear-gradient(135deg,#162f47,#183d59);
-              border:1px solid #285979; border-radius:16px; padding:18px 20px;
-              margin:8px 0 14px 0;
-              box-shadow:0 12px 26px rgba(0,0,0,.14);">
-            <div>
-              <div style="font-size:12px; color:#8fc2df; font-weight:800;
-                          text-transform:uppercase; letter-spacing:.07em;">
-                Oportunidad de recuperación
-              </div>
-              <div style="font-size:28px; color:#f8fafc; font-weight:900;
-                          margin-top:2px;">
-                {n_recuperar_semana} SKU
-              </div>
-              <div style="font-size:12px; color:#9eb1c7; margin-top:3px;">
-                Identificados para recuperar durante esta semana
-              </div>
-            </div>
-            <div style="text-align:right;">
-              <div style="font-size:12px; color:#8fc2df; font-weight:800;
-                          text-transform:uppercase;">
-                Quiebre a recuperar
-              </div>
-              <div style="font-size:25px; color:#fbbf24; font-weight:900;
-                          margin-top:3px;">
-                {formato_moneda(monto_recuperar_semana)}
-              </div>
-              <div style="font-size:11px; color:#9eb1c7;">
-                según comentarios / ETA
-              </div>
-            </div>
-          </div>
-          """,
-          unsafe_allow_html=True,
-      )
-
-      calendario_fr_ordenado = sorted(
-          calendario_fr, key=lambda x: abs(float(x.get("quiebre") or 0)),
-          reverse=True
-      )
-
-      n_cols_cal = 3
-      cols_cal = st.columns(n_cols_cal)
-      for idx_cal, item_cal in enumerate(calendario_fr_ordenado[:12]):
-        with cols_cal[idx_cal % n_cols_cal]:
-          monto_item = abs(float(item_cal.get("quiebre") or 0))
-          monto_txt = formato_moneda(monto_item) if monto_item else "$0"
-          comentario_txt = item_cal.get("comentario") or "Sin comentario"
-          fecha_txt = item_cal.get("fecha_txt") or "Sin fecha estimada"
-          st.markdown(
-              f"""
-              <div style="
-                  background:#102238; border:1px solid #29415f;
-                  border-left:4px solid #fbbf24; border-radius:0 12px 12px 0;
-                  padding:11px 13px; margin-bottom:9px; min-height:92px;">
-                <div style="font-size:12px; color:#f8fafc; font-weight:800;">
-                  {item_cal.get("etiqueta","SKU sin identificar")}
-                </div>
-                <div style="font-size:11px; color:#95aac1; margin-top:4px;">
-                  {item_cal.get("bloque","")} · {monto_txt}
-                </div>
-                <div style="font-size:11px; color:#fbbf24; font-weight:750;
-                            margin-top:4px;">
-                  → {fecha_txt}
-                </div>
-                <div style="font-size:10px; color:#6f859c; margin-top:4px;">
-                  {comentario_txt}
-                </div>
-              </div>
-              """,
-              unsafe_allow_html=True,
-          )
-
-      if len(calendario_fr_ordenado) > 12:
-        st.caption(
-            f"Se muestran los 12 casos de mayor quiebre. "
-            f"Hay {len(calendario_fr_ordenado) - 12} casos adicionales."
-        )
-    else:
-      st.markdown(
-          """
-          <div style="
-              background:rgba(34,197,94,.10); border:1px solid rgba(34,197,94,.30);
-              border-radius:14px; padding:16px 18px;">
-            <div style="font-size:14px; color:#22c55e; font-weight:850;">
-              ✓ Sin casos pendientes identificados para recuperar esta semana
-            </div>
-            <div style="font-size:11px; color:#8fa6bd; margin-top:4px;">
-              No se encontraron productos con fecha de recuperación inmediata.
-            </div>
-          </div>
-          """,
-          unsafe_allow_html=True,
-      )
 
     # ---------------------------------------------------------------
     # Comparativo Fill Rate por semana.
@@ -5608,7 +5383,7 @@ with tabs[0]:
         )
 
         st.markdown(
-            f"""
+            _dedent_html(f"""
             <div style="
                 display:flex; align-items:center; justify-content:space-between;
                 background:#102238; border:1px solid #29415f;
@@ -5630,7 +5405,7 @@ with tabs[0]:
                 {_pct_sem:.1f}%
               </div>
             </div>
-            """,
+            """),
             unsafe_allow_html=True,
         )
   else:
@@ -6111,7 +5886,7 @@ with tabs[-1]:
             fecha_txt = fila[col_fecha_scan] if col_fecha_scan else "N/A"
 
             st.markdown(
-                f"""
+                _dedent_html(f"""
                 <div style="background-color:#141414; border:1px solid #0070f3;
                             border-radius:10px; padding:16px; margin-bottom:12px;">
                     <div style="color:#aaaaaa; font-size:12px; text-transform:uppercase;">Producto</div>
@@ -6123,7 +5898,7 @@ with tabs[-1]:
                         Stock: {cant_txt} unidades
                     </div>
                 </div>
-                """,
+                """),
                 unsafe_allow_html=True,
             )
   else:
