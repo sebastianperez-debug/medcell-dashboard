@@ -406,11 +406,14 @@ def aplicar_criticidad(column):
   return styles
 
 
-@st.cache_data(ttl=60)
-def cargar_hoja_raw(ruta, nombre_hoja):
-  """Carga una hoja del Excel sin asumir fila de encabezado, preservando
-  la posición original de cada celda (para hojas con múltiples tablas
-  pegadas, como 'FILL RATE')."""
+@st.cache_resource(show_spinner=False)
+def cargar_hoja_raw(ruta, nombre_hoja, firma_archivo):
+  """Carga una hoja especial una sola vez por versión del Excel.
+
+  ``cache_resource`` evita volver a serializar DataFrames grandes en cada
+  rerun de Streamlit. ``firma_archivo`` invalida la caché cuando cambia el
+  Excel. La hoja se copia en el punto de uso cuando sea necesario.
+  """
   return pd.read_excel(ruta, sheet_name=nombre_hoja, header=None, dtype=object)
 
 
@@ -559,8 +562,8 @@ def parse_bloques_fill_rate(df_raw):
 
 
 # --- 3. CARGA DEL EXCEL ---
-@st.cache_data(ttl=60)
-def extraer_datos_oc_proyeccion(ruta, nombre_hoja):
+@st.cache_resource(show_spinner=False)
+def extraer_datos_oc_proyeccion(ruta, nombre_hoja, firma_archivo):
   """Lee y parsea la tabla 'OC vigente / Proyección Compra' directamente
   del Excel (busca la celda 'Canal'/'Monto' y arma los registros fila a
   fila). Cacheada porque antes esto se releia y reparseaba desde cero
@@ -642,8 +645,8 @@ def extraer_datos_oc_proyeccion(ruta, nombre_hoja):
     return [], str(e)
 
 
-@st.cache_data(ttl=60)
-def extraer_proyeccion_meses(ruta, nombre_hoja):
+@st.cache_resource(show_spinner=False)
+def extraer_proyeccion_meses(ruta, nombre_hoja, firma_archivo):
   """Lee y parsea la matriz 'Proyecciones Metas por Mes' directamente del
   Excel. Cacheada por la misma razon que extraer_datos_oc_proyeccion: es
   una relectura + parseo con loops anidados que antes se repetia en cada
@@ -751,9 +754,34 @@ def buscar_excel():
 ruta_final = buscar_excel()
 
 
-@st.cache_data(ttl=60)
-def cargar_libro_excel(ruta):
-  xls = pd.ExcelFile(ruta)
+def _firma_archivo_excel(ruta):
+  """Firma barata del Excel para invalidar caché cuando el archivo cambia."""
+  try:
+    stat = os.stat(ruta)
+    return (stat.st_mtime_ns, stat.st_size)
+  except OSError:
+    return (0, 0)
+
+
+def _motor_excel_rapido():
+  """Usa calamine si está instalado; mantiene openpyxl como fallback."""
+  try:
+    import python_calamine  # noqa: F401
+    return "calamine"
+  except ImportError:
+    return None
+
+
+@st.cache_resource(show_spinner=False)
+def cargar_libro_excel(ruta, firma_archivo):
+  """Carga el libro una sola vez por versión del archivo.
+
+  A diferencia de ``cache_data``, ``cache_resource`` mantiene los DataFrames
+  en memoria del servidor y evita deserializar nuevamente un libro grande
+  cada vez que Streamlit hace un rerun.
+  """
+  motor = _motor_excel_rapido()
+  xls = pd.ExcelFile(ruta, engine=motor) if motor else pd.ExcelFile(ruta)
   hojas_dict = {}
   for hoja in xls.sheet_names:
     df_temp = pd.read_excel(xls, hoja, dtype=str)
@@ -770,8 +798,10 @@ if not ruta_final:
   )
   st.stop()
 
+firma_excel = _firma_archivo_excel(ruta_final)
+
 try:
-  hojas = cargar_libro_excel(ruta_final)
+  hojas = cargar_libro_excel(ruta_final, firma_excel)
 except Exception as e:
   st.error(f"Error al leer Excel: {e}")
   st.stop()
@@ -1536,7 +1566,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             key=f"radio_vista_oc_{i}"
         )
 
-        datos_oc_proyeccion, _err_oc = extraer_datos_oc_proyeccion(ruta_final, nombre_hoja)
+        datos_oc_proyeccion, _err_oc = extraer_datos_oc_proyeccion(ruta_final, nombre_hoja, firma_excel)
         if _err_oc:
           st.warning(f"No se pudo leer la tabla OC directamente del Excel ({_err_oc}). Se muestra vacío.")
 
@@ -1717,7 +1747,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         st.markdown("#### 🗓️ Proyecciones Metas por Mes (2026)")
 
         try:
-          df_res_meses, _err_proy = extraer_proyeccion_meses(ruta_final, nombre_hoja)
+          df_res_meses, _err_proy = extraer_proyeccion_meses(ruta_final, nombre_hoja, firma_excel)
           if _err_proy:
             raise Exception(_err_proy)
 
@@ -4009,7 +4039,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
       st.subheader("🔥 Fill Rate por Cadena (Top Quiebres)")
 
       try:
-        df_raw_fr = cargar_hoja_raw(ruta_final, nombre_hoja)
+        df_raw_fr = cargar_hoja_raw(ruta_final, nombre_hoja, firma_excel)
       except Exception as e:
         st.error(f"No se pudo leer la hoja en formato bruto: {e}")
         df_raw_fr = None
