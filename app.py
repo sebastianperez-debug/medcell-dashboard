@@ -443,6 +443,7 @@ def _fr_dedupe_columnas(cols):
   return resultado
 
 
+@st.cache_data(ttl=60)
 def parse_bloques_fill_rate(df_raw):
   """Detecta y extrae los distintos bloques/tablas pegados verticalmente
   en la hoja 'FILL RATE'. Cada bloque tiene: una fila 'Semana X Total ...',
@@ -558,6 +559,182 @@ def parse_bloques_fill_rate(df_raw):
 
 
 # --- 3. CARGA DEL EXCEL ---
+@st.cache_data(ttl=60)
+def extraer_datos_oc_proyeccion(ruta, nombre_hoja):
+  """Lee y parsea la tabla 'OC vigente / Proyección Compra' directamente
+  del Excel (busca la celda 'Canal'/'Monto' y arma los registros fila a
+  fila). Cacheada porque antes esto se releia y reparseaba desde cero
+  en CADA rerun del script, sin importar la pestana activa."""
+
+  def _norm_txt(s):
+    s = str(s).strip().lower()
+    for a, b in [("á", "a"), ("é", "e"), ("í", "i"), ("ó", "o"), ("ú", "u")]:
+      s = s.replace(a, b)
+    return s
+
+  def _parse_pct(val):
+    v = limpiar_numero(val)
+    if 0 <= v <= 1.0:
+      v = v * 100.0
+    return round(v)
+
+  datos_oc_proyeccion = []
+  try:
+    df_grid_oc = pd.read_excel(ruta, sheet_name=nombre_hoja, header=None, dtype=str)
+
+    header_r, header_c = None, None
+    for r in range(len(df_grid_oc)):
+      for c in range(len(df_grid_oc.columns) - 1):
+        if _norm_txt(df_grid_oc.iloc[r, c]) == "canal" and "monto" in _norm_txt(
+            df_grid_oc.iloc[r, c + 1]
+        ):
+          header_r, header_c = r, c
+          break
+      if header_r is not None:
+        break
+
+    if header_r is not None:
+      col_concepto = header_c - 1
+      col_canal = header_c
+      col_monto = header_c + 1
+      col_fr = header_c + 2
+      col_proy = header_c + 3
+      col_extra = header_c + 4
+
+      concepto_actual = None
+      r = header_r + 1
+      while r < len(df_grid_oc):
+        canal_val = df_grid_oc.iloc[r, col_canal] if col_canal < len(df_grid_oc.columns) else None
+        canal_txt = str(canal_val).strip() if pd.notna(canal_val) else ""
+
+        if col_concepto >= 0:
+          concepto_val = df_grid_oc.iloc[r, col_concepto]
+          if pd.notna(concepto_val) and str(concepto_val).strip() != "":
+            txt_concepto = _norm_txt(concepto_val)
+            if "vigente" in txt_concepto:
+              concepto_actual = "OC vigente"
+            elif "proyec" in txt_concepto:
+              concepto_actual = "Proyección Compra"
+            else:
+              concepto_actual = str(concepto_val).strip()
+
+        if canal_txt == "" or canal_txt.lower() == "nan":
+          break
+
+        canal_norm = _norm_txt(canal_txt)
+        if any(
+            kw in canal_norm
+            for kw in ["cierre", "meta", "resultado", "cumplimiento"]
+        ):
+          break
+
+        datos_oc_proyeccion.append({
+            "Concepto": concepto_actual or "",
+            "Canal": canal_txt,
+            "Monto OC": limpiar_numero(df_grid_oc.iloc[r, col_monto]) if col_monto < len(df_grid_oc.columns) else 0.0,
+            "FR": _parse_pct(df_grid_oc.iloc[r, col_fr]) if col_fr < len(df_grid_oc.columns) else 0,
+            "Proyección salida": limpiar_numero(df_grid_oc.iloc[r, col_proy]) if col_proy < len(df_grid_oc.columns) else 0.0,
+            "OC extra": limpiar_numero(df_grid_oc.iloc[r, col_extra]) if col_extra < len(df_grid_oc.columns) else 0.0,
+        })
+        r += 1
+    return datos_oc_proyeccion, None
+  except Exception as e:
+    return [], str(e)
+
+
+@st.cache_data(ttl=60)
+def extraer_proyeccion_meses(ruta, nombre_hoja):
+  """Lee y parsea la matriz 'Proyecciones Metas por Mes' directamente del
+  Excel. Cacheada por la misma razon que extraer_datos_oc_proyeccion: es
+  una relectura + parseo con loops anidados que antes se repetia en cada
+  rerun sin importar la pestana activa."""
+  try:
+    df_grid = pd.read_excel(ruta, sheet_name=nombre_hoja, header=None, dtype=str)
+
+    target_r, target_c = None, None
+
+    for r in range(len(df_grid)):
+      for c in range(len(df_grid.columns)):
+        val = str(df_grid.iloc[r, c]).strip().upper()
+        if val in ["DIV.", "DIV"]:
+          sub_vals = [
+              str(df_grid.iloc[r_sub, c]).strip().upper()
+              for r_sub in range(r + 1, min(r + 8, len(df_grid)))
+          ]
+          if any("FARMA" in v for v in sub_vals) and any(
+              "CONSUMO" in v for v in sub_vals
+          ):
+            target_r, target_c = r, c
+
+    if target_r is None or target_c is None:
+      return None, None
+
+    c_start = target_c
+    c_end = min(c_start + 13, len(df_grid.columns))
+    r_end = min(target_r + 7, len(df_grid))
+    df_block = df_grid.iloc[target_r:r_end, c_start:c_end].copy()
+
+    raw_headers = df_block.iloc[0].values
+    headers = []
+
+    meses_map = {
+        "ene": "Enero", "feb": "Febrero", "mar": "Marzo", "abr": "Abril",
+        "may": "Mayo", "jun": "Junio", "jul": "Julio", "ago": "Agosto",
+        "sept": "Septiembre", "sep": "Septiembre", "oct": "Octubre",
+        "nov": "Noviembre", "dic": "Diciembre",
+    }
+
+    for idx_h, h in enumerate(raw_headers):
+      if idx_h == 0:
+        headers.append("División")
+      else:
+        cleaned_h = limpiar_nombre_mes(h)
+        mes_prefix = (
+            cleaned_h.split("-")[0].lower()
+            if "-" in cleaned_h
+            else str(cleaned_h).lower()
+        )
+        mes_nombre = meses_map.get(mes_prefix, cleaned_h.capitalize())
+        headers.append(mes_nombre)
+
+    df_rows = df_block.iloc[1:].copy()
+    df_rows.columns = headers
+
+    filas_procesadas = []
+    for _, row_data in df_rows.iterrows():
+      div_val = str(row_data["División"]).strip()
+
+      tiene_datos = any(
+          pd.notna(v) and str(v).strip() not in ["", "nan"]
+          for v in row_data[1:]
+      )
+      if not tiene_datos:
+        continue
+
+      div_upper = div_val.upper()
+      if div_val == "" or div_val.lower() == "nan" or "TOTAL" in div_upper:
+        div_val = "Total General"
+      elif "FARMA" in div_upper:
+        div_val = "FARMA"
+      elif "CONSUMO" in div_upper:
+        div_val = "CONSUMO"
+      elif "CAN" in div_upper or "TERCEROS" in div_upper or "3" in div_upper:
+        div_val = "3 Canales"
+
+      row_dict = {"División": div_val}
+      for col_m in headers[1:]:
+        row_dict[col_m] = limpiar_numero(row_data[col_m])
+
+      filas_procesadas.append(row_dict)
+
+    df_res_meses = pd.DataFrame(filas_procesadas)
+    if not df_res_meses.empty:
+      df_res_meses = df_res_meses.drop_duplicates(subset=["División"], keep="first")
+    return df_res_meses, None
+  except Exception as e:
+    return None, str(e)
+
+
 def buscar_excel():
   posibles_rutas = [
       "SQL Seba.xlsx",
@@ -1359,83 +1536,9 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             key=f"radio_vista_oc_{i}"
         )
 
-        def _norm_txt(s):
-          s = str(s).strip().lower()
-          for a, b in [("á", "a"), ("é", "e"), ("í", "i"), ("ó", "o"), ("ú", "u")]:
-            s = s.replace(a, b)
-          return s
-
-        def _parse_pct(val):
-          v = limpiar_numero(val)
-          if 0 <= v <= 1.0:
-            v = v * 100.0
-          return round(v)
-
-        datos_oc_proyeccion = []
-
-        try:
-          df_grid_oc = pd.read_excel(
-              ruta_final, sheet_name=nombre_hoja, header=None, dtype=str
-          )
-
-          header_r, header_c = None, None
-          for r in range(len(df_grid_oc)):
-            for c in range(len(df_grid_oc.columns) - 1):
-              if _norm_txt(df_grid_oc.iloc[r, c]) == "canal" and "monto" in _norm_txt(
-                  df_grid_oc.iloc[r, c + 1]
-              ):
-                header_r, header_c = r, c
-                break
-            if header_r is not None:
-              break
-
-          if header_r is not None:
-            col_concepto = header_c - 1
-            col_canal = header_c
-            col_monto = header_c + 1
-            col_fr = header_c + 2
-            col_proy = header_c + 3
-            col_extra = header_c + 4
-
-            concepto_actual = None
-            r = header_r + 1
-            while r < len(df_grid_oc):
-              canal_val = df_grid_oc.iloc[r, col_canal] if col_canal < len(df_grid_oc.columns) else None
-              canal_txt = str(canal_val).strip() if pd.notna(canal_val) else ""
-
-              if col_concepto >= 0:
-                concepto_val = df_grid_oc.iloc[r, col_concepto]
-                if pd.notna(concepto_val) and str(concepto_val).strip() != "":
-                  txt_concepto = _norm_txt(concepto_val)
-                  if "vigente" in txt_concepto:
-                    concepto_actual = "OC vigente"
-                  elif "proyec" in txt_concepto:
-                    concepto_actual = "Proyección Compra"
-                  else:
-                    concepto_actual = str(concepto_val).strip()
-
-              if canal_txt == "" or canal_txt.lower() == "nan":
-                break
-
-              # Detiene la lectura al llegar a filas de totales (Cierre, Meta, Resultado, Cumplimiento)
-              canal_norm = _norm_txt(canal_txt)
-              if any(
-                  kw in canal_norm
-                  for kw in ["cierre", "meta", "resultado", "cumplimiento"]
-              ):
-                break
-
-              datos_oc_proyeccion.append({
-                  "Concepto": concepto_actual or "",
-                  "Canal": canal_txt,
-                  "Monto OC": limpiar_numero(df_grid_oc.iloc[r, col_monto]) if col_monto < len(df_grid_oc.columns) else 0.0,
-                  "FR": _parse_pct(df_grid_oc.iloc[r, col_fr]) if col_fr < len(df_grid_oc.columns) else 0,
-                  "Proyección salida": limpiar_numero(df_grid_oc.iloc[r, col_proy]) if col_proy < len(df_grid_oc.columns) else 0.0,
-                  "OC extra": limpiar_numero(df_grid_oc.iloc[r, col_extra]) if col_extra < len(df_grid_oc.columns) else 0.0,
-              })
-              r += 1
-        except Exception as e:
-          st.warning(f"No se pudo leer la tabla OC directamente del Excel ({e}). Se muestra vacío.")
+        datos_oc_proyeccion, _err_oc = extraer_datos_oc_proyeccion(ruta_final, nombre_hoja)
+        if _err_oc:
+          st.warning(f"No se pudo leer la tabla OC directamente del Excel ({_err_oc}). Se muestra vacío.")
 
         df_oc_tab = pd.DataFrame(
             datos_oc_proyeccion,
@@ -1614,112 +1717,11 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         st.markdown("#### 🗓️ Proyecciones Metas por Mes (2026)")
 
         try:
-          df_grid = pd.read_excel(
-              ruta_final, sheet_name=nombre_hoja, header=None, dtype=str
-          )
+          df_res_meses, _err_proy = extraer_proyeccion_meses(ruta_final, nombre_hoja)
+          if _err_proy:
+            raise Exception(_err_proy)
 
-          target_r, target_c = None, None
-
-          for r in range(len(df_grid)):
-            for c in range(len(df_grid.columns)):
-              val = str(df_grid.iloc[r, c]).strip().upper()
-              if val in ["DIV.", "DIV"]:
-                sub_vals = [
-                    str(df_grid.iloc[r_sub, c]).strip().upper()
-                    for r_sub in range(r + 1, min(r + 8, len(df_grid)))
-                ]
-                if any("FARMA" in v for v in sub_vals) and any(
-                    "CONSUMO" in v for v in sub_vals
-                ):
-                  target_r, target_c = r, c
-
-          if target_r is not None and target_c is not None:
-            c_start = target_c
-            c_end = min(c_start + 13, len(df_grid.columns))
-
-            r_end = min(target_r + 7, len(df_grid))
-            df_block = df_grid.iloc[target_r:r_end, c_start:c_end].copy()
-
-            raw_headers = df_block.iloc[0].values
-            headers = []
-
-            meses_map = {
-                "ene": "Enero",
-                "feb": "Febrero",
-                "mar": "Marzo",
-                "abr": "Abril",
-                "may": "Mayo",
-                "jun": "Junio",
-                "jul": "Julio",
-                "ago": "Agosto",
-                "sept": "Septiembre",
-                "sep": "Septiembre",
-                "oct": "Octubre",
-                "nov": "Noviembre",
-                "dic": "Diciembre",
-            }
-
-            for idx_h, h in enumerate(raw_headers):
-              if idx_h == 0:
-                headers.append("División")
-              else:
-                cleaned_h = limpiar_nombre_mes(h)
-                mes_prefix = (
-                    cleaned_h.split("-")[0].lower()
-                    if "-" in cleaned_h
-                    else str(cleaned_h).lower()
-                )
-                mes_nombre = meses_map.get(
-                    mes_prefix, cleaned_h.capitalize()
-                )
-                headers.append(mes_nombre)
-
-            df_rows = df_block.iloc[1:].copy()
-            df_rows.columns = headers
-
-            filas_procesadas = []
-            for _, row_data in df_rows.iterrows():
-              div_val = str(row_data["División"]).strip()
-
-              tiene_datos = any(
-                  pd.notna(v) and str(v).strip() not in ["", "nan"]
-                  for v in row_data[1:]
-              )
-
-              if not tiene_datos:
-                continue
-
-              div_upper = div_val.upper()
-              if (
-                  div_val == ""
-                  or div_val.lower() == "nan"
-                  or "TOTAL" in div_upper
-              ):
-                div_val = "Total General"
-              elif "FARMA" in div_upper:
-                div_val = "FARMA"
-              elif "CONSUMO" in div_upper:
-                div_val = "CONSUMO"
-              elif (
-                  "CAN" in div_upper
-                  or "TERCEROS" in div_upper
-                  or "3" in div_upper
-              ):
-                div_val = "3 Canales"
-
-              row_dict = {"División": div_val}
-              for col_m in headers[1:]:
-                row_dict[col_m] = limpiar_numero(row_data[col_m])
-
-              filas_procesadas.append(row_dict)
-
-            df_res_meses = pd.DataFrame(filas_procesadas)
-
-            if not df_res_meses.empty:
-              df_res_meses = df_res_meses.drop_duplicates(
-                  subset=["División"], keep="first"
-              )
-
+          if df_res_meses is not None and not df_res_meses.empty:
               cols_num_meses = [
                   c for c in df_res_meses.columns if c != "División"
               ]
@@ -1762,8 +1764,8 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                   hide_index=True,
                   use_container_width=True,
               )
-            else:
-              st.info("No se pudieron procesar los registros de la tabla.")
+          elif df_res_meses is not None:
+            st.info("No se pudieron procesar los registros de la tabla.")
           else:
             st.info("No se encontró la matriz de proyecciones mensuales.")
         except Exception as e_proy:
