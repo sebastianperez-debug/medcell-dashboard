@@ -8,18 +8,6 @@ from plotly.subplots import make_subplots
 import streamlit as st
 import streamlit.components.v1 as components
 
-
-def _dedent_html(html: str) -> str:
-  """Quita la indentacion de cada linea antes de pasarla a st.markdown.
-
-  Streamlit/Markdown interpreta cualquier linea indentada 4+ espacios
-  como un bloque de codigo (regla de Markdown), lo que hace que tags
-  como '</div>' se muestren como texto literal en vez de renderizarse.
-  Esta funcion evita ese bug quitando la indentacion de cada linea,
-  sin tocar el contenido/():variables ya interpolados.
-  """
-  return "\n".join(line.strip() for line in html.strip("\n").split("\n"))
-
 # 1. Configuración de la página
 st.set_page_config(page_title="Medcell Operaciones", layout="wide")
 
@@ -407,7 +395,7 @@ def aplicar_criticidad(column):
 
 
 @st.cache_data(ttl=60)
-def cargar_hoja_raw(ruta, nombre_hoja):
+def cargar_hoja_raw(ruta, nombre_hoja, mtime_excel=None):
   """Carga una hoja del Excel sin asumir fila de encabezado, preservando
   la posición original de cada celda (para hojas con múltiples tablas
   pegadas, como 'FILL RATE')."""
@@ -443,7 +431,6 @@ def _fr_dedupe_columnas(cols):
   return resultado
 
 
-@st.cache_data(ttl=60)
 def parse_bloques_fill_rate(df_raw):
   """Detecta y extrae los distintos bloques/tablas pegados verticalmente
   en la hoja 'FILL RATE'. Cada bloque tiene: una fila 'Semana X Total ...',
@@ -559,182 +546,6 @@ def parse_bloques_fill_rate(df_raw):
 
 
 # --- 3. CARGA DEL EXCEL ---
-@st.cache_data(ttl=60)
-def extraer_datos_oc_proyeccion(ruta, nombre_hoja):
-  """Lee y parsea la tabla 'OC vigente / Proyección Compra' directamente
-  del Excel (busca la celda 'Canal'/'Monto' y arma los registros fila a
-  fila). Cacheada porque antes esto se releia y reparseaba desde cero
-  en CADA rerun del script, sin importar la pestana activa."""
-
-  def _norm_txt(s):
-    s = str(s).strip().lower()
-    for a, b in [("á", "a"), ("é", "e"), ("í", "i"), ("ó", "o"), ("ú", "u")]:
-      s = s.replace(a, b)
-    return s
-
-  def _parse_pct(val):
-    v = limpiar_numero(val)
-    if 0 <= v <= 1.0:
-      v = v * 100.0
-    return round(v)
-
-  datos_oc_proyeccion = []
-  try:
-    df_grid_oc = pd.read_excel(ruta, sheet_name=nombre_hoja, header=None, dtype=str)
-
-    header_r, header_c = None, None
-    for r in range(len(df_grid_oc)):
-      for c in range(len(df_grid_oc.columns) - 1):
-        if _norm_txt(df_grid_oc.iloc[r, c]) == "canal" and "monto" in _norm_txt(
-            df_grid_oc.iloc[r, c + 1]
-        ):
-          header_r, header_c = r, c
-          break
-      if header_r is not None:
-        break
-
-    if header_r is not None:
-      col_concepto = header_c - 1
-      col_canal = header_c
-      col_monto = header_c + 1
-      col_fr = header_c + 2
-      col_proy = header_c + 3
-      col_extra = header_c + 4
-
-      concepto_actual = None
-      r = header_r + 1
-      while r < len(df_grid_oc):
-        canal_val = df_grid_oc.iloc[r, col_canal] if col_canal < len(df_grid_oc.columns) else None
-        canal_txt = str(canal_val).strip() if pd.notna(canal_val) else ""
-
-        if col_concepto >= 0:
-          concepto_val = df_grid_oc.iloc[r, col_concepto]
-          if pd.notna(concepto_val) and str(concepto_val).strip() != "":
-            txt_concepto = _norm_txt(concepto_val)
-            if "vigente" in txt_concepto:
-              concepto_actual = "OC vigente"
-            elif "proyec" in txt_concepto:
-              concepto_actual = "Proyección Compra"
-            else:
-              concepto_actual = str(concepto_val).strip()
-
-        if canal_txt == "" or canal_txt.lower() == "nan":
-          break
-
-        canal_norm = _norm_txt(canal_txt)
-        if any(
-            kw in canal_norm
-            for kw in ["cierre", "meta", "resultado", "cumplimiento"]
-        ):
-          break
-
-        datos_oc_proyeccion.append({
-            "Concepto": concepto_actual or "",
-            "Canal": canal_txt,
-            "Monto OC": limpiar_numero(df_grid_oc.iloc[r, col_monto]) if col_monto < len(df_grid_oc.columns) else 0.0,
-            "FR": _parse_pct(df_grid_oc.iloc[r, col_fr]) if col_fr < len(df_grid_oc.columns) else 0,
-            "Proyección salida": limpiar_numero(df_grid_oc.iloc[r, col_proy]) if col_proy < len(df_grid_oc.columns) else 0.0,
-            "OC extra": limpiar_numero(df_grid_oc.iloc[r, col_extra]) if col_extra < len(df_grid_oc.columns) else 0.0,
-        })
-        r += 1
-    return datos_oc_proyeccion, None
-  except Exception as e:
-    return [], str(e)
-
-
-@st.cache_data(ttl=60)
-def extraer_proyeccion_meses(ruta, nombre_hoja):
-  """Lee y parsea la matriz 'Proyecciones Metas por Mes' directamente del
-  Excel. Cacheada por la misma razon que extraer_datos_oc_proyeccion: es
-  una relectura + parseo con loops anidados que antes se repetia en cada
-  rerun sin importar la pestana activa."""
-  try:
-    df_grid = pd.read_excel(ruta, sheet_name=nombre_hoja, header=None, dtype=str)
-
-    target_r, target_c = None, None
-
-    for r in range(len(df_grid)):
-      for c in range(len(df_grid.columns)):
-        val = str(df_grid.iloc[r, c]).strip().upper()
-        if val in ["DIV.", "DIV"]:
-          sub_vals = [
-              str(df_grid.iloc[r_sub, c]).strip().upper()
-              for r_sub in range(r + 1, min(r + 8, len(df_grid)))
-          ]
-          if any("FARMA" in v for v in sub_vals) and any(
-              "CONSUMO" in v for v in sub_vals
-          ):
-            target_r, target_c = r, c
-
-    if target_r is None or target_c is None:
-      return None, None
-
-    c_start = target_c
-    c_end = min(c_start + 13, len(df_grid.columns))
-    r_end = min(target_r + 7, len(df_grid))
-    df_block = df_grid.iloc[target_r:r_end, c_start:c_end].copy()
-
-    raw_headers = df_block.iloc[0].values
-    headers = []
-
-    meses_map = {
-        "ene": "Enero", "feb": "Febrero", "mar": "Marzo", "abr": "Abril",
-        "may": "Mayo", "jun": "Junio", "jul": "Julio", "ago": "Agosto",
-        "sept": "Septiembre", "sep": "Septiembre", "oct": "Octubre",
-        "nov": "Noviembre", "dic": "Diciembre",
-    }
-
-    for idx_h, h in enumerate(raw_headers):
-      if idx_h == 0:
-        headers.append("División")
-      else:
-        cleaned_h = limpiar_nombre_mes(h)
-        mes_prefix = (
-            cleaned_h.split("-")[0].lower()
-            if "-" in cleaned_h
-            else str(cleaned_h).lower()
-        )
-        mes_nombre = meses_map.get(mes_prefix, cleaned_h.capitalize())
-        headers.append(mes_nombre)
-
-    df_rows = df_block.iloc[1:].copy()
-    df_rows.columns = headers
-
-    filas_procesadas = []
-    for _, row_data in df_rows.iterrows():
-      div_val = str(row_data["División"]).strip()
-
-      tiene_datos = any(
-          pd.notna(v) and str(v).strip() not in ["", "nan"]
-          for v in row_data[1:]
-      )
-      if not tiene_datos:
-        continue
-
-      div_upper = div_val.upper()
-      if div_val == "" or div_val.lower() == "nan" or "TOTAL" in div_upper:
-        div_val = "Total General"
-      elif "FARMA" in div_upper:
-        div_val = "FARMA"
-      elif "CONSUMO" in div_upper:
-        div_val = "CONSUMO"
-      elif "CAN" in div_upper or "TERCEROS" in div_upper or "3" in div_upper:
-        div_val = "3 Canales"
-
-      row_dict = {"División": div_val}
-      for col_m in headers[1:]:
-        row_dict[col_m] = limpiar_numero(row_data[col_m])
-
-      filas_procesadas.append(row_dict)
-
-    df_res_meses = pd.DataFrame(filas_procesadas)
-    if not df_res_meses.empty:
-      df_res_meses = df_res_meses.drop_duplicates(subset=["División"], keep="first")
-    return df_res_meses, None
-  except Exception as e:
-    return None, str(e)
-
-
 def buscar_excel():
   posibles_rutas = [
       "SQL Seba.xlsx",
@@ -752,7 +563,7 @@ ruta_final = buscar_excel()
 
 
 @st.cache_data(ttl=60)
-def cargar_libro_excel(ruta):
+def cargar_libro_excel(ruta, mtime_excel=None):
   xls = pd.ExcelFile(ruta)
   hojas_dict = {}
   for hoja in xls.sheet_names:
@@ -771,14 +582,15 @@ if not ruta_final:
   st.stop()
 
 try:
-  hojas = cargar_libro_excel(ruta_final)
+  mtime_excel = os.path.getmtime(ruta_final)
+  hojas = cargar_libro_excel(ruta_final, mtime_excel)
 except Exception as e:
   st.error(f"Error al leer Excel: {e}")
   st.stop()
 
 # --- 4. HEADER ---
 st.markdown(
-    _dedent_html("""
+    """
     <div class="medcell-header">
         <div style="display: flex; justify-content: space-between; align-items: flex-end;">
             <div>
@@ -788,7 +600,7 @@ st.markdown(
             </div>
         </div>
     </div>
-"""),
+""",
     unsafe_allow_html=True,
 )
 
@@ -833,24 +645,51 @@ def crear_reloj_gauge(titulo, porcentaje, color_barra):
 
 
 # ================================================================
-# TABLAS (renderer nativo de Streamlit)
+# TABLAS HTML CONTROLADAS
 # ================================================================
-# NOTA: Antes esto se hacia via un renderer HTML manual que
-# sobrescribia st.dataframe globalmente (convertia cada tabla a
-# HTML crudo con .to_html()). Se quito porque:
-#   1) .to_html() no tiene virtualizacion: genera TODAS las filas
-#      como nodos DOM, en vez de solo las visibles, lo que volvia
-#      la carga muy lenta en hojas con muchas filas.
-#   2) Al ser global, se ejecutaba en cada llamada a st.dataframe()
-#      de TODAS las pestanas en cada rerun (Streamlit corre todo el
-#      script de arriba a abajo aunque solo se vea una pestana).
-#   3) Ignoraba silenciosamente column_config (NumberColumn,
-#      ProgressColumn, etc.), asi que ese formato tampoco se
-#      aplicaba realmente.
-# El look oscuro/corporativo ahora se logra con un tema oscuro en
-# .streamlit/config.toml (ver ese archivo), que Streamlit aplica
-# automaticamente al componente nativo de st.dataframe sin perder
-# performance ni el formato de columnas.
+# Se utiliza temporalmente un renderer HTML para probar el diseño
+# visual sin depender del componente interno de st.dataframe().
+def _mc_render_table_html(data, *args, **kwargs):
+    """Renderiza tablas HTML con formato estable para unidades, porcentajes y montos.
+
+    Streamlit recibe ``column_config`` en muchas llamadas, pero el renderer HTML
+    no puede aplicarlo directamente. Por eso normalizamos la presentación aquí.
+    """
+    try:
+        if hasattr(data, "to_html") and hasattr(data, "columns"):
+            # DataFrame normal: crear una copia para no modificar el origen.
+            df_html = data.copy()
+            for col in df_html.columns:
+                nombre = str(col).strip().lower()
+                if any(k in nombre for k in ("unidades", "cantidad", "stock")):
+                    df_html[col] = df_html[col].apply(
+                        lambda v: formato_unidades(limpiar_numero(v))
+                    )
+                elif "%" in nombre or "fill rate" in nombre or "participación" in nombre:
+                    def _fmt_pct(v):
+                        try:
+                            x = limpiar_numero(v)
+                            return f"{x:.1f}%"
+                        except Exception:
+                            return str(v)
+                    df_html[col] = df_html[col].apply(_fmt_pct)
+            html = df_html.to_html(index=False, border=0, classes="mc-html-table")
+        elif hasattr(data, "to_html"):
+            html = data.to_html()
+        else:
+            df_html = pd.DataFrame(data)
+            html = df_html.to_html(index=False, border=0, classes="mc-html-table")
+
+        st.markdown(
+            f'<div class="mc-table-wrap">{html}</div>',
+            unsafe_allow_html=True,
+        )
+    except Exception:
+        st.write(data)
+
+# Activación global: todas las llamadas existentes a st.dataframe()
+# pasan por el renderer HTML durante esta prueba.
+st.dataframe = _mc_render_table_html
 
 # --- 5. PESTAÑAS ---
 HOJAS_A_EXCLUIR = [
@@ -1536,9 +1375,83 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             key=f"radio_vista_oc_{i}"
         )
 
-        datos_oc_proyeccion, _err_oc = extraer_datos_oc_proyeccion(ruta_final, nombre_hoja)
-        if _err_oc:
-          st.warning(f"No se pudo leer la tabla OC directamente del Excel ({_err_oc}). Se muestra vacío.")
+        def _norm_txt(s):
+          s = str(s).strip().lower()
+          for a, b in [("á", "a"), ("é", "e"), ("í", "i"), ("ó", "o"), ("ú", "u")]:
+            s = s.replace(a, b)
+          return s
+
+        def _parse_pct(val):
+          v = limpiar_numero(val)
+          if 0 <= v <= 1.0:
+            v = v * 100.0
+          return round(v)
+
+        datos_oc_proyeccion = []
+
+        try:
+          df_grid_oc = pd.read_excel(
+              ruta_final, sheet_name=nombre_hoja, header=None, dtype=str
+          )
+
+          header_r, header_c = None, None
+          for r in range(len(df_grid_oc)):
+            for c in range(len(df_grid_oc.columns) - 1):
+              if _norm_txt(df_grid_oc.iloc[r, c]) == "canal" and "monto" in _norm_txt(
+                  df_grid_oc.iloc[r, c + 1]
+              ):
+                header_r, header_c = r, c
+                break
+            if header_r is not None:
+              break
+
+          if header_r is not None:
+            col_concepto = header_c - 1
+            col_canal = header_c
+            col_monto = header_c + 1
+            col_fr = header_c + 2
+            col_proy = header_c + 3
+            col_extra = header_c + 4
+
+            concepto_actual = None
+            r = header_r + 1
+            while r < len(df_grid_oc):
+              canal_val = df_grid_oc.iloc[r, col_canal] if col_canal < len(df_grid_oc.columns) else None
+              canal_txt = str(canal_val).strip() if pd.notna(canal_val) else ""
+
+              if col_concepto >= 0:
+                concepto_val = df_grid_oc.iloc[r, col_concepto]
+                if pd.notna(concepto_val) and str(concepto_val).strip() != "":
+                  txt_concepto = _norm_txt(concepto_val)
+                  if "vigente" in txt_concepto:
+                    concepto_actual = "OC vigente"
+                  elif "proyec" in txt_concepto:
+                    concepto_actual = "Proyección Compra"
+                  else:
+                    concepto_actual = str(concepto_val).strip()
+
+              if canal_txt == "" or canal_txt.lower() == "nan":
+                break
+
+              # Detiene la lectura al llegar a filas de totales (Cierre, Meta, Resultado, Cumplimiento)
+              canal_norm = _norm_txt(canal_txt)
+              if any(
+                  kw in canal_norm
+                  for kw in ["cierre", "meta", "resultado", "cumplimiento"]
+              ):
+                break
+
+              datos_oc_proyeccion.append({
+                  "Concepto": concepto_actual or "",
+                  "Canal": canal_txt,
+                  "Monto OC": limpiar_numero(df_grid_oc.iloc[r, col_monto]) if col_monto < len(df_grid_oc.columns) else 0.0,
+                  "FR": _parse_pct(df_grid_oc.iloc[r, col_fr]) if col_fr < len(df_grid_oc.columns) else 0,
+                  "Proyección salida": limpiar_numero(df_grid_oc.iloc[r, col_proy]) if col_proy < len(df_grid_oc.columns) else 0.0,
+                  "OC extra": limpiar_numero(df_grid_oc.iloc[r, col_extra]) if col_extra < len(df_grid_oc.columns) else 0.0,
+              })
+              r += 1
+        except Exception as e:
+          st.warning(f"No se pudo leer la tabla OC directamente del Excel ({e}). Se muestra vacío.")
 
         df_oc_tab = pd.DataFrame(
             datos_oc_proyeccion,
@@ -1717,11 +1630,112 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         st.markdown("#### 🗓️ Proyecciones Metas por Mes (2026)")
 
         try:
-          df_res_meses, _err_proy = extraer_proyeccion_meses(ruta_final, nombre_hoja)
-          if _err_proy:
-            raise Exception(_err_proy)
+          df_grid = pd.read_excel(
+              ruta_final, sheet_name=nombre_hoja, header=None, dtype=str
+          )
 
-          if df_res_meses is not None and not df_res_meses.empty:
+          target_r, target_c = None, None
+
+          for r in range(len(df_grid)):
+            for c in range(len(df_grid.columns)):
+              val = str(df_grid.iloc[r, c]).strip().upper()
+              if val in ["DIV.", "DIV"]:
+                sub_vals = [
+                    str(df_grid.iloc[r_sub, c]).strip().upper()
+                    for r_sub in range(r + 1, min(r + 8, len(df_grid)))
+                ]
+                if any("FARMA" in v for v in sub_vals) and any(
+                    "CONSUMO" in v for v in sub_vals
+                ):
+                  target_r, target_c = r, c
+
+          if target_r is not None and target_c is not None:
+            c_start = target_c
+            c_end = min(c_start + 13, len(df_grid.columns))
+
+            r_end = min(target_r + 7, len(df_grid))
+            df_block = df_grid.iloc[target_r:r_end, c_start:c_end].copy()
+
+            raw_headers = df_block.iloc[0].values
+            headers = []
+
+            meses_map = {
+                "ene": "Enero",
+                "feb": "Febrero",
+                "mar": "Marzo",
+                "abr": "Abril",
+                "may": "Mayo",
+                "jun": "Junio",
+                "jul": "Julio",
+                "ago": "Agosto",
+                "sept": "Septiembre",
+                "sep": "Septiembre",
+                "oct": "Octubre",
+                "nov": "Noviembre",
+                "dic": "Diciembre",
+            }
+
+            for idx_h, h in enumerate(raw_headers):
+              if idx_h == 0:
+                headers.append("División")
+              else:
+                cleaned_h = limpiar_nombre_mes(h)
+                mes_prefix = (
+                    cleaned_h.split("-")[0].lower()
+                    if "-" in cleaned_h
+                    else str(cleaned_h).lower()
+                )
+                mes_nombre = meses_map.get(
+                    mes_prefix, cleaned_h.capitalize()
+                )
+                headers.append(mes_nombre)
+
+            df_rows = df_block.iloc[1:].copy()
+            df_rows.columns = headers
+
+            filas_procesadas = []
+            for _, row_data in df_rows.iterrows():
+              div_val = str(row_data["División"]).strip()
+
+              tiene_datos = any(
+                  pd.notna(v) and str(v).strip() not in ["", "nan"]
+                  for v in row_data[1:]
+              )
+
+              if not tiene_datos:
+                continue
+
+              div_upper = div_val.upper()
+              if (
+                  div_val == ""
+                  or div_val.lower() == "nan"
+                  or "TOTAL" in div_upper
+              ):
+                div_val = "Total General"
+              elif "FARMA" in div_upper:
+                div_val = "FARMA"
+              elif "CONSUMO" in div_upper:
+                div_val = "CONSUMO"
+              elif (
+                  "CAN" in div_upper
+                  or "TERCEROS" in div_upper
+                  or "3" in div_upper
+              ):
+                div_val = "3 Canales"
+
+              row_dict = {"División": div_val}
+              for col_m in headers[1:]:
+                row_dict[col_m] = limpiar_numero(row_data[col_m])
+
+              filas_procesadas.append(row_dict)
+
+            df_res_meses = pd.DataFrame(filas_procesadas)
+
+            if not df_res_meses.empty:
+              df_res_meses = df_res_meses.drop_duplicates(
+                  subset=["División"], keep="first"
+              )
+
               cols_num_meses = [
                   c for c in df_res_meses.columns if c != "División"
               ]
@@ -1764,8 +1778,8 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                   hide_index=True,
                   use_container_width=True,
               )
-          elif df_res_meses is not None:
-            st.info("No se pudieron procesar los registros de la tabla.")
+            else:
+              st.info("No se pudieron procesar los registros de la tabla.")
           else:
             st.info("No se encontró la matriz de proyecciones mensuales.")
         except Exception as e_proy:
@@ -2250,10 +2264,10 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
             with cols_est[idx_e % min(num_items, 6)]:
               st.markdown(
-                  _dedent_html(f"""<div style="background-color: #141414; border: 1px solid #0070f3; border-radius: 8px; padding: 10px; text-align: center; margin-bottom: 15px;">
+                  f"""<div style="background-color: #141414; border: 1px solid #0070f3; border-radius: 8px; padding: 10px; text-align: center; margin-bottom: 15px;">
                                     <div style="font-size: 12px; color: #aaaaaa; font-weight: 600; text-transform: uppercase;">{nombre_est}</div>
                                     <div style="font-size: 20px; font-weight: bold; color: #ffffff; margin-top: 3px;">{formato_unidades(cant_est)}</div>
-                                </div>"""),
+                                </div>""",
                   unsafe_allow_html=True,
               )
 
@@ -4009,7 +4023,7 @@ for i, nombre_hoja in enumerate(nombres_hojas):
       st.subheader("🔥 Fill Rate por Cadena (Top Quiebres)")
 
       try:
-        df_raw_fr = cargar_hoja_raw(ruta_final, nombre_hoja)
+        df_raw_fr = cargar_hoja_raw(ruta_final, nombre_hoja, mtime_excel)
       except Exception as e:
         st.error(f"No se pudo leer la hoja en formato bruto: {e}")
         df_raw_fr = None
@@ -5243,6 +5257,14 @@ with tabs[0]:
 
   n_recurrentes = len(rec_todos)
 
+  # Productos identificados para recuperar durante la semana actual.
+  calendario_fr = resumen_data.get("fill_rate_calendar") or []
+  n_recuperar_semana = len(calendario_fr)
+  monto_recuperar_semana = sum(
+      abs(float(item.get("quiebre") or 0))
+      for item in calendario_fr
+  )
+
   sub_estados = []
   if fr_reciente_pct is not None:
     sub_estados.append(
@@ -5280,7 +5302,7 @@ with tabs[0]:
     }[estado_general]
 
     st.markdown(
-        _dedent_html(f"""
+        f"""
         <div style="
             display:flex; align-items:center; justify-content:space-between;
             gap:18px; background:linear-gradient(135deg,#102238,#142d49);
@@ -5309,7 +5331,7 @@ with tabs[0]:
             SEMÁFORO
           </div>
         </div>
-        """),
+        """,
         unsafe_allow_html=True,
     )
 
@@ -5320,7 +5342,7 @@ with tabs[0]:
       with col_sf:
         color_sf = _colores_semaforo[estado_sf]
         st.markdown(
-            _dedent_html(f"""
+            f"""
             <div style="
                 background:linear-gradient(145deg,#102238,#142b45);
                 border:1px solid #29415f;
@@ -5347,9 +5369,113 @@ with tabs[0]:
                 {estado_sf.upper()}</span>
               </div>
             </div>
-            """),
+            """,
             unsafe_allow_html=True,
         )
+
+    # ---------------------------------------------------------------
+    # Bloque destacado: Fill Rate que debería recuperarse esta semana.
+    # ---------------------------------------------------------------
+    st.markdown("##### 🎯 Fill Rate — Recuperación de Esta Semana")
+
+    if n_recuperar_semana > 0:
+      st.markdown(
+          f"""
+          <div style="
+              display:flex; align-items:center; justify-content:space-between;
+              gap:20px; background:linear-gradient(135deg,#162f47,#183d59);
+              border:1px solid #285979; border-radius:16px; padding:18px 20px;
+              margin:8px 0 14px 0;
+              box-shadow:0 12px 26px rgba(0,0,0,.14);">
+            <div>
+              <div style="font-size:12px; color:#8fc2df; font-weight:800;
+                          text-transform:uppercase; letter-spacing:.07em;">
+                Oportunidad de recuperación
+              </div>
+              <div style="font-size:28px; color:#f8fafc; font-weight:900;
+                          margin-top:2px;">
+                {n_recuperar_semana} SKU
+              </div>
+              <div style="font-size:12px; color:#9eb1c7; margin-top:3px;">
+                Identificados para recuperar durante esta semana
+              </div>
+            </div>
+            <div style="text-align:right;">
+              <div style="font-size:12px; color:#8fc2df; font-weight:800;
+                          text-transform:uppercase;">
+                Quiebre a recuperar
+              </div>
+              <div style="font-size:25px; color:#fbbf24; font-weight:900;
+                          margin-top:3px;">
+                {formato_moneda(monto_recuperar_semana)}
+              </div>
+              <div style="font-size:11px; color:#9eb1c7;">
+                según comentarios / ETA
+              </div>
+            </div>
+          </div>
+          """,
+          unsafe_allow_html=True,
+      )
+
+      calendario_fr_ordenado = sorted(
+          calendario_fr, key=lambda x: abs(float(x.get("quiebre") or 0)),
+          reverse=True
+      )
+
+      n_cols_cal = 3
+      cols_cal = st.columns(n_cols_cal)
+      for idx_cal, item_cal in enumerate(calendario_fr_ordenado[:12]):
+        with cols_cal[idx_cal % n_cols_cal]:
+          monto_item = abs(float(item_cal.get("quiebre") or 0))
+          monto_txt = formato_moneda(monto_item) if monto_item else "$0"
+          comentario_txt = item_cal.get("comentario") or "Sin comentario"
+          fecha_txt = item_cal.get("fecha_txt") or "Sin fecha estimada"
+          st.markdown(
+              f"""
+              <div style="
+                  background:#102238; border:1px solid #29415f;
+                  border-left:4px solid #fbbf24; border-radius:0 12px 12px 0;
+                  padding:11px 13px; margin-bottom:9px; min-height:92px;">
+                <div style="font-size:12px; color:#f8fafc; font-weight:800;">
+                  {item_cal.get("etiqueta","SKU sin identificar")}
+                </div>
+                <div style="font-size:11px; color:#95aac1; margin-top:4px;">
+                  {item_cal.get("bloque","")} · {monto_txt}
+                </div>
+                <div style="font-size:11px; color:#fbbf24; font-weight:750;
+                            margin-top:4px;">
+                  → {fecha_txt}
+                </div>
+                <div style="font-size:10px; color:#6f859c; margin-top:4px;">
+                  {comentario_txt}
+                </div>
+              </div>
+              """,
+              unsafe_allow_html=True,
+          )
+
+      if len(calendario_fr_ordenado) > 12:
+        st.caption(
+            f"Se muestran los 12 casos de mayor quiebre. "
+            f"Hay {len(calendario_fr_ordenado) - 12} casos adicionales."
+        )
+    else:
+      st.markdown(
+          """
+          <div style="
+              background:rgba(34,197,94,.10); border:1px solid rgba(34,197,94,.30);
+              border-radius:14px; padding:16px 18px;">
+            <div style="font-size:14px; color:#22c55e; font-weight:850;">
+              ✓ Sin casos pendientes identificados para recuperar esta semana
+            </div>
+            <div style="font-size:11px; color:#8fa6bd; margin-top:4px;">
+              No se encontraron productos con fecha de recuperación inmediata.
+            </div>
+          </div>
+          """,
+          unsafe_allow_html=True,
+      )
 
     # ---------------------------------------------------------------
     # Comparativo Fill Rate por semana.
@@ -5377,29 +5503,31 @@ with tabs[0]:
         )
 
         st.markdown(
-            _dedent_html(f"""
-            <div style="
-                display:flex; align-items:center; justify-content:space-between;
-                background:#102238; border:1px solid #29415f;
-                border-left:4px solid {_color_sem}; border-radius:0 11px 11px 0;
-                padding:11px 15px; margin-bottom:8px;">
-              <div>
-                <div style="font-size:13px; color:#e7eef7; font-weight:750;">
-                  Sem {_sem}
-                </div>
-                <div style="font-size:10px; color:#71889f;">
-                  {"Última semana" if _es_ultima else "Semana cerrada"}
-                  {_nota_ultima if _es_ultima else ""}
-                </div>
-              </div>
-              <div style="
-                  padding:5px 10px; border-radius:999px;
-                  background:{_bg_sem}; color:{_color_sem};
-                  font-size:16px; font-weight:900;">
-                {_pct_sem:.1f}%
-              </div>
-            </div>
-            """),
+            f"""
+            <table style="width:100%; border-collapse:separate; border-spacing:0;
+                           background:#102238; border:1px solid #29415f;
+                           border-left:4px solid {_color_sem}; border-radius:0 11px 11px 0;
+                           margin-bottom:8px; overflow:hidden;">
+              <tr>
+                <td style="padding:11px 15px;">
+                  <span style="font-size:13px; color:#e7eef7; font-weight:750;">
+                    Sem {_sem}
+                  </span><br>
+                  <span style="font-size:10px; color:#71889f;">
+                    {"Última semana" if _es_ultima else "Semana cerrada"}
+                    {_nota_ultima if _es_ultima else ""}
+                  </span>
+                </td>
+                <td style="padding:11px 15px; text-align:right; vertical-align:middle;">
+                  <span style="display:inline-block; padding:5px 10px; border-radius:999px;
+                               background:{_bg_sem}; color:{_color_sem};
+                               font-size:16px; font-weight:900;">
+                    {_pct_sem:.1f}%
+                  </span>
+                </td>
+              </tr>
+            </table>
+            """,
             unsafe_allow_html=True,
         )
   else:
@@ -5415,270 +5543,276 @@ with tabs[-1]:
   st.markdown("### 📷 Escanear Localizador")
   st.caption("Apunta la cámara al texto MCD de la posición. Si el texto no se reconoce, el lector intenta también el código de barras.")
 
-  components.html(
-      """
-      <div style="position:relative; width:100%; max-height:320px; overflow:hidden;
-                  border-radius:8px; background:#000;">
-        <video id="video" style="width:100%; max-height:320px; object-fit:cover;
-               display:block;" muted playsinline autoplay></video>
-        <div style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
-                    width:82%; height:105px; border:3px solid #00e676; border-radius:6px;
-                    box-shadow:0 0 0 2000px rgba(0,0,0,0.35); pointer-events:none;"></div>
-      </div>
-      <div style="text-align:center; margin-top:10px; display:flex; gap:8px; justify-content:center;">
-        <button id="btn-torch" style="background:#0070f3; color:#fff; border:none;
-                border-radius:8px; padding:8px 16px; font-weight:600; cursor:pointer;">
-          💡 Linterna
-        </button>
-      </div>
-      <p id="estado-scan" style="color:#888; font-size:13px; text-align:center; margin-top:6px;">
-        🎥 Activando cámara...
-      </p>
-      <p id="detalle-scan" style="color:#666; font-size:12px; text-align:center; margin:0 8px;">
-        Primero intentará reconocer el Localizador MCD directamente.
-      </p>
+  # IMPORTANTE: las librerías ZXing + Tesseract y la cámara son pesadas.
+  # Antes se inicializaban al cargar toda la app, aunque el usuario no abriera
+  # realmente el escáner. Ahora se activan solo cuando se solicita.
+  activar_scanner = st.button("📷 Activar cámara", key="activar_scanner")
 
-      <!-- Código de barras: se mantiene como respaldo -->
-      <script src="https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js"></script>
-      <!-- OCR: reconoce el texto visible MCD.0.3.G.4.120 -->
-      <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-      <script>
-        const estado = document.getElementById("estado-scan");
-        const detalle = document.getElementById("detalle-scan");
-        const video = document.getElementById("video");
-        const torchBtn = document.getElementById("btn-torch");
-        let yaEnvio = false;
-        let streamActual = null;
-        let ocrWorker = null;
-        let ocrActivo = false;
+  if activar_scanner:
+    components.html(
+        """
+        <div style="position:relative; width:100%; max-height:320px; overflow:hidden;
+                    border-radius:8px; background:#000;">
+          <video id="video" style="width:100%; max-height:320px; object-fit:cover;
+                 display:block;" muted playsinline autoplay></video>
+          <div style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+                      width:82%; height:105px; border:3px solid #00e676; border-radius:6px;
+                      box-shadow:0 0 0 2000px rgba(0,0,0,0.35); pointer-events:none;"></div>
+        </div>
+        <div style="text-align:center; margin-top:10px; display:flex; gap:8px; justify-content:center;">
+          <button id="btn-torch" style="background:#0070f3; color:#fff; border:none;
+                  border-radius:8px; padding:8px 16px; font-weight:600; cursor:pointer;">
+            💡 Linterna
+          </button>
+        </div>
+        <p id="estado-scan" style="color:#888; font-size:13px; text-align:center; margin-top:6px;">
+          🎥 Activando cámara...
+        </p>
+        <p id="detalle-scan" style="color:#666; font-size:12px; text-align:center; margin:0 8px;">
+          Primero intentará reconocer el Localizador MCD directamente.
+        </p>
 
-        function mostrarError(msg) {
-          estado.textContent = msg;
-        }
+        <!-- Código de barras: se mantiene como respaldo -->
+        <script src="https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js"></script>
+        <!-- OCR: reconoce el texto visible MCD.0.3.G.4.120 -->
+        <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+        <script>
+          const estado = document.getElementById("estado-scan");
+          const detalle = document.getElementById("detalle-scan");
+          const video = document.getElementById("video");
+          const torchBtn = document.getElementById("btn-torch");
+          let yaEnvio = false;
+          let streamActual = null;
+          let ocrWorker = null;
+          let ocrActivo = false;
 
-        function normalizarLocalizador(texto) {
-          if (!texto) return null;
-          let s = String(texto).toUpperCase();
-          s = s.replace(/[\n\r\t]/g, " ");
-          // Corrige errores OCR habituales antes de buscar el patrón.
-          s = s.replace(/[|]/g, "I");
-          s = s.replace(/\s+/g, " ");
-
-          // El patrón real de las etiquetas es MCD.0.3.G.4.120, etc.
-          // Permitimos letras/números por segmento para soportar otras posiciones.
-          const m = s.match(/MCD\s*[.\-\s]\s*\d+\s*[.\-\s]\s*\d+\s*[.\-\s]\s*[A-Z0-9]+\s*[.\-\s]\s*\d+\s*[.\-\s]\s*\d+/);
-          if (!m) return null;
-
-          let loc = m[0]
-            .replace(/\s+/g, "")
-            .replace(/-/g, ".");
-
-          // Normaliza separadores repetidos y algunos errores comunes de OCR.
-          loc = loc.replace(/\.\.+/g, ".");
-          loc = loc.replace(/^MCD/i, "MCD");
-
-          if (/^MCD\.\d+\.\d+\.[A-Z0-9]+\.\d+\.\d+$/.test(loc)) {
-            return loc;
-          }
-          return null;
-        }
-
-        function enviarValor(valor, origen) {
-          if (yaEnvio || !valor) return;
-          const loc = normalizarLocalizador(valor);
-          if (!loc) return;
-
-          yaEnvio = true;
-          estado.textContent = "✅ Localizador detectado: " + loc;
-          detalle.textContent = origen === "ocr"
-            ? "🔎 Reconocido desde el texto de la etiqueta. Buscando productos..."
-            : "📦 Obtenido desde el código de barras. Buscando productos...";
-
-          try {
-            const url = new URL(window.parent.location.href);
-            url.searchParams.set("loc", loc);
-            window.parent.location.href = url.href;
-          } catch (e) {
-            window.location.href = "?loc=" + encodeURIComponent(loc);
-          }
-        }
-
-        function enviarCodigoBarras(codigo) {
-          if (yaEnvio || !codigo) return;
-          const valor = String(codigo).trim();
-
-          // No aceptamos falsos positivos como B4B.
-          if (!/^\d{8,14}$/.test(valor)) return;
-
-          // Si el lector de barras entrega directamente un Localizador, también sirve.
-          const loc = normalizarLocalizador(valor);
-          if (loc) {
-            enviarValor(loc, "barcode");
-            return;
+          function mostrarError(msg) {
+            estado.textContent = msg;
           }
 
-          // Para códigos numéricos que no contienen el MCD, enviamos el número
-          // como loc SOLO como último recurso. La lógica Python resolverá una
-          // equivalencia si existe en el Excel.
-          yaEnvio = true;
-          estado.textContent = "✅ Código detectado: " + valor;
-          detalle.textContent = "🔎 Buscando la relación código → Localizador...";
-          try {
-            const url = new URL(window.parent.location.href);
-            url.searchParams.set("loc", valor);
-            window.parent.location.href = url.href;
-          } catch (e) {
-            window.location.href = "?loc=" + encodeURIComponent(valor);
-          }
-        }
+          function normalizarLocalizador(texto) {
+            if (!texto) return null;
+            let s = String(texto).toUpperCase();
+            s = s.replace(/[\n\r\t]/g, " ");
+            // Corrige errores OCR habituales antes de buscar el patrón.
+            s = s.replace(/[|]/g, "I");
+            s = s.replace(/\s+/g, " ");
 
-        async function iniciarOCR() {
-          if (ocrActivo || typeof Tesseract === "undefined" || yaEnvio) return;
-          ocrActivo = true;
-          try {
-            detalle.textContent = "🔎 OCR activo: busca el texto MCD.0.3.G.x.xxx...";
-            ocrWorker = await Tesseract.createWorker("eng", 1, {
-              logger: function(m) {
-                if (m.status === "recognizing text") {
-                  const pct = Math.round((m.progress || 0) * 100);
-                  estado.textContent = "🔎 Reconociendo Localizador... " + pct + "%";
-                }
-              }
-            });
-            await ocrWorker.setParameters({
-              tessedit_char_whitelist: "MCD.0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ-",
-              preserve_interword_spaces: "0"
-            });
+            // El patrón real de las etiquetas es MCD.0.3.G.4.120, etc.
+            // Permitimos letras/números por segmento para soportar otras posiciones.
+            const m = s.match(/MCD\s*[.\-\s]\s*\d+\s*[.\-\s]\s*\d+\s*[.\-\s]\s*[A-Z0-9]+\s*[.\-\s]\s*\d+\s*[.\-\s]\s*\d+/);
+            if (!m) return null;
 
-            const canvas = document.createElement("canvas");
-            const ctx = canvas.getContext("2d", {willReadFrequently:true});
+            let loc = m[0]
+              .replace(/\s+/g, "")
+              .replace(/-/g, ".");
 
-            while (!yaEnvio) {
-              if (!video.videoWidth || !video.videoHeight) {
-                await new Promise(r => setTimeout(r, 700));
-                continue;
-              }
+            // Normaliza separadores repetidos y algunos errores comunes de OCR.
+            loc = loc.replace(/\.\.+/g, ".");
+            loc = loc.replace(/^MCD/i, "MCD");
 
-              // Captura principalmente la zona del recuadro verde.
-              const vw = video.videoWidth;
-              const vh = video.videoHeight;
-              const cropW = Math.floor(vw * 0.82);
-              const cropH = Math.floor(vh * 0.34);
-              const sx = Math.floor((vw - cropW) / 2);
-              const sy = Math.floor((vh - cropH) / 2);
-              canvas.width = cropW;
-              canvas.height = cropH;
-              ctx.drawImage(video, sx, sy, cropW, cropH, 0, 0, cropW, cropH);
-
-              try {
-                const resultado = await ocrWorker.recognize(canvas);
-                const texto = resultado?.data?.text || "";
-                const loc = normalizarLocalizador(texto);
-                if (loc) {
-                  enviarValor(loc, "ocr");
-                  break;
-                }
-              } catch (e) {
-                // OCR puede fallar en un fotograma; continuamos con el siguiente.
-              }
-
-              if (!yaEnvio) {
-                estado.textContent = "📷 Buscando Localizador MCD...";
-                await new Promise(r => setTimeout(r, 400));
-              }
+            if (/^MCD\.\d+\.\d+\.[A-Z0-9]+\.\d+\.\d+$/.test(loc)) {
+              return loc;
             }
-          } catch (e) {
-            detalle.textContent = "⚠️ OCR no disponible; se mantiene el lector de barras.";
-          } finally {
-            ocrActivo = false;
+            return null;
           }
-        }
 
-        async function iniciarCamara() {
-          try {
-            streamActual = await navigator.mediaDevices.getUserMedia({
-              video: {
-                facingMode: {ideal: "environment"},
-                width: {ideal: 1920},
-                height: {ideal: 1080},
-                focusMode: {ideal: "continuous"}
-              },
-              audio: false
-            });
-            video.srcObject = streamActual;
-            await video.play();
-            estado.textContent = "📷 Buscando Localizador MCD...";
+          function enviarValor(valor, origen) {
+            if (yaEnvio || !valor) return;
+            const loc = normalizarLocalizador(valor);
+            if (!loc) return;
+
+            yaEnvio = true;
+            estado.textContent = "✅ Localizador detectado: " + loc;
+            detalle.textContent = origen === "ocr"
+              ? "🔎 Reconocido desde el texto de la etiqueta. Buscando productos..."
+              : "📦 Obtenido desde el código de barras. Buscando productos...";
 
             try {
-              const track = streamActual.getVideoTracks()[0];
-              const caps = track.getCapabilities ? track.getCapabilities() : {};
-              if (caps.focusMode && caps.focusMode.includes("continuous")) {
-                await track.applyConstraints({advanced:[{focusMode:"continuous"}]});
-              }
-            } catch (e) {}
-
-            // Iniciamos OCR sin bloquear el lector de barras.
-            iniciarOCR();
-          } catch (e) {
-            mostrarError("❌ No se pudo acceder a la cámara: " + (e.message || e));
-          }
-        }
-
-        function iniciarBarras() {
-          if (typeof ZXing === "undefined") return;
-          try {
-            const hints = new Map();
-            hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [
-              ZXing.BarcodeFormat.CODE_128,
-              ZXing.BarcodeFormat.CODE_39,
-              ZXing.BarcodeFormat.EAN_13,
-              ZXing.BarcodeFormat.EAN_8,
-              ZXing.BarcodeFormat.ITF,
-              ZXing.BarcodeFormat.UPC_A
-            ]);
-            hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
-            const reader = new ZXing.BrowserMultiFormatReader(hints);
-            reader.decodeFromVideoDevice(null, video, (result, err) => {
-              if (!result || yaEnvio) return;
-              enviarCodigoBarras(result.getText());
-            });
-          } catch (e) {
-            // OCR continúa siendo el método principal.
-          }
-        }
-
-        torchBtn.onclick = function() {
-          try {
-            const track = streamActual && streamActual.getVideoTracks()[0];
-            if (!track) throw new Error("No hay cámara activa");
-            const settings = track.getSettings();
-            track.applyConstraints({advanced:[{torch:!settings.torch}]})
-              .catch(() => alert("Este dispositivo no permite linterna desde el navegador."));
-          } catch (e) {
-            alert("No se pudo acceder a la linterna.");
-          }
-        };
-
-        let intentos = 0;
-        const esperarLibrerias = setInterval(() => {
-          intentos++;
-          if (typeof ZXing !== "undefined" && typeof Tesseract !== "undefined") {
-            clearInterval(esperarLibrerias);
-            iniciarCamara();
-            setTimeout(iniciarBarras, 1200);
-          } else if (intentos >= 100) {
-            clearInterval(esperarLibrerias);
-            if (typeof Tesseract !== "undefined") {
-              iniciarCamara();
-            } else {
-              mostrarError("❌ No se pudieron cargar los lectores. Recarga la página.");
+              const url = new URL(window.parent.location.href);
+              url.searchParams.set("loc", loc);
+              window.parent.location.href = url.href;
+            } catch (e) {
+              window.location.href = "?loc=" + encodeURIComponent(loc);
             }
           }
-        }, 100);
-      </script>
-      """,
+
+          function enviarCodigoBarras(codigo) {
+            if (yaEnvio || !codigo) return;
+            const valor = String(codigo).trim();
+
+            // No aceptamos falsos positivos como B4B.
+            if (!/^\d{8,14}$/.test(valor)) return;
+
+            // Si el lector de barras entrega directamente un Localizador, también sirve.
+            const loc = normalizarLocalizador(valor);
+            if (loc) {
+              enviarValor(loc, "barcode");
+              return;
+            }
+
+            // Para códigos numéricos que no contienen el MCD, enviamos el número
+            // como loc SOLO como último recurso. La lógica Python resolverá una
+            // equivalencia si existe en el Excel.
+            yaEnvio = true;
+            estado.textContent = "✅ Código detectado: " + valor;
+            detalle.textContent = "🔎 Buscando la relación código → Localizador...";
+            try {
+              const url = new URL(window.parent.location.href);
+              url.searchParams.set("loc", valor);
+              window.parent.location.href = url.href;
+            } catch (e) {
+              window.location.href = "?loc=" + encodeURIComponent(valor);
+            }
+          }
+
+          async function iniciarOCR() {
+            if (ocrActivo || typeof Tesseract === "undefined" || yaEnvio) return;
+            ocrActivo = true;
+            try {
+              detalle.textContent = "🔎 OCR activo: busca el texto MCD.0.3.G.x.xxx...";
+              ocrWorker = await Tesseract.createWorker("eng", 1, {
+                logger: function(m) {
+                  if (m.status === "recognizing text") {
+                    const pct = Math.round((m.progress || 0) * 100);
+                    estado.textContent = "🔎 Reconociendo Localizador... " + pct + "%";
+                  }
+                }
+              });
+              await ocrWorker.setParameters({
+                tessedit_char_whitelist: "MCD.0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ-",
+                preserve_interword_spaces: "0"
+              });
+
+              const canvas = document.createElement("canvas");
+              const ctx = canvas.getContext("2d", {willReadFrequently:true});
+
+              while (!yaEnvio) {
+                if (!video.videoWidth || !video.videoHeight) {
+                  await new Promise(r => setTimeout(r, 700));
+                  continue;
+                }
+
+                // Captura principalmente la zona del recuadro verde.
+                const vw = video.videoWidth;
+                const vh = video.videoHeight;
+                const cropW = Math.floor(vw * 0.82);
+                const cropH = Math.floor(vh * 0.34);
+                const sx = Math.floor((vw - cropW) / 2);
+                const sy = Math.floor((vh - cropH) / 2);
+                canvas.width = cropW;
+                canvas.height = cropH;
+                ctx.drawImage(video, sx, sy, cropW, cropH, 0, 0, cropW, cropH);
+
+                try {
+                  const resultado = await ocrWorker.recognize(canvas);
+                  const texto = resultado?.data?.text || "";
+                  const loc = normalizarLocalizador(texto);
+                  if (loc) {
+                    enviarValor(loc, "ocr");
+                    break;
+                  }
+                } catch (e) {
+                  // OCR puede fallar en un fotograma; continuamos con el siguiente.
+                }
+
+                if (!yaEnvio) {
+                  estado.textContent = "📷 Buscando Localizador MCD...";
+                  await new Promise(r => setTimeout(r, 400));
+                }
+              }
+            } catch (e) {
+              detalle.textContent = "⚠️ OCR no disponible; se mantiene el lector de barras.";
+            } finally {
+              ocrActivo = false;
+            }
+          }
+
+          async function iniciarCamara() {
+            try {
+              streamActual = await navigator.mediaDevices.getUserMedia({
+                video: {
+                  facingMode: {ideal: "environment"},
+                  width: {ideal: 1920},
+                  height: {ideal: 1080},
+                  focusMode: {ideal: "continuous"}
+                },
+                audio: false
+              });
+              video.srcObject = streamActual;
+              await video.play();
+              estado.textContent = "📷 Buscando Localizador MCD...";
+
+              try {
+                const track = streamActual.getVideoTracks()[0];
+                const caps = track.getCapabilities ? track.getCapabilities() : {};
+                if (caps.focusMode && caps.focusMode.includes("continuous")) {
+                  await track.applyConstraints({advanced:[{focusMode:"continuous"}]});
+                }
+              } catch (e) {}
+
+              // Iniciamos OCR sin bloquear el lector de barras.
+              iniciarOCR();
+            } catch (e) {
+              mostrarError("❌ No se pudo acceder a la cámara: " + (e.message || e));
+            }
+          }
+
+          function iniciarBarras() {
+            if (typeof ZXing === "undefined") return;
+            try {
+              const hints = new Map();
+              hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [
+                ZXing.BarcodeFormat.CODE_128,
+                ZXing.BarcodeFormat.CODE_39,
+                ZXing.BarcodeFormat.EAN_13,
+                ZXing.BarcodeFormat.EAN_8,
+                ZXing.BarcodeFormat.ITF,
+                ZXing.BarcodeFormat.UPC_A
+              ]);
+              hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+              const reader = new ZXing.BrowserMultiFormatReader(hints);
+              reader.decodeFromVideoDevice(null, video, (result, err) => {
+                if (!result || yaEnvio) return;
+                enviarCodigoBarras(result.getText());
+              });
+            } catch (e) {
+              // OCR continúa siendo el método principal.
+            }
+          }
+
+          torchBtn.onclick = function() {
+            try {
+              const track = streamActual && streamActual.getVideoTracks()[0];
+              if (!track) throw new Error("No hay cámara activa");
+              const settings = track.getSettings();
+              track.applyConstraints({advanced:[{torch:!settings.torch}]})
+                .catch(() => alert("Este dispositivo no permite linterna desde el navegador."));
+            } catch (e) {
+              alert("No se pudo acceder a la linterna.");
+            }
+          };
+
+          let intentos = 0;
+          const esperarLibrerias = setInterval(() => {
+            intentos++;
+            if (typeof ZXing !== "undefined" && typeof Tesseract !== "undefined") {
+              clearInterval(esperarLibrerias);
+              iniciarCamara();
+              setTimeout(iniciarBarras, 1200);
+            } else if (intentos >= 100) {
+              clearInterval(esperarLibrerias);
+              if (typeof Tesseract !== "undefined") {
+                iniciarCamara();
+              } else {
+                mostrarError("❌ No se pudieron cargar los lectores. Recarga la página.");
+              }
+            }
+          }, 100);
+        </script>
+        """,
       height=430,
-  )
+    )
 
   st.caption(
       "💡 Recomendado: centra el texto MCD.0.3.G.x.xxx dentro del recuadro verde, "
@@ -5880,7 +6014,7 @@ with tabs[-1]:
             fecha_txt = fila[col_fecha_scan] if col_fecha_scan else "N/A"
 
             st.markdown(
-                _dedent_html(f"""
+                f"""
                 <div style="background-color:#141414; border:1px solid #0070f3;
                             border-radius:10px; padding:16px; margin-bottom:12px;">
                     <div style="color:#aaaaaa; font-size:12px; text-transform:uppercase;">Producto</div>
@@ -5892,7 +6026,7 @@ with tabs[-1]:
                         Stock: {cant_txt} unidades
                     </div>
                 </div>
-                """),
+                """,
                 unsafe_allow_html=True,
             )
   else:
