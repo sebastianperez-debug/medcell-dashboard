@@ -1,2 +1,7 @@
 # Agregar esta línea a tu requirements.txt para acelerar la lectura del Excel
+pythstreamlit
+pandas
+plotly
+openpyxl
 python-calamine>=0.3.2
+
