@@ -1442,32 +1442,73 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
         st.markdown("#### 🎯 Resumen de Cumplimiento Meta")
 
-        k1, k2, k3 = st.columns(3)
+        k1, k2 = st.columns(2)
         k1.metric("🗓️ Mes en Curso", str(mes_actual).upper())
         k2.metric("🎯 Meta Total", formato_moneda(meta_total))
-        k3.metric(
-            "📈 Cumplimiento Proyectado",
-            f"{cumplimiento_proy:.0f}%",
-            delta=formato_moneda(diferencia_proy),
-        )
 
-        k4, k5, k6 = st.columns(3)
-        k4.metric(
+        k3, k4 = st.columns(2)
+        k3.metric(
             "💰 Facturado Actual",
             formato_moneda(facturado_total),
             delta=f"{cumplimiento_actual:.1f}% Meta",
         )
-        k5.metric("🚀 Cierre Proyectado", formato_moneda(proyeccion_total))
-        # k6 se deja vacía a propósito para que la fila 2 mantenga el mismo
-        # ancho de columnas que la fila 1 y las tarjetas queden alineadas.
+        k4.metric("🚀 Cierre Proyectado", formato_moneda(proyeccion_total))
 
         pct_barra = min(max(float(cumplimiento_proy) / 100.0, 0.0), 1.0)
-        st.progress(
-            pct_barra,
-            text=(
-                f"Avance de Proyección sobre la Meta: {cumplimiento_proy:.1f}%"
-                f" (Resultado: {formato_moneda(diferencia_proy)})"
-            ),
+        es_positivo = diferencia_proy >= 0
+        color_delta = "var(--mc-success)" if es_positivo else "var(--mc-danger)"
+        signo_delta = "↑" if es_positivo else "↓"
+
+        st.markdown(
+            f"""
+            <div style="
+                background: linear-gradient(145deg, var(--mc-panel), var(--mc-panel-2));
+                border: 1px solid var(--mc-border);
+                border-radius: 16px;
+                padding: 1.3rem 1.6rem;
+                box-shadow: 0 10px 25px rgba(0,0,0,.12);
+                margin-top: .5rem;
+            ">
+                <div style="color: var(--mc-muted); font-weight: 650; font-size: .95rem; margin-bottom: .3rem;">
+                    📈 Cumplimiento Proyectado
+                </div>
+                <div style="display:flex; align-items:baseline; gap: .9rem; flex-wrap: wrap;">
+                    <span style="font-size: clamp(2.4rem, 6vw, 3.4rem); font-weight: 850; color: var(--mc-text); line-height:1;">
+                        {cumplimiento_proy:.0f}%
+                    </span>
+                    <span style="
+                        background: color-mix(in srgb, {color_delta} 18%, transparent);
+                        color: {color_delta};
+                        border-radius: 999px;
+                        padding: .3rem .7rem;
+                        font-weight: 700;
+                        font-size: .9rem;
+                        white-space: nowrap;
+                    ">
+                        {signo_delta} {formato_moneda(diferencia_proy)}
+                    </span>
+                </div>
+                <div style="
+                    margin-top: 1rem;
+                    height: 10px;
+                    border-radius: 999px;
+                    background: rgba(148,163,184,.15);
+                    overflow: hidden;
+                ">
+                    <div style="
+                        width: {pct_barra * 100:.1f}%;
+                        height: 100%;
+                        border-radius: 999px;
+                        background: linear-gradient(90deg, var(--mc-primary-2), var(--mc-primary));
+                    "></div>
+                </div>
+                <div style="color: var(--mc-muted); font-size: .85rem; margin-top: .5rem;">
+                    Avance de Proyección sobre la Meta: {cumplimiento_proy:.1f}%
+                    (Resultado: {formato_moneda(diferencia_proy)})
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
         )
 
         st.divider()
