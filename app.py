@@ -1446,18 +1446,18 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         k1.metric("🗓️ Mes en Curso", str(mes_actual).upper())
         k2.metric("🎯 Meta Total", formato_moneda(meta_total))
         k3.metric(
-            "💰 Facturado Actual",
-            formato_moneda(facturado_total),
-            delta=f"{cumplimiento_actual:.1f}% Meta",
-        )
-
-        k4, k5, k6 = st.columns(3)
-        k4.metric("🚀 Cierre Proyectado", formato_moneda(proyeccion_total))
-        k5.metric(
             "📈 Cumplimiento Proyectado",
             f"{cumplimiento_proy:.0f}%",
             delta=formato_moneda(diferencia_proy),
         )
+
+        k4, k5, k6 = st.columns(3)
+        k4.metric(
+            "💰 Facturado Actual",
+            formato_moneda(facturado_total),
+            delta=f"{cumplimiento_actual:.1f}% Meta",
+        )
+        k5.metric("🚀 Cierre Proyectado", formato_moneda(proyeccion_total))
         # k6 se deja vacía a propósito para que la fila 2 mantenga el mismo
         # ancho de columnas que la fila 1 y las tarjetas queden alineadas.
 
