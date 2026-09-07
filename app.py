@@ -94,16 +94,39 @@ st.markdown(
         border-radius: 16px;
         padding: 1rem 1.1rem;
         box-shadow: 0 10px 25px rgba(0,0,0,.12);
+        min-width: 0;
+        overflow: visible;
     }
 
     div[data-testid="stMetricLabel"] {
         color: var(--mc-muted) !important;
         font-weight: 650 !important;
+        white-space: normal !important;
+        overflow: visible !important;
+    }
+
+    div[data-testid="stMetricLabel"] p {
+        white-space: normal !important;
+        overflow-wrap: break-word !important;
+        font-size: .85rem !important;
     }
 
     div[data-testid="stMetricValue"] {
         color: var(--mc-text) !important;
         font-weight: 800 !important;
+        white-space: normal !important;
+        overflow: visible !important;
+        text-overflow: clip !important;
+        overflow-wrap: break-word !important;
+        word-break: break-word !important;
+        font-size: clamp(1.05rem, 1.6vw, 1.55rem) !important;
+        line-height: 1.2 !important;
+    }
+
+    div[data-testid="stMetricDelta"] {
+        white-space: normal !important;
+        overflow-wrap: break-word !important;
+        font-size: .82rem !important;
     }
 
     .stButton > button, .stDownloadButton > button {
@@ -1418,8 +1441,8 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         }
 
         st.markdown("#### 🎯 Resumen de Cumplimiento Meta")
-        k1, k2, k3, k4, k5 = st.columns(5)
 
+        k1, k2, k3 = st.columns(3)
         k1.metric("🗓️ Mes en Curso", str(mes_actual).upper())
         k2.metric("🎯 Meta Total", formato_moneda(meta_total))
         k3.metric(
@@ -1427,6 +1450,8 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             formato_moneda(facturado_total),
             delta=f"{cumplimiento_actual:.1f}% Meta",
         )
+
+        k4, k5 = st.columns(2)
         k4.metric("🚀 Cierre Proyectado", formato_moneda(proyeccion_total))
         k5.metric(
             "📈 Cumplimiento Proyectado",
