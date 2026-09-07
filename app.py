@@ -1451,13 +1451,15 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             delta=f"{cumplimiento_actual:.1f}% Meta",
         )
 
-        k4, k5 = st.columns(2)
+        k4, k5, k6 = st.columns(3)
         k4.metric("🚀 Cierre Proyectado", formato_moneda(proyeccion_total))
         k5.metric(
             "📈 Cumplimiento Proyectado",
             f"{cumplimiento_proy:.0f}%",
             delta=formato_moneda(diferencia_proy),
         )
+        # k6 se deja vacía a propósito para que la fila 2 mantenga el mismo
+        # ancho de columnas que la fila 1 y las tarjetas queden alineadas.
 
         pct_barra = min(max(float(cumplimiento_proy) / 100.0, 0.0), 1.0)
         st.progress(
