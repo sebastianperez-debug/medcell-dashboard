@@ -2631,8 +2631,12 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             ws_stock.page_setup.fitToHeight = 0
             ws_stock.print_options.horizontalCentered = True
             ws_stock.print_options.verticalCentered = False
-            ws_stock.page_margins.left = 0.4
-            ws_stock.page_margins.right = 0.4
+            # Márgenes descuadrados a propósito (izquierdo más chico,
+            # derecho más grande) para correr el área de impresión
+            # ~1 cm (0,4") hacia la izquierda: así la última columna
+            # (K) deja de salir cortada por el borde derecho de la hoja.
+            ws_stock.page_margins.left = 0.05
+            ws_stock.page_margins.right = 0.85
             ws_stock.page_margins.top = 0.5
             ws_stock.page_margins.bottom = 0.5
             if rango_tabla:
