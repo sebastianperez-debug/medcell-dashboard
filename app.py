@@ -4,6 +4,7 @@ import io
 from datetime import datetime, timedelta
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.table import Table, TableStyleInfo
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -2525,17 +2526,53 @@ for i, nombre_hoja in enumerate(nombres_hojas):
           if n_filas > 0 and n_cols > 0:
             ultima_col = get_column_letter(n_cols)
             rango_tabla = f"A1:{ultima_col}{n_filas + 1}"
-            tabla_excel = Table(
-                displayName=f"TablaStock_{i}", ref=rango_tabla
+
+            # Estilo manual tipo "reporte": encabezado azul marino con
+            # texto blanco en negrita, filas de datos alternando blanco
+            # y gris muy claro, con bordes finos en toda la tabla.
+            RELLENO_ENCABEZADO = PatternFill(
+                start_color="1F3864", end_color="1F3864", fill_type="solid"
             )
-            tabla_excel.tableStyleInfo = TableStyleInfo(
-                name="TableStyleMedium9",
-                showFirstColumn=False,
-                showLastColumn=False,
-                showRowStripes=True,
-                showColumnStripes=False,
+            RELLENO_FILA_PAR = PatternFill(
+                start_color="FFFFFF", end_color="FFFFFF", fill_type="solid"
             )
-            ws_stock.add_table(tabla_excel)
+            RELLENO_FILA_IMPAR = PatternFill(
+                start_color="F2F2F2", end_color="F2F2F2", fill_type="solid"
+            )
+            FUENTE_ENCABEZADO = Font(
+                name="Calibri", size=11, bold=True, color="FFFFFF"
+            )
+            FUENTE_DATO = Font(name="Calibri", size=10, color="000000")
+            BORDE_FINO = Border(
+                left=Side(style="thin", color="D9D9D9"),
+                right=Side(style="thin", color="D9D9D9"),
+                top=Side(style="thin", color="D9D9D9"),
+                bottom=Side(style="thin", color="D9D9D9"),
+            )
+
+            for idx_col in range(1, n_cols + 1):
+              celda_enc = ws_stock.cell(row=1, column=idx_col)
+              celda_enc.fill = RELLENO_ENCABEZADO
+              celda_enc.font = FUENTE_ENCABEZADO
+              celda_enc.alignment = Alignment(
+                  horizontal="center", vertical="center"
+              )
+              celda_enc.border = BORDE_FINO
+
+            for idx_fila in range(2, n_filas + 2):
+              relleno_fila = (
+                  RELLENO_FILA_PAR if idx_fila % 2 == 0 else RELLENO_FILA_IMPAR
+              )
+              for idx_col in range(1, n_cols + 1):
+                celda = ws_stock.cell(row=idx_fila, column=idx_col)
+                celda.fill = relleno_fila
+                celda.font = FUENTE_DATO
+                celda.alignment = Alignment(
+                    horizontal="center", vertical="center"
+                )
+                celda.border = BORDE_FINO
+
+            ws_stock.row_dimensions[1].height = 20
 
           # Ancho de columna ajustado al contenido para que no quede
           # todo apretado ni con texto cortado al abrir el archivo.
