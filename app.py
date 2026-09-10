@@ -1,5 +1,6 @@
 import os
 import re
+import io
 from datetime import datetime, timedelta
 import pandas as pd
 import plotly.express as px
@@ -2412,6 +2413,20 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
         st.divider()
 
+      # Filtro adicional por "Lote Proveedor", propio de la tabla de detalle.
+      key_lote = f"sel_lote_proveedor_stock_{i}"
+      if col_lote and col_lote in df_dash_alerta.columns:
+        lista_lotes = sorted(
+            [
+                str(x)
+                for x in df_dash_alerta[col_lote].dropna().unique()
+                if str(x).strip() != ""
+            ]
+        )
+      else:
+        lista_lotes = []
+      lote_sel = "Todos"
+
       detalle_filtro = "(General)"
       partes_filtro = []
       if codigo_sel != "Todos":
@@ -2422,10 +2437,38 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         partes_filtro.append(f"SKU PU: {sku_pu_sel}")
       if filtro_actual != "Todos":
         partes_filtro.append(f"Caducidad: {filtro_actual}")
+
+      st.subheader("📋 Detalle de Stock y Lotes")
+
+      # Fila con el filtro de Lote Proveedor (a la izquierda) y el botón
+      # de descarga a Excel (a la derecha), alineados con la tabla de abajo.
+      col_filtro_lote, col_espacio, col_descarga = st.columns([1.3, 2.2, 1])
+
+      with col_filtro_lote:
+        if lista_lotes:
+          lote_sel = st.selectbox(
+              "Lote Proveedor:",
+              ["Todos"] + lista_lotes,
+              key=key_lote,
+          )
+        else:
+          st.selectbox(
+              "Lote Proveedor:",
+              ["Todos"],
+              key=key_lote,
+              disabled=True,
+          )
+
+      if lote_sel != "Todos" and col_lote and col_lote in df_dash_alerta.columns:
+        partes_filtro.append(f"Lote Proveedor: {lote_sel}")
+        df_dash_alerta = df_dash_alerta[
+            df_dash_alerta[col_lote].astype(str) == lote_sel
+        ].copy()
+
       if partes_filtro:
         detalle_filtro = f"({' | '.join(partes_filtro)})"
 
-      st.subheader(f"📋 Detalle de Stock y Lotes {detalle_filtro}")
+      st.caption(detalle_filtro)
 
       cols_mostrar = []
       nombres_amigables = {}
@@ -2466,6 +2509,24 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         df_vista_stock["Fecha Expiración"] = pd.to_datetime(
             df_vista_stock["Fecha Expiración"], errors="coerce"
         ).dt.strftime("%d-%m-%Y")
+
+      with col_descarga:
+        buffer_excel_stock = io.BytesIO()
+        with pd.ExcelWriter(buffer_excel_stock, engine="openpyxl") as writer:
+          df_vista_stock.to_excel(writer, index=False, sheet_name="Stock")
+        buffer_excel_stock.seek(0)
+
+        st.download_button(
+            label="⬇️ Descargar Excel",
+            data=buffer_excel_stock,
+            file_name=f"detalle_stock_lotes_{nombre_clean}_{i}.xlsx",
+            mime=(
+                "application/vnd.openxmlformats-officedocument"
+                ".spreadsheetml.sheet"
+            ),
+            key=f"btn_descarga_stock_{i}",
+            use_container_width=True,
+        )
 
       st.dataframe(df_vista_stock, hide_index=True, use_container_width=True)
 
