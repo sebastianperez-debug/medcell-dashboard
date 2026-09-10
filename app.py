@@ -2,6 +2,8 @@ import os
 import re
 import io
 from datetime import datetime, timedelta
+from openpyxl.utils import get_column_letter
+from openpyxl.worksheet.table import Table, TableStyleInfo
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -2475,6 +2477,9 @@ for i, nombre_hoja in enumerate(nombres_hojas):
       if col_cod:
         cols_mostrar.append(col_cod)
         nombres_amigables[col_cod] = "Código Artículo"
+      if col_desc_stock and col_desc_stock in df_dash_alerta.columns:
+        cols_mostrar.append(col_desc_stock)
+        nombres_amigables[col_desc_stock] = "Descripción"
       if col_sku_sb and col_sku_sb in df_dash_alerta.columns:
         cols_mostrar.append(col_sku_sb)
         nombres_amigables[col_sku_sb] = "SKU SB"
@@ -2514,6 +2519,38 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         buffer_excel_stock = io.BytesIO()
         with pd.ExcelWriter(buffer_excel_stock, engine="openpyxl") as writer:
           df_vista_stock.to_excel(writer, index=False, sheet_name="Stock")
+          ws_stock = writer.sheets["Stock"]
+
+          n_filas, n_cols = df_vista_stock.shape
+          if n_filas > 0 and n_cols > 0:
+            ultima_col = get_column_letter(n_cols)
+            rango_tabla = f"A1:{ultima_col}{n_filas + 1}"
+            tabla_excel = Table(
+                displayName=f"TablaStock_{i}", ref=rango_tabla
+            )
+            tabla_excel.tableStyleInfo = TableStyleInfo(
+                name="TableStyleMedium9",
+                showFirstColumn=False,
+                showLastColumn=False,
+                showRowStripes=True,
+                showColumnStripes=False,
+            )
+            ws_stock.add_table(tabla_excel)
+
+          # Ancho de columna ajustado al contenido para que no quede
+          # todo apretado ni con texto cortado al abrir el archivo.
+          for idx_col, col_name in enumerate(df_vista_stock.columns, start=1):
+            letra_col = get_column_letter(idx_col)
+            largo_max = max(
+                [len(str(col_name))]
+                + [len(str(v)) for v in df_vista_stock[col_name]]
+            ) if n_filas > 0 else len(str(col_name))
+            ws_stock.column_dimensions[letra_col].width = min(
+                largo_max + 4, 45
+            )
+
+          ws_stock.freeze_panes = "A2"
+
         buffer_excel_stock.seek(0)
 
         st.download_button(
