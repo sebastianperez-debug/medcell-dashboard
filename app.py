@@ -2517,120 +2517,146 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         ).dt.strftime("%d-%m-%Y")
 
       with col_descarga:
-        buffer_excel_stock = io.BytesIO()
-        with pd.ExcelWriter(buffer_excel_stock, engine="openpyxl") as writer:
-          df_vista_stock.to_excel(writer, index=False, sheet_name="Stock")
-          ws_stock = writer.sheets["Stock"]
 
-          n_filas, n_cols = df_vista_stock.shape
-          if n_filas > 0 and n_cols > 0:
-            ultima_col = get_column_letter(n_cols)
-            rango_tabla = f"A1:{ultima_col}{n_filas + 1}"
+        @st.cache_data(show_spinner=False)
+        def _construir_excel_stock(df_vista_stock):
+          """Arma el Excel con estilo de reporte (encabezado azul marino,
+          filas alternadas y bordes finos). Se cachea por contenido del
+          DataFrame para no repetir el formateo celda a celda en cada
+          rerun de Streamlit cuando los datos no cambiaron."""
+          buffer = io.BytesIO()
+          with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+            df_vista_stock.to_excel(writer, index=False, sheet_name="Stock")
+            ws_stock = writer.sheets["Stock"]
 
-            # Estilo manual tipo "reporte": encabezado azul marino con
-            # texto blanco en negrita, filas de datos alternando blanco
-            # y gris muy claro, con bordes finos en toda la tabla.
-            RELLENO_ENCABEZADO = PatternFill(
-                start_color="1F3864", end_color="1F3864", fill_type="solid"
-            )
-            RELLENO_FILA_PAR = PatternFill(
-                start_color="FFFFFF", end_color="FFFFFF", fill_type="solid"
-            )
-            RELLENO_FILA_IMPAR = PatternFill(
-                start_color="F2F2F2", end_color="F2F2F2", fill_type="solid"
-            )
-            FUENTE_ENCABEZADO = Font(
-                name="Calibri", size=11, bold=True, color="FFFFFF"
-            )
-            FUENTE_DATO = Font(name="Calibri", size=10, color="000000")
-            BORDE_FINO = Border(
-                left=Side(style="thin", color="D9D9D9"),
-                right=Side(style="thin", color="D9D9D9"),
-                top=Side(style="thin", color="D9D9D9"),
-                bottom=Side(style="thin", color="D9D9D9"),
-            )
+            n_filas, n_cols = df_vista_stock.shape
+            rango_tabla = None
+            if n_filas > 0 and n_cols > 0:
+              ultima_col = get_column_letter(n_cols)
+              rango_tabla = f"A1:{ultima_col}{n_filas + 1}"
 
-            for idx_col in range(1, n_cols + 1):
-              celda_enc = ws_stock.cell(row=1, column=idx_col)
-              celda_enc.fill = RELLENO_ENCABEZADO
-              celda_enc.font = FUENTE_ENCABEZADO
-              celda_enc.alignment = Alignment(
+              # Estilo manual tipo "reporte": encabezado azul marino con
+              # texto blanco en negrita, filas de datos alternando
+              # blanco y gris muy claro, con bordes finos. Los objetos
+              # de estilo se crean UNA sola vez y se reutilizan (openpyxl
+              # los deduplica internamente), y se recorre con iter_rows
+              # en vez de ws.cell() para evitar el costo de traducir
+              # fila/columna a notación A1 en cada celda.
+              RELLENO_ENCABEZADO = PatternFill(
+                  start_color="1F3864", end_color="1F3864", fill_type="solid"
+              )
+              RELLENO_FILA_PAR = PatternFill(
+                  start_color="FFFFFF", end_color="FFFFFF", fill_type="solid"
+              )
+              RELLENO_FILA_IMPAR = PatternFill(
+                  start_color="F2F2F2", end_color="F2F2F2", fill_type="solid"
+              )
+              FUENTE_ENCABEZADO = Font(
+                  name="Calibri", size=11, bold=True, color="FFFFFF"
+              )
+              FUENTE_DATO = Font(name="Calibri", size=10, color="000000")
+              BORDE_FINO = Border(
+                  left=Side(style="thin", color="D9D9D9"),
+                  right=Side(style="thin", color="D9D9D9"),
+                  top=Side(style="thin", color="D9D9D9"),
+                  bottom=Side(style="thin", color="D9D9D9"),
+              )
+              ALINEACION_CENTRO = Alignment(
                   horizontal="center", vertical="center"
               )
-              celda_enc.border = BORDE_FINO
 
-            for idx_fila in range(2, n_filas + 2):
-              relleno_fila = (
-                  RELLENO_FILA_PAR if idx_fila % 2 == 0 else RELLENO_FILA_IMPAR
+              fila_encabezado = next(
+                  ws_stock.iter_rows(min_row=1, max_row=1, max_col=n_cols)
               )
-              for idx_col in range(1, n_cols + 1):
-                celda = ws_stock.cell(row=idx_fila, column=idx_col)
-                celda.fill = relleno_fila
-                celda.font = FUENTE_DATO
-                celda.alignment = Alignment(
-                    horizontal="center", vertical="center"
+              for celda_enc in fila_encabezado:
+                celda_enc.fill = RELLENO_ENCABEZADO
+                celda_enc.font = FUENTE_ENCABEZADO
+                celda_enc.alignment = ALINEACION_CENTRO
+                celda_enc.border = BORDE_FINO
+
+              for idx_fila, fila in enumerate(
+                  ws_stock.iter_rows(
+                      min_row=2, max_row=n_filas + 1, max_col=n_cols
+                  ),
+                  start=2,
+              ):
+                relleno_fila = (
+                    RELLENO_FILA_PAR
+                    if idx_fila % 2 == 0
+                    else RELLENO_FILA_IMPAR
                 )
-                celda.border = BORDE_FINO
+                for celda in fila:
+                  celda.fill = relleno_fila
+                  celda.font = FUENTE_DATO
+                  celda.alignment = ALINEACION_CENTRO
+                  celda.border = BORDE_FINO
 
-            ws_stock.row_dimensions[1].height = 20
+              ws_stock.row_dimensions[1].height = 20
 
-          # Ancho de columna ajustado al contenido para que no quede
-          # todo apretado ni con texto cortado al abrir el archivo.
-          # También se guarda la suma de anchos para calcular más abajo
-          # el % de zoom de impresión que mejor aprovecha la hoja.
-          anchos_columnas = []
-          for idx_col, col_name in enumerate(df_vista_stock.columns, start=1):
-            letra_col = get_column_letter(idx_col)
-            largo_max = max(
-                [len(str(col_name))]
-                + [len(str(v)) for v in df_vista_stock[col_name]]
-            ) if n_filas > 0 else len(str(col_name))
-            ancho_col = min(largo_max + 4, 45)
-            ws_stock.column_dimensions[letra_col].width = ancho_col
-            anchos_columnas.append(ancho_col)
+            # Ancho de columna ajustado al contenido para que no quede
+            # todo apretado ni con texto cortado al abrir el archivo.
+            # También se guarda la suma de anchos para calcular más
+            # abajo el % de zoom de impresión que mejor aprovecha la
+            # hoja.
+            anchos_columnas = []
+            for idx_col, col_name in enumerate(
+                df_vista_stock.columns, start=1
+            ):
+              letra_col = get_column_letter(idx_col)
+              largo_max = max(
+                  [len(str(col_name))]
+                  + [len(str(v)) for v in df_vista_stock[col_name]]
+              ) if n_filas > 0 else len(str(col_name))
+              ancho_col = min(largo_max + 4, 45)
+              ws_stock.column_dimensions[letra_col].width = ancho_col
+              anchos_columnas.append(ancho_col)
 
-          ws_stock.freeze_panes = "A2"
+            ws_stock.freeze_panes = "A2"
 
-          # Configuración de impresión: hoja Carta, horizontal, centrada,
-          # y con un zoom calculado para que la tabla aproveche todo el
-          # ancho de la página en vez de quedar chica en una esquina.
-          ws_stock.page_setup.orientation = "landscape"
-          ws_stock.page_setup.paperSize = ws_stock.PAPERSIZE_LETTER
+            # Configuración de impresión: hoja Carta, horizontal,
+            # centrada, y con un zoom calculado para que la tabla
+            # aproveche todo el ancho de la página en vez de quedar
+            # chica en una esquina.
+            ws_stock.page_setup.orientation = "landscape"
+            ws_stock.page_setup.paperSize = ws_stock.PAPERSIZE_LETTER
 
-          ANCHO_DISPONIBLE_PULG = 11 - 0.4 - 0.4  # Carta horizontal - márgenes
-          if anchos_columnas:
-            # Estimación del ancho real en pulgadas a partir de las
-            # unidades de ancho de columna de Excel (~7px por unidad
-            # + 5px de relleno, a 96 DPI).
-            ancho_total_pulg = sum(
-                (ancho * 7 + 5) / 96 for ancho in anchos_columnas
-            )
-            escala_calc = (
-                (ANCHO_DISPONIBLE_PULG / ancho_total_pulg) * 100
-                if ancho_total_pulg > 0
-                else 100
-            )
-          else:
-            escala_calc = 100
-          escala_calc = int(max(70, min(escala_calc, 150)))
+            ANCHO_DISPONIBLE_PULG = 11 - 0.4 - 0.4  # Carta horiz. - márgenes
+            if anchos_columnas:
+              # Estimación del ancho real en pulgadas a partir de las
+              # unidades de ancho de columna de Excel (~7px por unidad
+              # + 5px de relleno, a 96 DPI).
+              ancho_total_pulg = sum(
+                  (ancho * 7 + 5) / 96 for ancho in anchos_columnas
+              )
+              escala_calc = (
+                  (ANCHO_DISPONIBLE_PULG / ancho_total_pulg) * 100
+                  if ancho_total_pulg > 0
+                  else 100
+              )
+            else:
+              escala_calc = 100
+            escala_calc = int(max(70, min(escala_calc, 150)))
 
-          ws_stock.sheet_properties.pageSetUpPr.fitToPage = False
-          ws_stock.page_setup.scale = escala_calc
-          ws_stock.print_options.horizontalCentered = True
-          ws_stock.print_options.verticalCentered = False
-          ws_stock.page_margins.left = 0.4
-          ws_stock.page_margins.right = 0.4
-          ws_stock.page_margins.top = 0.5
-          ws_stock.page_margins.bottom = 0.5
-          if n_filas > 0 and n_cols > 0:
-            ws_stock.print_area = rango_tabla
-            ws_stock.print_title_rows = "1:1"
+            ws_stock.sheet_properties.pageSetUpPr.fitToPage = False
+            ws_stock.page_setup.scale = escala_calc
+            ws_stock.print_options.horizontalCentered = True
+            ws_stock.print_options.verticalCentered = False
+            ws_stock.page_margins.left = 0.4
+            ws_stock.page_margins.right = 0.4
+            ws_stock.page_margins.top = 0.5
+            ws_stock.page_margins.bottom = 0.5
+            if rango_tabla:
+              ws_stock.print_area = rango_tabla
+              ws_stock.print_title_rows = "1:1"
 
-        buffer_excel_stock.seek(0)
+          buffer.seek(0)
+          return buffer.getvalue()
+
+        bytes_excel_stock = _construir_excel_stock(df_vista_stock)
 
         st.download_button(
             label="⬇️ Descargar Excel",
-            data=buffer_excel_stock,
+            data=bytes_excel_stock,
             file_name=f"detalle_stock_lotes_{nombre_clean}_{i}.xlsx",
             mime=(
                 "application/vnd.openxmlformats-officedocument"
