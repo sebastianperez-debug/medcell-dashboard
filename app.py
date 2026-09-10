@@ -2552,9 +2552,9 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                   start_color="F2F2F2", end_color="F2F2F2", fill_type="solid"
               )
               FUENTE_ENCABEZADO = Font(
-                  name="Calibri", size=11, bold=True, color="FFFFFF"
+                  name="Calibri", size=12, bold=True, color="FFFFFF"
               )
-              FUENTE_DATO = Font(name="Calibri", size=10, color="000000")
+              FUENTE_DATO = Font(name="Calibri", size=12, color="000000")
               BORDE_FINO = Border(
                   left=Side(style="thin", color="D9D9D9"),
                   right=Side(style="thin", color="D9D9D9"),
@@ -2593,6 +2593,11 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
               ws_stock.row_dimensions[1].height = 20
 
+              # Altura de todas las filas de datos también en 20, a
+              # tono con la fuente de tamaño 12.
+              for idx_fila in range(2, n_filas + 2):
+                ws_stock.row_dimensions[idx_fila].height = 20
+
             # Ancho de columna ajustado al contenido para que no quede
             # todo apretado ni con texto cortado al abrir el archivo.
             # También se guarda la suma de anchos para calcular más
@@ -2614,31 +2619,16 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             ws_stock.freeze_panes = "A2"
 
             # Configuración de impresión: hoja Carta, horizontal,
-            # centrada, y con un zoom calculado para que la tabla
-            # aproveche todo el ancho de la página en vez de quedar
-            # chica en una esquina.
+            # centrada, y ajustada automáticamente a 1 página de ancho
+            # (fitToWidth) para que la tabla siempre entre en el ancho
+            # de la hoja y quede bien centrada, sin quedar desplazada
+            # hacia la derecha como pasaba con el zoom calculado a mano.
             ws_stock.page_setup.orientation = "landscape"
             ws_stock.page_setup.paperSize = ws_stock.PAPERSIZE_LETTER
 
-            ANCHO_DISPONIBLE_PULG = 11 - 0.4 - 0.4  # Carta horiz. - márgenes
-            if anchos_columnas:
-              # Estimación del ancho real en pulgadas a partir de las
-              # unidades de ancho de columna de Excel (~7px por unidad
-              # + 5px de relleno, a 96 DPI).
-              ancho_total_pulg = sum(
-                  (ancho * 7 + 5) / 96 for ancho in anchos_columnas
-              )
-              escala_calc = (
-                  (ANCHO_DISPONIBLE_PULG / ancho_total_pulg) * 100
-                  if ancho_total_pulg > 0
-                  else 100
-              )
-            else:
-              escala_calc = 100
-            escala_calc = int(max(70, min(escala_calc, 150)))
-
-            ws_stock.sheet_properties.pageSetUpPr.fitToPage = False
-            ws_stock.page_setup.scale = escala_calc
+            ws_stock.sheet_properties.pageSetUpPr.fitToPage = True
+            ws_stock.page_setup.fitToWidth = 1
+            ws_stock.page_setup.fitToHeight = 0
             ws_stock.print_options.horizontalCentered = True
             ws_stock.print_options.verticalCentered = False
             ws_stock.page_margins.left = 0.4
