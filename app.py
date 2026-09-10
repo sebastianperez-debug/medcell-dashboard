@@ -2539,26 +2539,48 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
           # Ancho de columna ajustado al contenido para que no quede
           # todo apretado ni con texto cortado al abrir el archivo.
+          # También se guarda la suma de anchos para calcular más abajo
+          # el % de zoom de impresión que mejor aprovecha la hoja.
+          anchos_columnas = []
           for idx_col, col_name in enumerate(df_vista_stock.columns, start=1):
             letra_col = get_column_letter(idx_col)
             largo_max = max(
                 [len(str(col_name))]
                 + [len(str(v)) for v in df_vista_stock[col_name]]
             ) if n_filas > 0 else len(str(col_name))
-            ws_stock.column_dimensions[letra_col].width = min(
-                largo_max + 4, 45
-            )
+            ancho_col = min(largo_max + 4, 45)
+            ws_stock.column_dimensions[letra_col].width = ancho_col
+            anchos_columnas.append(ancho_col)
 
           ws_stock.freeze_panes = "A2"
 
-          # Configuración de impresión: hoja Carta, horizontal y
-          # ajustada a 1 página de ancho para que la tabla completa
-          # entre bien al imprimir.
+          # Configuración de impresión: hoja Carta, horizontal, centrada,
+          # y con un zoom calculado para que la tabla aproveche todo el
+          # ancho de la página en vez de quedar chica en una esquina.
           ws_stock.page_setup.orientation = "landscape"
           ws_stock.page_setup.paperSize = ws_stock.PAPERSIZE_LETTER
-          ws_stock.page_setup.fitToWidth = 1
-          ws_stock.page_setup.fitToHeight = 0
-          ws_stock.sheet_properties.pageSetUpPr.fitToPage = True
+
+          ANCHO_DISPONIBLE_PULG = 11 - 0.4 - 0.4  # Carta horizontal - márgenes
+          if anchos_columnas:
+            # Estimación del ancho real en pulgadas a partir de las
+            # unidades de ancho de columna de Excel (~7px por unidad
+            # + 5px de relleno, a 96 DPI).
+            ancho_total_pulg = sum(
+                (ancho * 7 + 5) / 96 for ancho in anchos_columnas
+            )
+            escala_calc = (
+                (ANCHO_DISPONIBLE_PULG / ancho_total_pulg) * 100
+                if ancho_total_pulg > 0
+                else 100
+            )
+          else:
+            escala_calc = 100
+          escala_calc = int(max(70, min(escala_calc, 150)))
+
+          ws_stock.sheet_properties.pageSetUpPr.fitToPage = False
+          ws_stock.page_setup.scale = escala_calc
+          ws_stock.print_options.horizontalCentered = True
+          ws_stock.print_options.verticalCentered = False
           ws_stock.page_margins.left = 0.4
           ws_stock.page_margins.right = 0.4
           ws_stock.page_margins.top = 0.5
