@@ -2551,6 +2551,22 @@ for i, nombre_hoja in enumerate(nombres_hojas):
 
           ws_stock.freeze_panes = "A2"
 
+          # Configuración de impresión: hoja Carta, horizontal y
+          # ajustada a 1 página de ancho para que la tabla completa
+          # entre bien al imprimir.
+          ws_stock.page_setup.orientation = "landscape"
+          ws_stock.page_setup.paperSize = ws_stock.PAPERSIZE_LETTER
+          ws_stock.page_setup.fitToWidth = 1
+          ws_stock.page_setup.fitToHeight = 0
+          ws_stock.sheet_properties.pageSetUpPr.fitToPage = True
+          ws_stock.page_margins.left = 0.4
+          ws_stock.page_margins.right = 0.4
+          ws_stock.page_margins.top = 0.5
+          ws_stock.page_margins.bottom = 0.5
+          if n_filas > 0 and n_cols > 0:
+            ws_stock.print_area = rango_tabla
+            ws_stock.print_title_rows = "1:1"
+
         buffer_excel_stock.seek(0)
 
         st.download_button(
