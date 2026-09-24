@@ -3208,10 +3208,27 @@ for i, nombre_hoja in enumerate(nombres_hojas):
           oc_solares = 0
           monto_solares = 0
 
-        # Consumo excluye lo que ya está contabilizado como Solares, para que
-        # OC Consumo / Monto Consumo no dupliquen los registros de Solares
-        # (Solares pertenece a la división Consumo pero se reporta aparte).
-        mask_consumo = mask_consumo & ~mask_solares
+        # Campaña Navidad (glosa con "NAVIDAD"/"NAVIDEÑO/A"): misma regla que
+        # Solares. Se reporta aparte y se descuenta de Consumo (más abajo).
+        if col_glosa and col_glosa in df_filt.columns:
+          mask_navidad = (
+              df_filt[col_glosa]
+              .astype(str)
+              .str.upper()
+              .str.contains(PATRON_NAVIDAD, regex=True, na=False)
+          )
+          oc_navidad = df_filt[mask_navidad][col_oc].nunique()
+          monto_navidad = df_filt[mask_navidad][col_m_compra].sum()
+        else:
+          mask_navidad = pd.Series(False, index=df_filt.index)
+          oc_navidad = 0
+          monto_navidad = 0
+
+        # Consumo excluye lo que ya está contabilizado como Solares o Navidad,
+        # para que OC Consumo / Monto Consumo no dupliquen esos registros
+        # (ambas campañas pertenecen a la división Consumo pero se reportan
+        # aparte).
+        mask_consumo = mask_consumo & ~mask_solares & ~mask_navidad
 
         # Cálculos de OC
         oc_farma = df_filt[mask_farma][col_oc].nunique()
@@ -3233,6 +3250,10 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         ks1.metric("☀️ OC Solares", str(oc_solares))
         ks2.metric("💵 Monto Solares", formato_moneda(monto_solares))
         ks3.metric("💰 Monto Total", formato_moneda(monto_total))
+
+        kn1, kn2, _kn3, _kn4 = st.columns(4)
+        kn1.metric("🎄 OC Navidad", str(oc_navidad))
+        kn2.metric("🎁 Monto Navidad", formato_moneda(monto_navidad))
 
         st.divider()
 
@@ -3259,7 +3280,16 @@ for i, nombre_hoja in enumerate(nombres_hojas):
           )
         else:
           mask_solares_tot = pd.Series(False, index=df_mes.index)
-        mask_consumo_tot = mask_consumo_tot & ~mask_solares_tot
+        if col_glosa and col_glosa in df_mes.columns:
+          mask_navidad_tot = (
+              df_mes[col_glosa]
+              .astype(str)
+              .str.upper()
+              .str.contains(PATRON_NAVIDAD, regex=True, na=False)
+          )
+        else:
+          mask_navidad_tot = pd.Series(False, index=df_mes.index)
+        mask_consumo_tot = mask_consumo_tot & ~mask_solares_tot & ~mask_navidad_tot
 
         resumen_data["compras_sb"] = {
             "oc_farma": int(df_mes[mask_farma_tot][col_oc].nunique()),
@@ -3268,6 +3298,8 @@ for i, nombre_hoja in enumerate(nombres_hojas):
             "monto_consumo": float(df_mes[mask_consumo_tot][col_m_compra].sum()),
             "oc_solares": int(df_mes[mask_solares_tot][col_oc].nunique()),
             "monto_solares": float(df_mes[mask_solares_tot][col_m_compra].sum()),
+            "oc_navidad": int(df_mes[mask_navidad_tot][col_oc].nunique()),
+            "monto_navidad": float(df_mes[mask_navidad_tot][col_m_compra].sum()),
             "monto_total": float(df_mes[col_m_compra].sum()),
         }
 
@@ -3897,12 +3929,12 @@ for i, nombre_hoja in enumerate(nombres_hojas):
           st.info("No hay productos Solares registrados para la semana seleccionada.")
 
       # =================================================================
-      # DETALLE DE PRODUCTOS SOLARES Y NAVIDAD PARA PU
+      # DETALLE DE PRODUCTOS SOLARES Y NAVIDAD PARA PU (y NAVIDAD PARA SB)
       # (mismo formato que el detalle de Solares de SB: Fill Rate monto /
       # unidades + filtros por OC y SKU + tabla de detalle). Cada campaña
       # se detecta por la glosa.
       # =================================================================
-      if is_pu and col_oc and col_glosa and col_glosa in df_filt.columns:
+      if (is_pu or is_sb) and col_oc and col_glosa and col_glosa in df_filt.columns:
         campanas_pu = [
             {
                 "clave": "solares",
@@ -3917,6 +3949,11 @@ for i, nombre_hoja in enumerate(nombres_hojas):
                 "patron": PATRON_NAVIDAD,
             },
         ]
+
+        # En SB el detalle de Solares ya existe más arriba; aquí solo se
+        # agrega Navidad. En PU se muestran Solares y Navidad.
+        if is_sb:
+          campanas_pu = [c for c in campanas_pu if c["clave"] == "navidad"]
 
         etiqueta_sem_pu = (
             f"Sem {fmt_sem(semana_sel)}" if semana_sel != "Todas" else "Todas"
