@@ -405,6 +405,11 @@ def fmt_code(val):
   return val_str
 
 
+# Patrón para detectar la campaña Navidad en la glosa (ya en mayúsculas).
+# Cubre "NAVIDAD" y variantes como "NAVIDEÑO/A".
+PATRON_NAVIDAD = r"NAVIDAD|NAVIDE"
+
+
 def formato_moneda(valor):
   try:
     val_int = int(round(valor))
@@ -3289,6 +3294,23 @@ for i, nombre_hoja in enumerate(nombres_hojas):
           oc_solares_pu = 0
           monto_solares_pu = 0
 
+        # Campaña Navidad: misma regla que Solares, pero buscando "NAVIDAD"
+        # (o "NAVIDEÑO/A") en la glosa. Es independiente de Solares: no lo
+        # altera, y una fila puede contar en ambos si la glosa dice las dos.
+        if col_glosa and col_glosa in df_filt.columns:
+          mask_navidad_pu = (
+              df_filt[col_glosa]
+              .astype(str)
+              .str.upper()
+              .str.contains(PATRON_NAVIDAD, regex=True, na=False)
+          )
+          oc_navidad_pu = df_filt[mask_navidad_pu][col_oc].nunique()
+          monto_navidad_pu = df_filt[mask_navidad_pu][col_m_compra].sum()
+        else:
+          mask_navidad_pu = pd.Series(False, index=df_filt.index)
+          oc_navidad_pu = 0
+          monto_navidad_pu = 0
+
         # En PU se consideran todas las divisiones juntas.
         cantidad_oc_pu = df_filt[col_oc].nunique()
         monto_total_pu = df_filt[col_m_compra].sum()
@@ -3301,6 +3323,10 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         kpu_s1, kpu_s2 = st.columns(2)
         kpu_s1.metric("☀️ OC Solares", str(oc_solares_pu))
         kpu_s2.metric("💵 Monto Solares", formato_moneda(monto_solares_pu))
+
+        kpu_n1, kpu_n2 = st.columns(2)
+        kpu_n1.metric("🎄 OC Navidad", str(oc_navidad_pu))
+        kpu_n2.metric("🎁 Monto Navidad", formato_moneda(monto_navidad_pu))
 
         st.divider()
 
@@ -3325,12 +3351,26 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         else:
           mask_solares_pu_tot = pd.Series(False, index=df_mes_pu.index)
 
+        if col_glosa and col_glosa in df_mes_pu.columns:
+          mask_navidad_pu_tot = (
+              df_mes_pu[col_glosa]
+              .astype(str)
+              .str.upper()
+              .str.contains(PATRON_NAVIDAD, regex=True, na=False)
+          )
+        else:
+          mask_navidad_pu_tot = pd.Series(False, index=df_mes_pu.index)
+
         resumen_data["compras_pu"] = {
             "cantidad_oc": int(df_mes_pu[col_oc].nunique()),
             "monto_total": float(df_mes_pu[col_m_compra].sum()),
             "oc_solares": int(df_mes_pu[mask_solares_pu_tot][col_oc].nunique()),
             "monto_solares": float(
                 df_mes_pu[mask_solares_pu_tot][col_m_compra].sum()
+            ),
+            "oc_navidad": int(df_mes_pu[mask_navidad_pu_tot][col_oc].nunique()),
+            "monto_navidad": float(
+                df_mes_pu[mask_navidad_pu_tot][col_m_compra].sum()
             ),
         }
       # =================================================================
