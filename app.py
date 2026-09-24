@@ -3896,6 +3896,141 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         else:
           st.info("No hay productos Solares registrados para la semana seleccionada.")
 
+      # =================================================================
+      # DETALLE DE PRODUCTOS SOLARES Y NAVIDAD PARA PU
+      # (mismo formato que el detalle de Solares de SB: Fill Rate monto /
+      # unidades + filtros por OC y SKU + tabla de detalle). Cada campaña
+      # se detecta por la glosa.
+      # =================================================================
+      if is_pu and col_oc and col_glosa and col_glosa in df_filt.columns:
+        campanas_pu = [
+            {
+                "clave": "solares",
+                "emoji": "☀️",
+                "titulo": "Solares",
+                "patron": "SOLARES",
+            },
+            {
+                "clave": "navidad",
+                "emoji": "🎄",
+                "titulo": "Navidad",
+                "patron": PATRON_NAVIDAD,
+            },
+        ]
+
+        etiqueta_sem_pu = (
+            f"Sem {fmt_sem(semana_sel)}" if semana_sel != "Todas" else "Todas"
+        )
+
+        renombrar_columnas_camp = {
+            "id_producto": "SKU",
+            "id_prod": "SKU",
+            "numero_orden": "OC",
+            "num_oc": "OC",
+            "orden_compra": "OC",
+            "descripcion": "Descripción",
+            "unidades_compra": "Unidades Compra",
+            "unidades_recibidas": "Unidades Recibidas",
+            "unidades_rechazadas": "Unidades Rechazadas",
+            "cantidad": "Unidades Compra",
+            "cantidad_recibida": "Unidades Recibidas",
+            "fecha_hora_despacho_default": "Fecha Despacho",
+            "precio_final": "Precio Final",
+            "precio_total": "Precio Total",
+        }
+
+        for camp in campanas_pu:
+          st.divider()
+          st.markdown(f"#### {camp['emoji']} Detalle de Productos {camp['titulo']}")
+
+          mask_camp = (
+              df_filt[col_glosa]
+              .astype(str)
+              .str.upper()
+              .str.contains(camp["patron"], regex=True, na=False)
+          )
+          df_camp_ind = df_filt[mask_camp].copy()
+
+          st.markdown(f"#### 📌 {camp['titulo'].upper()}")
+          ind_c1, ind_c2 = st.columns(2)
+          with ind_c1:
+            tot_compra_c = df_camp_ind[col_m_compra].sum() if col_m_compra else 0
+            tot_recib_c = df_camp_ind[col_m_recib].sum() if col_m_recib else 0
+            fr_c_monto = (tot_recib_c / tot_compra_c * 100) if tot_compra_c > 0 else 0.0
+            delta_c_monto = f"{tot_recib_c - tot_compra_c:,.0f} $ (Dif)".replace(
+                ",", "."
+            )
+            st.metric(
+                label=f"Fill Rate Monto ({etiqueta_sem_pu})",
+                value=f"{fr_c_monto:.1f}%",
+                delta=delta_c_monto,
+            )
+          with ind_c2:
+            tot_compra_c_u = df_camp_ind[col_u_compra].sum() if col_u_compra else 0
+            tot_recib_c_u = df_camp_ind[col_u_recib].sum() if col_u_recib else 0
+            fr_c_unds = (
+                (tot_recib_c_u / tot_compra_c_u * 100) if tot_compra_c_u > 0 else 0.0
+            )
+            delta_c_unds = f"{tot_recib_c_u - tot_compra_c_u:,.0f} Unds (Dif)".replace(
+                ",", "."
+            )
+            st.metric(
+                label=f"Fill Rate Unidades ({etiqueta_sem_pu})",
+                value=f"{fr_c_unds:.1f}%",
+                delta=delta_c_unds,
+            )
+
+          st.divider()
+
+          df_camp = df_camp_ind.copy()
+
+          if not df_camp.empty:
+            col_det_c1, col_det_c2 = st.columns(2)
+            with col_det_c1:
+              ocs_camp_disp = ["Todas"] + sorted(
+                  [str(x) for x in df_camp[col_oc].dropna().unique()]
+              )
+              oc_camp_sel = st.selectbox(
+                  f"Filtrar {camp['titulo']} por OC:",
+                  ocs_camp_disp,
+                  key=f"det_oc_{camp['clave']}_{nombre_hoja}_{i}",
+              )
+            with col_det_c2:
+              skus_camp_disp = ["Todos"] + sorted(
+                  [str(x) for x in df_camp[col_sku].dropna().unique()]
+              )
+              sku_camp_sel = st.selectbox(
+                  f"Filtrar {camp['titulo']} por SKU:",
+                  skus_camp_disp,
+                  key=f"det_sku_{camp['clave']}_{nombre_hoja}_{i}",
+              )
+
+            if oc_camp_sel != "Todas":
+              df_camp = df_camp[df_camp[col_oc].astype(str) == oc_camp_sel]
+            if sku_camp_sel != "Todos":
+              df_camp = df_camp[df_camp[col_sku].astype(str) == sku_camp_sel]
+
+            if col_rechazado and col_rechazado in df_camp.columns:
+              idx_corte_c = list(df_camp.columns).index(col_rechazado) + 1
+              df_camp_final = df_camp.iloc[:, :idx_corte_c].copy()
+            else:
+              df_camp_final = df_camp.copy()
+
+            nuevas_columnas_c = {}
+            for col in df_camp_final.columns:
+              col_lower = str(col).strip().lower()
+              if col_lower in renombrar_columnas_camp:
+                nuevas_columnas_c[col] = renombrar_columnas_camp[col_lower]
+              else:
+                nuevas_columnas_c[col] = str(col).replace("_", " ").strip().title()
+            df_camp_final = df_camp_final.rename(columns=nuevas_columnas_c)
+
+            st.dataframe(df_camp_final, hide_index=True, use_container_width=True)
+          else:
+            st.info(
+                f"No hay productos {camp['titulo']} registrados para la semana seleccionada."
+            )
+
       st.divider()
 
       # RESUMEN 4 SEMANAS
