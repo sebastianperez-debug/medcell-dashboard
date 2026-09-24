@@ -180,6 +180,49 @@ st.markdown(
         border-color: var(--mc-border);
     }
 
+    /* Resumen de órdenes y montos (tarjeta total grande + tarjetas iguales) */
+    .mc-res-hero {
+        background: linear-gradient(145deg, rgba(14,165,233,.16), rgba(56,189,248,.06));
+        border: 1.5px solid rgba(56,189,248,.55);
+        border-radius: 16px;
+        padding: 1.1rem 1.4rem;
+        margin-bottom: .9rem;
+        box-shadow: 0 10px 25px rgba(0,0,0,.12);
+    }
+    .mc-res-hero .mc-res-k { color: var(--mc-primary); }
+    .mc-res-hero .mc-res-big {
+        color: var(--mc-primary);
+        font-size: clamp(1.9rem, 3.4vw, 2.7rem);
+        font-weight: 850;
+        line-height: 1.1;
+        margin-top: .3rem;
+    }
+    .mc-res-hero .mc-res-oc { color: var(--mc-primary); opacity: .85; }
+    .mc-res-grid { display: grid; gap: .9rem; }
+    .mc-res-grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .mc-res-grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .mc-res-card {
+        background: linear-gradient(145deg, var(--mc-panel), var(--mc-panel-2));
+        border: 1px solid var(--mc-border);
+        border-radius: 16px;
+        padding: .95rem 1.1rem;
+        box-shadow: 0 10px 25px rgba(0,0,0,.12);
+        min-width: 0;
+    }
+    .mc-res-k { color: var(--mc-muted); font-size: .85rem; font-weight: 650; }
+    .mc-res-m {
+        color: var(--mc-text);
+        font-size: clamp(1.05rem, 1.7vw, 1.45rem);
+        font-weight: 800;
+        line-height: 1.2;
+        margin-top: .45rem;
+        overflow-wrap: anywhere;
+    }
+    .mc-res-oc { color: var(--mc-muted); font-size: .82rem; margin-top: .35rem; }
+    @media (max-width: 900px) {
+        .mc-res-grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+
     /* Tarjetas del dashboard de Stock y Caducidad (estilo píldora) */
     .stock-card2 {
         background: linear-gradient(160deg, var(--mc-panel) 0%, var(--mc-panel-2) 100%);
@@ -418,6 +461,32 @@ def formato_moneda(valor):
     return f"${val_int:,}".replace(",", ".")
   except (ValueError, TypeError):
     return "$0"
+
+
+def render_resumen_cards(monto_total, oc_total, tarjetas, etiqueta_total="Monto total"):
+  """Dibuja el resumen: tarjeta grande con el Monto Total y, debajo, tarjetas
+  del mismo tamaño (una por categoría) con monto y cantidad de OC.
+
+  ``tarjetas`` es una lista de (emoji, nombre, monto, oc). Con 4 o más
+  tarjetas usa 4 columnas; con menos, usa 2."""
+  clase_grid = "mc-res-grid-4" if len(tarjetas) >= 4 else "mc-res-grid-2"
+  html_cards = "".join(
+      f'<div class="mc-res-card">'
+      f'<div class="mc-res-k">{emoji} {nombre}</div>'
+      f'<div class="mc-res-m">{formato_moneda(monto)}</div>'
+      f'<div class="mc-res-oc">{oc} OC</div>'
+      f"</div>"
+      for emoji, nombre, monto, oc in tarjetas
+  )
+  html = (
+      '<div class="mc-res-hero">'
+      f'<div class="mc-res-k">💰 {etiqueta_total}</div>'
+      f'<div class="mc-res-big">{formato_moneda(monto_total)}</div>'
+      f'<div class="mc-res-oc">{oc_total} OC en total</div>'
+      "</div>"
+      f'<div class="mc-res-grid {clase_grid}">{html_cards}</div>'
+  )
+  st.markdown(html, unsafe_allow_html=True)
 
 
 def formato_unidades(valor):
@@ -3239,21 +3308,18 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         monto_consumo = df_filt[mask_consumo][col_m_compra].sum()
         monto_total = df_filt[col_m_compra].sum()
 
-        # UI - Grid equilibrado de 4 columnas x 2 filas, agrupado por categoría
-        kf1, kf2, kf3, kf4 = st.columns(4)
-        kf1.metric("📦 OC Farma", str(oc_farma))
-        kf2.metric("💊 Monto Farma", formato_moneda(monto_farma))
-        kf3.metric("🛒 OC Consumo", str(oc_consumo))
-        kf4.metric("🛍️ Monto Consumo", formato_moneda(monto_consumo))
-
-        ks1, ks2, ks3, ks4 = st.columns(4)
-        ks1.metric("☀️ OC Solares", str(oc_solares))
-        ks2.metric("💵 Monto Solares", formato_moneda(monto_solares))
-        ks3.metric("💰 Monto Total", formato_moneda(monto_total))
-
-        kn1, kn2, _kn3, _kn4 = st.columns(4)
-        kn1.metric("🎄 OC Navidad", str(oc_navidad))
-        kn2.metric("🎁 Monto Navidad", formato_moneda(monto_navidad))
+        # UI - Tarjeta grande con el Monto Total + 4 tarjetas iguales
+        # (Farma, Consumo, Solares, Navidad), cada una con monto y OC.
+        render_resumen_cards(
+            monto_total,
+            df_filt[col_oc].nunique(),
+            [
+                ("💊", "Farma", monto_farma, oc_farma),
+                ("🛒", "Consumo", monto_consumo, oc_consumo),
+                ("☀️", "Solares", monto_solares, oc_solares),
+                ("🎄", "Navidad", monto_navidad, oc_navidad),
+            ],
+        )
 
         st.divider()
 
@@ -3347,18 +3413,17 @@ for i, nombre_hoja in enumerate(nombres_hojas):
         cantidad_oc_pu = df_filt[col_oc].nunique()
         monto_total_pu = df_filt[col_m_compra].sum()
 
-        # UI: KPIs generales + Solares aparte (mismo estilo que SB)
-        kpu1, kpu2 = st.columns(2)
-        kpu1.metric("📦 Cantidad de OC", str(cantidad_oc_pu))
-        kpu2.metric("💰 Monto Total de Compra", formato_moneda(monto_total_pu))
-
-        kpu_s1, kpu_s2 = st.columns(2)
-        kpu_s1.metric("☀️ OC Solares", str(oc_solares_pu))
-        kpu_s2.metric("💵 Monto Solares", formato_moneda(monto_solares_pu))
-
-        kpu_n1, kpu_n2 = st.columns(2)
-        kpu_n1.metric("🎄 OC Navidad", str(oc_navidad_pu))
-        kpu_n2.metric("🎁 Monto Navidad", formato_moneda(monto_navidad_pu))
+        # UI: mismo diseño que SB. Tarjeta grande con el Monto Total de
+        # Compra + tarjetas iguales para Solares y Navidad.
+        render_resumen_cards(
+            monto_total_pu,
+            cantidad_oc_pu,
+            [
+                ("☀️", "Solares", monto_solares_pu, oc_solares_pu),
+                ("🎄", "Navidad", monto_navidad_pu, oc_navidad_pu),
+            ],
+            etiqueta_total="Monto total de compra",
+        )
 
         st.divider()
 
